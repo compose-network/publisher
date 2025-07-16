@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package poc;
+
+option go_package = "github.com/ssv-labs/rollup-shared-publisher/internal/proto";
+
+// Cross-chain transaction request
+message XTRequest {
+  repeated TransactionRequest transactions = 1;
+}
+
+message TransactionRequest {
+  bytes chain_id = 1;
+  repeated bytes transaction = 2; // RLP encoded Ethereum transactions
+}
+
+// Wrapper for all messages
+message Message {
+  string sender_id = 1; // Identifier of the sender
+  oneof payload {
+    XTRequest xt_request = 2;
+  }
+}

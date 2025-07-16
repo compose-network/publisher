@@ -1,0 +1,25 @@
+services:
+  publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rollup-shared-publisher:latest
+    container_name: rollup-shared-publisher
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # TCP
+      - "8081:8081"  # Metrics
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+    environment:
+      - TZ=UTC
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
