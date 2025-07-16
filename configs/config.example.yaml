@@ -1,0 +1,64 @@
+# Example configuration file for POC Shared Publisher
+# Copy this file to config.yaml and adjust values as needed
+#
+# ENV Variables Support:
+# All config values can be overridden with ENV variables using the pattern:
+# <SECTION>_<KEY> (dots replaced with underscores)
+#
+# Examples:
+#   SERVER_LISTEN_ADDR=":9090"
+#   SERVER_MAX_CONNECTIONS=200
+#   METRICS_PORT=3000
+#   LOG_LEVEL=debug
+#   LOG_PRETTY=true
+
+# Server configuration
+server:
+  # TCP listen address for sequencer connections
+  # ENV: SERVER_LISTEN_ADDR
+  listen_addr: ":8080"
+
+  # Connection timeouts
+  # ENV: SERVER_READ_TIMEOUT, SERVER_WRITE_TIMEOUT
+  read_timeout: 30s
+  write_timeout: 30s
+
+  # Maximum message size in bytes (default: 10MB)
+  # ENV: SERVER_MAX_MESSAGE_SIZE
+  max_message_size: 10485760
+
+  # Maximum number of concurrent connections
+  # ENV: SERVER_MAX_CONNECTIONS
+  max_connections: 100
+
+# Metrics server configuration
+metrics:
+  # Enable metrics endpoint
+  # ENV: METRICS_ENABLED
+  enabled: true
+
+  # HTTP port for metrics endpoint
+  # ENV: METRICS_PORT
+  port: 8081
+
+  # Metrics path
+  # ENV: METRICS_PATH
+  path: /metrics
+
+# Logging configuration
+log:
+  # Log level: trace, debug, info, warn, error, fatal, panic
+  # ENV: LOG_LEVEL
+  level: info
+
+  # Pretty print logs (true for development, false for production)
+  # ENV: LOG_PRETTY
+  pretty: false
+
+  # Output destination: stdout, stderr, file
+  # ENV: LOG_OUTPUT
+  output: stdout
+
+  # Log file path (only used if output=file)
+  # ENV: LOG_FILE
+  # file: /var/log/shared-publisher.log
