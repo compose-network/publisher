@@ -64,7 +64,6 @@ func main() {
 
 	serverCfg := network.ServerConfig{
 		ListenAddr:     cfg.Server.ListenAddr,
-		ReadTimeout:    cfg.Server.ReadTimeout,
 		WriteTimeout:   cfg.Server.WriteTimeout,
 		MaxMessageSize: cfg.Server.MaxMessageSize,
 		MaxConnections: cfg.Server.MaxConnections,

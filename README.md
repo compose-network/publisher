@@ -106,7 +106,6 @@ The system uses a YAML configuration file (`configs/config.yaml`):
 ```yaml
 server:
   listen_addr: ":8080"          # TCP port for sequencer connections
-  read_timeout: 30s             # Connection read timeout
   write_timeout: 30s            # Connection write timeout
   max_message_size: 10485760    # 10MB max message size
   max_connections: 10           # Max concurrent connections (Phase 1)
@@ -129,7 +128,6 @@ All configuration values can be overridden using environment variables:
 # Server configuration
 export SERVER_LISTEN_ADDR=":9090"
 export SERVER_MAX_CONNECTIONS=200
-export SERVER_READ_TIMEOUT=60s
 
 # Metrics configuration
 export METRICS_PORT=3000

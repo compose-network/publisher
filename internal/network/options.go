@@ -12,10 +12,9 @@ func WithMaxConnections(max int) ServerOption {
 	}
 }
 
-// WithTimeouts sets read/write timeouts.
-func WithTimeouts(read, write time.Duration) ServerOption {
+// WithWriteTimeout sets write timeout.
+func WithWriteTimeout(write time.Duration) ServerOption {
 	return func(cfg *ServerConfig) {
-		cfg.ReadTimeout = read
 		cfg.WriteTimeout = write
 	}
 }

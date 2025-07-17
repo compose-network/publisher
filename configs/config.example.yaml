@@ -19,8 +19,7 @@ server:
   listen_addr: ":8080"
 
   # Connection timeouts
-  # ENV: SERVER_READ_TIMEOUT, SERVER_WRITE_TIMEOUT
-  read_timeout: 30s
+  # ENV: SERVER_WRITE_TIMEOUT
   write_timeout: 30s
 
   # Maximum message size in bytes (default: 10MB)

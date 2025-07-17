@@ -16,7 +16,6 @@ type Config struct {
 
 type ServerConfig struct {
 	ListenAddr     string        `mapstructure:"listen_addr" env:"SERVER_LISTEN_ADDR"`
-	ReadTimeout    time.Duration `mapstructure:"read_timeout" env:"SERVER_READ_TIMEOUT"`
 	WriteTimeout   time.Duration `mapstructure:"write_timeout" env:"SERVER_WRITE_TIMEOUT"`
 	MaxMessageSize int           `mapstructure:"max_message_size" env:"SERVER_MAX_MESSAGE_SIZE"`
 	MaxConnections int           `mapstructure:"max_connections" env:"SERVER_MAX_CONNECTIONS"`
@@ -44,7 +43,6 @@ func Load(path string) (*Config, error) {
 
 	// Set defaults
 	viper.SetDefault("server.listen_addr", ":8080")
-	viper.SetDefault("server.read_timeout", "30s")
 	viper.SetDefault("server.write_timeout", "30s")
 	viper.SetDefault("server.max_message_size", 10*1024*1024) // 10MB
 	viper.SetDefault("server.max_connections", 100)

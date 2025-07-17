@@ -18,7 +18,6 @@ import (
 // ServerConfig contains server configuration.
 type ServerConfig struct {
 	ListenAddr     string
-	ReadTimeout    time.Duration
 	WriteTimeout   time.Duration
 	MaxMessageSize int
 	MaxConnections int
@@ -161,9 +160,16 @@ func (s *server) acceptLoop(ctx context.Context) {
 	}
 }
 
-// handleConnection handles a client connection.
+// handleConnection manages lifecycle and communication for a single client connection.
+// It sets up keepalive, handles message decoding, and invokes the registered handler.
+// Ensures proper cleanup of resources on disconnection or errors.
 func (s *server) handleConnection(ctx context.Context, netConn net.Conn) {
 	defer s.wg.Done()
+
+	if tcpConn, ok := netConn.(*net.TCPConn); ok {
+		_ = tcpConn.SetKeepAlive(true)
+		_ = tcpConn.SetKeepAlivePeriod(30 * time.Second)
+	}
 
 	// Generate connection ID
 	connID := uuid.New().String()
@@ -194,16 +200,13 @@ func (s *server) handleConnection(ctx context.Context, netConn net.Conn) {
 		case <-ctx.Done():
 			return
 		default:
-			if s.cfg.ReadTimeout > 0 {
-				_ = conn.SetReadDeadline(time.Now().Add(s.cfg.ReadTimeout))
-			}
-
 			var msg pb.Message
 			if err := s.codec.Decode(conn, &msg); err != nil {
 				if err == io.EOF {
 					log.Debug().Msg("Client disconnected")
 				} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
-					log.Debug().Msg("Read timeout")
+					log.Debug().Msg("Read timeout - continuing to keep connection alive")
+					continue
 				} else {
 					log.Error().Err(err).Msg("Read error")
 				}
