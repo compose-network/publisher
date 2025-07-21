@@ -14,10 +14,33 @@ message TransactionRequest {
   repeated bytes transaction = 2; // RLP encoded Ethereum transactions
 }
 
+// 2PC Vote message from a sequencer to the SP
+message Vote {
+  bytes sender_chain_id = 1;  // Which chain is voting
+  uint32 xt_id = 2;           // Transaction ID
+  bool vote = 3;              // true = Commit, false = Abort
+}
+
+// 2PC Decision message from the SP to sequencers
+message Decided {
+  uint32 xt_id = 1;           // Transaction ID
+  bool decision = 2;          // true = Commit, false = Abort
+}
+
+// Block submission from a sequencer to the SP
+message Block {
+  bytes chain_id = 1;         // Which chain's block
+  bytes block_data = 2;       // The actual block data
+  repeated uint32 included_xt_ids = 3; // Which xTs are included
+}
+
 // Wrapper for all messages
 message Message {
   string sender_id = 1; // Identifier of the sender
   oneof payload {
     XTRequest xt_request = 2;
+    Vote vote = 3;
+    Decided decided = 4;
+    Block block = 5;
   }
 }

@@ -61,10 +61,8 @@ func (c *RuntimeCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.memSys, prometheus.GaugeValue, float64(m.Sys))
 }
 
-// StartUptimeCollector starts collecting uptime metrics.
-func StartUptimeCollector(ctx context.Context) {
-	start := time.Now()
-	ticker := time.NewTicker(time.Second)
+func StartPeriodicCollection(ctx context.Context, interval time.Duration, start time.Time) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -72,7 +70,8 @@ func StartUptimeCollector(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			Uptime.Set(time.Since(start).Seconds())
+			uptime := time.Since(start)
+			Uptime.Set(uptime.Seconds())
 		}
 	}
 }

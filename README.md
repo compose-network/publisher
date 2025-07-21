@@ -1,55 +1,106 @@
-# POC Shared Publisher - Phase 1
+# POC Shared Publisher - Phase 2
 
-A proof-of-concept implementation of a shared publisher for cross-chain transaction coordination. This is **Phase 1** -
-a simple message relay system between rollup sequencers.
+A proof-of-concept implementation of a shared publisher for cross-chain transaction coordination. This is **Phase 2** -
+a stateful coordinator that implements a **Two-Phase Commit (2PC)** protocol to ensure atomic transactions across
+multiple rollups.
 
-## Architecture
+## Architecture (Phase 2)
 
-The system consists of three main components:
+The system has evolved from a simple message relay to a central coordinator. The Shared Publisher (SP) now acts as the
+leader in the 2PC protocol, managing the lifecycle of each cross-chain transaction (`XTRequest`).
 
 ```
-┌─────────────┐    XTRequest     ┌─────────────────┐    broadcast     ┌─────────────┐
-│             │ ──────────────>  │     Shared      │ ──────────────>  │             │
-│ Sequencer A │                  │    Publisher    │                  │ Sequencer B │
-│             │                  │     (Hub)       │                  │             │
-└─────────────┘                  └─────────────────┘                  └─────────────┘
+┌───────────┐          ┌─────────────────┐          ┌───────────┐
+│ Sequencer │          │     Shared      │          │ Sequencer │
+│     A     │          │    Publisher    │          │     B     │
+└───────────┘          └─────────────────┘          └───────────┘
+      │                      │                          │
+      │ 1. XTRequest         │                          │
+      ├─────────────────────>│                          │
+      │                      │ 2. XTRequest (Broadcast) │
+      │                      ├─────────────────────────>│
+      │<─────────────────────┤                          │
+      │                      │                          │
+      │ 3. Vote(Commit)      │ 3. Vote(Commit)          │
+      ├─────────────────────>│<─────────────────────────┤
+      │                      │                          │
+      │                      │ 4. Decided(Commit)       │
+      │<─────────────────────├─────────────────────────>│
+      │                      │                          │
+      │ 5. Block(Includes xT)│ 5. Block(Includes xT)    │
+      ├─────────────────────>│<─────────────────────────┤
+      │                      │                          │
 ```
 
 ### Components
 
-1. **Shared Publisher (SP)** - Central hub that receives and broadcasts transactions
-    - Listens on port `8080` for TCP connections from sequencers
-    - Exposes metrics and health endpoints on port `8081`
-    - Maintains persistent connections with multiple sequencers
+1. **Shared Publisher (SP)** - The central coordinator.
+    - Initiates and manages the 2PC protocol for each `XTRequest`.
+    - Collects votes from sequencers and broadcasts the final decision (Commit/Abort).
+    - Receives blocks from sequencers to confirm transaction inclusion.
+    - Exposes detailed metrics and health endpoints on port `8081`.
 
-2. **Sequencer A** - Sends cross-chain transaction requests
-    - Connects to Shared Publisher via TCP
-    - Sends `XTRequest` messages containing transaction data
+2. **Sequencers (A, B, ...)** - Participants in the 2PC protocol.
+    - Submit `XTRequest` bundles to the SP.
+    - Send `Vote` messages (Commit/Abort) to the SP.
+    - Receive final `Decided` messages from the SP.
+    - On a `Commit` decision, include the transaction in a block and send the `Block` to the SP.
 
-3. **Sequencer B** - Receives broadcasted transactions
-    - Connects to Shared Publisher via TCP
-    - Receives broadcasted `XTRequest` messages from other sequencers
+## Message Flow (Phase 2 - 2PC)
 
-## Message Flow (Phase 1)
-
-1. **Connection Setup**: Sequencers establish TCP connections to the Shared Publisher
-2. **Transaction Submission**: Sequencer A sends an `XTRequest` message to the SP
-3. **Message Broadcast**: SP receives the message and broadcasts it to all other connected sequencers
-4. **Transaction Processing**: Sequencer B receives the broadcasted message and can process it
+1. **Transaction Submission**: A client or sequencer sends an `XTRequest` to the SP.
+2. **Initiate 2PC & Broadcast**: The SP assigns a unique `xt_id` to the transaction, starts a 3-minute timer, and
+   broadcasts the `XTRequest` to all connected sequencers.
+3. **Voting**: Each participating sequencer simulates the transaction and sends a `Vote` message to the SP.
+4. **Decision**: The SP collects votes. If any sequencer votes `false` or the timer expires, the SP decides to **Abort
+   **. If all vote `true`, the SP decides to **Commit**. The SP broadcasts the final `Decided` message.
+5. **Block Submission**: Upon receiving a `Commit` decision, sequencers include the transaction in their next block and
+   send the `Block` message to the SP.
 
 ### Message Types
 
 Based on the protobuf definition in `api/proto/messages.proto`:
 
 ```protobuf
-// User request
+// User request for a cross-chain transaction
 message XTRequest {
   repeated TransactionRequest transactions = 1;
 }
 
 message TransactionRequest {
-  bytes chainID = 1;
+  bytes chain_id = 1;
   repeated bytes transaction = 2;
+}
+
+// 2PC Vote message from a sequencer to the SP
+message Vote {
+  bytes sender_chain_id = 1;  // Which chain is voting
+  uint32 xt_id = 2;           // Transaction ID
+  bool vote = 3;              // true = Commit, false = Abort
+}
+
+// 2PC Decision message from the SP to sequencers
+message Decided {
+  uint32 xt_id = 1;           // Transaction ID
+  bool decision = 2;          // true = Commit, false = Abort
+}
+
+// Block submission from a sequencer to the SP
+message Block {
+  bytes chain_id = 1;         // Which chain's block
+  bytes block_data = 2;       // The actual block data
+  repeated uint32 included_xt_ids = 3; // Which xTs are included
+}
+
+// Wrapper for all messages sent over the wire
+message Message {
+  string sender_id = 1; // Connection ID of the sender
+  oneof payload {
+    XTRequest xt_request = 2;
+    Vote vote = 3;
+    Decided decided = 4;
+    Block block = 5;
+  }
 }
 ```
 
@@ -152,18 +203,27 @@ export LOG_PRETTY=true
 
 ### Metrics
 
-Prometheus metrics are exposed on `http://localhost:8081/metrics`:
+Prometheus metrics are exposed on `http://localhost:8081/metrics`. In addition to the base-level metrics, Phase 2
+introduces a rich set of metrics for the consensus protocol.
 
-- `crosschain_transactions_total` - Total cross-chain transactions processed
-- `connections_active` - Number of active sequencer connections
-- `broadcasts_total` - Total messages broadcasted
-- `message_processing_duration_seconds` - Message processing time
+**New Consensus Metrics (`publisher_consensus_*`)**
+
+- `publisher_consensus_transactions_total`: Total 2PC transactions, labeled by final state (`initiated`, `commit`,
+  `abort`, `timeout`).
+- `publisher_consensus_active_transactions`: A gauge showing the number of 2PC transactions currently in progress.
+- `publisher_consensus_duration_seconds`: A histogram of the time it takes for a 2PC transaction to complete, labeled by
+  state.
+- `publisher_consensus_votes_received_total`: Total votes received, labeled by `chain_id` and `vote` (commit/abort).
+- `publisher_consensus_vote_latency_seconds`: A histogram of the time from transaction start to vote reception.
+- `publisher_consensus_timeouts_total`: A counter for the total number of transactions that timed out.
+- `publisher_consensus_participants_per_transaction`: A histogram of how many chains participate in each transaction.
+- `publisher_consensus_decisions_broadcast_total`: Total decisions broadcast, labeled by `decision` (commit/abort).
 
 ### Health Checks
 
 - **Health**: `http://localhost:8081/health` - System health status
 - **Ready**: `http://localhost:8081/ready` - Readiness status (has connections)
-- **Stats**: `http://localhost:8081/stats` - Publisher statistics
+- **Stats**: `http://localhost:8081/stats` - Publisher statistics, including active 2PC transactions
 - **Connections**: `http://localhost:8081/connections` - Active connections info
 
 ### Prometheus Setup
@@ -204,9 +264,10 @@ make proto
 ├── configs/               # Configuration files
 ├── internal/
 │   ├── config/           # Configuration management
+│   ├── consensus/        # Core 2PC coordinator logic and state management
 │   ├── network/          # TCP server/client implementation
 │   ├── proto/            # Generated protobuf files
-│   └── publisher/        # Core publisher logic
+│   └── publisher/        # Core publisher logic, message handlers, and integration
 ├── monitoring/           # Prometheus configuration
 ├── pkg/
 │   ├── logger/          # Logging utilities

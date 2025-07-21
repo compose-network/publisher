@@ -30,14 +30,9 @@ func NewHTTPHandler(p *Publisher, log zerolog.Logger) *HTTPHandler {
 func (h *HTTPHandler) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Health and readiness
 	mux.HandleFunc("/health", h.handleHealth)
 	mux.HandleFunc("/ready", h.handleReady)
-
-	// Metrics
 	mux.Handle("/metrics", promhttp.Handler())
-
-	// Debug endpoints
 	mux.HandleFunc("/stats", h.handleStats)
 	mux.HandleFunc("/connections", h.handleConnections)
 	mux.HandleFunc("/debug/vars", h.handleDebugVars)
@@ -45,7 +40,7 @@ func (h *HTTPHandler) RegisterRoutes() http.Handler {
 	return h.loggingMiddleware(mux)
 }
 
-// loggingMiddleware logs HTTP requests
+// loggingMiddleware logs HTTP requests.
 func (h *HTTPHandler) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -87,7 +82,6 @@ func (h *HTTPHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleReady returns readiness status.
 func (h *HTTPHandler) handleReady(w http.ResponseWriter, r *http.Request) {
-	// Check if we have any connections
 	stats := h.publisher.GetStats()
 	connections := stats["active_connections"].(int)
 
@@ -133,7 +127,6 @@ func (h *HTTPHandler) handleConnections(w http.ResponseWriter, r *http.Request) 
 func (h *HTTPHandler) handleDebugVars(w http.ResponseWriter, r *http.Request) {
 	stats := h.publisher.GetStats()
 
-	// Add runtime stats
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 

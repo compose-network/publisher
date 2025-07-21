@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ssvlabs/rollup-shared-publisher/internal/consensus"
+
 	"github.com/rs/zerolog"
 
 	"github.com/ssvlabs/rollup-shared-publisher/internal/config"
@@ -21,24 +23,35 @@ type Publisher struct {
 	server network.Server
 	log    zerolog.Logger
 
-	// State
-	mu      sync.RWMutex
-	chains  map[string]bool // Track unique chains
-	started time.Time
+	mu        sync.RWMutex
+	chains    map[string]bool
+	started   time.Time
+	startTime time.Time
 
-	// Metrics
 	msgCount     atomic.Uint64
 	broadcastCnt atomic.Uint64
+	metrics      *Metrics
+
+	activeTxs   sync.Map
+	nextXTID    atomic.Uint32
+	coordinator *consensus.Coordinator
 }
 
 // New creates a new publisher instance.
 func New(cfg *config.Config, server network.Server, log zerolog.Logger) *Publisher {
-	return &Publisher{
-		cfg:    cfg,
-		server: server,
-		log:    log.With().Str("component", "publisher").Logger(),
-		chains: make(map[string]bool),
+	p := &Publisher{
+		cfg:         cfg,
+		server:      server,
+		log:         log.With().Str("component", "publisher").Logger(),
+		chains:      make(map[string]bool),
+		coordinator: consensus.NewCoordinator(log),
+		metrics:     NewMetrics(),
+		startTime:   time.Now(),
 	}
+
+	p.coordinator.SetBroadcastCallback(p.broadcastDecision)
+
+	return p
 }
 
 // Start starts the publisher.
@@ -53,7 +66,7 @@ func (p *Publisher) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 
-	go metrics.StartUptimeCollector(ctx)
+	go metrics.StartPeriodicCollection(ctx, time.Second, time.Now())
 	go p.metricsReporter(ctx)
 
 	p.log.Info().
@@ -81,88 +94,23 @@ func (p *Publisher) Stop(ctx context.Context) error {
 }
 
 func (p *Publisher) handleMessage(ctx context.Context, from string, msg *pb.Message) error {
-	start := time.Now()
 	p.msgCount.Add(1)
 
-	var msgType string
 	var err error
 
 	switch payload := msg.Payload.(type) {
 	case *pb.Message_XtRequest:
-		msgType = "xt_request"
 		err = p.handleXTRequest(ctx, from, msg, payload.XtRequest)
+	case *pb.Message_Vote:
+		err = p.handleVote(from, payload.Vote)
+	case *pb.Message_Block:
+		err = p.handleBlock(ctx, from, payload.Block)
 	default:
-		msgType = "unknown"
-		metrics.RecordError("unknown_message_type", "handle_message")
+		p.metrics.RecordError("unknown_message_type", "handle_message")
 		err = fmt.Errorf("unknown message type: %T", payload)
 	}
 
-	metrics.MessageProcessingDuration.WithLabelValues(msgType).Observe(time.Since(start).Seconds())
 	return err
-}
-
-// handleXTRequest handles cross-chain transaction requests.
-func (p *Publisher) handleXTRequest(ctx context.Context, from string, msg *pb.Message, req *pb.XTRequest) error {
-	log := p.log.With().
-		Str("from", from).
-		Str("sender_id", msg.SenderId).
-		Int("tx_count", len(req.Transactions)).
-		Logger()
-
-	log.Info().Msg("Received xT request")
-
-	// Record metrics
-	metrics.CrossChainTransactionsTotal.Inc()
-	metrics.TransactionBatchSize.Observe(float64(len(req.Transactions)))
-
-	// Track chains
-	p.mu.Lock()
-	for _, tx := range req.Transactions {
-		chainID := fmt.Sprintf("0x%x", tx.ChainId)
-		if !p.chains[chainID] {
-			p.chains[chainID] = true
-			metrics.UniqueChains.WithLabelValues(chainID).Set(1)
-		}
-		metrics.TransactionsProcessed.WithLabelValues(chainID).Inc()
-	}
-	p.mu.Unlock()
-
-	for i, tx := range req.Transactions {
-		log.Debug().
-			Int("index", i).
-			Str("chain_id", fmt.Sprintf("0x%x", tx.ChainId)).
-			Int("tx_data_count", len(tx.Transaction)).
-			Msg("Transaction details")
-	}
-
-	// Broadcast to all other connections
-	broadcastStart := time.Now()
-
-	connections := p.server.GetConnections()
-	recipientCount := len(connections) - 1 // Exclude sender
-
-	if recipientCount > 0 {
-		metrics.BroadcastRecipients.Observe(float64(recipientCount))
-
-		if err := p.server.Broadcast(ctx, msg, from); err != nil {
-			log.Error().Err(err).Msg("Failed to broadcast xT request")
-			metrics.RecordError("broadcast_failed", "xt_request")
-			return err
-		}
-
-		p.broadcastCnt.Add(1)
-		metrics.BroadcastsTotal.Inc()
-		metrics.BroadcastDuration.Observe(time.Since(broadcastStart).Seconds())
-
-		log.Info().
-			Int("recipients", recipientCount).
-			Dur("duration", time.Since(broadcastStart)).
-			Msg("Successfully broadcast xT request")
-	} else {
-		log.Warn().Msg("No other connections to broadcast to")
-	}
-
-	return nil
 }
 
 // metricsReporter periodically reports internal metrics.
@@ -188,8 +136,6 @@ func (p *Publisher) metricsReporter(ctx context.Context) {
 				Int("unique_chains", chainCount).
 				Dur("uptime", time.Since(p.started)).
 				Msg("Publisher statistics")
-
-			metrics.ConnectionsActive.Set(float64(len(connections)))
 		}
 	}
 }
@@ -205,12 +151,16 @@ func (p *Publisher) GetStats() map[string]interface{} {
 	}
 	p.mu.RUnlock()
 
+	activeTxs := p.coordinator.GetActiveTransactions()
+
 	return map[string]interface{}{
-		"uptime_seconds":     time.Since(p.started).Seconds(),
-		"active_connections": len(connections),
-		"messages_processed": p.msgCount.Load(),
-		"broadcasts_sent":    p.broadcastCnt.Load(),
-		"unique_chains":      chains,
-		"chains_count":       len(chains),
+		"uptime_seconds":          time.Since(p.started).Seconds(),
+		"active_connections":      len(connections),
+		"messages_processed":      p.msgCount.Load(),
+		"broadcasts_sent":         p.broadcastCnt.Load(),
+		"unique_chains":           chains,
+		"chains_count":            len(chains),
+		"active_2pc_transactions": len(activeTxs),
+		"active_2pc_ids":          activeTxs,
 	}
 }

@@ -119,6 +119,181 @@ func (x *TransactionRequest) GetTransaction() [][]byte {
 	return nil
 }
 
+// 2PC Vote message from a sequencer to the SP
+type Vote struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SenderChainId []byte                 `protobuf:"bytes,1,opt,name=sender_chain_id,json=senderChainId,proto3" json:"sender_chain_id,omitempty"` // Which chain is voting
+	XtId          uint32                 `protobuf:"varint,2,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"`                             // Transaction ID
+	Vote          bool                   `protobuf:"varint,3,opt,name=vote,proto3" json:"vote,omitempty"`                                         // true = Commit, false = Abort
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Vote) Reset() {
+	*x = Vote{}
+	mi := &file_messages_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Vote) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Vote) ProtoMessage() {}
+
+func (x *Vote) ProtoReflect() protoreflect.Message {
+	mi := &file_messages_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Vote.ProtoReflect.Descriptor instead.
+func (*Vote) Descriptor() ([]byte, []int) {
+	return file_messages_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Vote) GetSenderChainId() []byte {
+	if x != nil {
+		return x.SenderChainId
+	}
+	return nil
+}
+
+func (x *Vote) GetXtId() uint32 {
+	if x != nil {
+		return x.XtId
+	}
+	return 0
+}
+
+func (x *Vote) GetVote() bool {
+	if x != nil {
+		return x.Vote
+	}
+	return false
+}
+
+// 2PC Decision message from the SP to sequencers
+type Decided struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	XtId          uint32                 `protobuf:"varint,1,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"` // Transaction ID
+	Decision      bool                   `protobuf:"varint,2,opt,name=decision,proto3" json:"decision,omitempty"`     // true = Commit, false = Abort
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Decided) Reset() {
+	*x = Decided{}
+	mi := &file_messages_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Decided) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Decided) ProtoMessage() {}
+
+func (x *Decided) ProtoReflect() protoreflect.Message {
+	mi := &file_messages_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Decided.ProtoReflect.Descriptor instead.
+func (*Decided) Descriptor() ([]byte, []int) {
+	return file_messages_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Decided) GetXtId() uint32 {
+	if x != nil {
+		return x.XtId
+	}
+	return 0
+}
+
+func (x *Decided) GetDecision() bool {
+	if x != nil {
+		return x.Decision
+	}
+	return false
+}
+
+// Block submission from a sequencer to the SP
+type Block struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChainId       []byte                 `protobuf:"bytes,1,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`                             // Which chain's block
+	BlockData     []byte                 `protobuf:"bytes,2,opt,name=block_data,json=blockData,proto3" json:"block_data,omitempty"`                       // The actual block data
+	IncludedXtIds []uint32               `protobuf:"varint,3,rep,packed,name=included_xt_ids,json=includedXtIds,proto3" json:"included_xt_ids,omitempty"` // Which xTs are included
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Block) Reset() {
+	*x = Block{}
+	mi := &file_messages_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Block) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Block) ProtoMessage() {}
+
+func (x *Block) ProtoReflect() protoreflect.Message {
+	mi := &file_messages_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Block.ProtoReflect.Descriptor instead.
+func (*Block) Descriptor() ([]byte, []int) {
+	return file_messages_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Block) GetChainId() []byte {
+	if x != nil {
+		return x.ChainId
+	}
+	return nil
+}
+
+func (x *Block) GetBlockData() []byte {
+	if x != nil {
+		return x.BlockData
+	}
+	return nil
+}
+
+func (x *Block) GetIncludedXtIds() []uint32 {
+	if x != nil {
+		return x.IncludedXtIds
+	}
+	return nil
+}
+
 // Wrapper for all messages
 type Message struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
@@ -126,6 +301,9 @@ type Message struct {
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*Message_XtRequest
+	//	*Message_Vote
+	//	*Message_Decided
+	//	*Message_Block
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -133,7 +311,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_messages_proto_msgTypes[2]
+	mi := &file_messages_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -145,7 +323,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_messages_proto_msgTypes[2]
+	mi := &file_messages_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -158,7 +336,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_messages_proto_rawDescGZIP(), []int{2}
+	return file_messages_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Message) GetSenderId() string {
@@ -184,6 +362,33 @@ func (x *Message) GetXtRequest() *XTRequest {
 	return nil
 }
 
+func (x *Message) GetVote() *Vote {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_Vote); ok {
+			return x.Vote
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetDecided() *Decided {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_Decided); ok {
+			return x.Decided
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetBlock() *Block {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_Block); ok {
+			return x.Block
+		}
+	}
+	return nil
+}
+
 type isMessage_Payload interface {
 	isMessage_Payload()
 }
@@ -192,7 +397,25 @@ type Message_XtRequest struct {
 	XtRequest *XTRequest `protobuf:"bytes,2,opt,name=xt_request,json=xtRequest,proto3,oneof"`
 }
 
+type Message_Vote struct {
+	Vote *Vote `protobuf:"bytes,3,opt,name=vote,proto3,oneof"`
+}
+
+type Message_Decided struct {
+	Decided *Decided `protobuf:"bytes,4,opt,name=decided,proto3,oneof"`
+}
+
+type Message_Block struct {
+	Block *Block `protobuf:"bytes,5,opt,name=block,proto3,oneof"`
+}
+
 func (*Message_XtRequest) isMessage_Payload() {}
+
+func (*Message_Vote) isMessage_Payload() {}
+
+func (*Message_Decided) isMessage_Payload() {}
+
+func (*Message_Block) isMessage_Payload() {}
 
 var File_messages_proto protoreflect.FileDescriptor
 
@@ -203,11 +426,27 @@ const file_messages_proto_rawDesc = "" +
 	"\ftransactions\x18\x01 \x03(\v2\x17.poc.TransactionRequestR\ftransactions\"Q\n" +
 	"\x12TransactionRequest\x12\x19\n" +
 	"\bchain_id\x18\x01 \x01(\fR\achainId\x12 \n" +
-	"\vtransaction\x18\x02 \x03(\fR\vtransaction\"b\n" +
+	"\vtransaction\x18\x02 \x03(\fR\vtransaction\"W\n" +
+	"\x04Vote\x12&\n" +
+	"\x0fsender_chain_id\x18\x01 \x01(\fR\rsenderChainId\x12\x13\n" +
+	"\x05xt_id\x18\x02 \x01(\rR\x04xtId\x12\x12\n" +
+	"\x04vote\x18\x03 \x01(\bR\x04vote\":\n" +
+	"\aDecided\x12\x13\n" +
+	"\x05xt_id\x18\x01 \x01(\rR\x04xtId\x12\x1a\n" +
+	"\bdecision\x18\x02 \x01(\bR\bdecision\"i\n" +
+	"\x05Block\x12\x19\n" +
+	"\bchain_id\x18\x01 \x01(\fR\achainId\x12\x1d\n" +
+	"\n" +
+	"block_data\x18\x02 \x01(\fR\tblockData\x12&\n" +
+	"\x0fincluded_xt_ids\x18\x03 \x03(\rR\rincludedXtIds\"\xd1\x01\n" +
 	"\aMessage\x12\x1b\n" +
 	"\tsender_id\x18\x01 \x01(\tR\bsenderId\x12/\n" +
 	"\n" +
-	"xt_request\x18\x02 \x01(\v2\x0e.poc.XTRequestH\x00R\txtRequestB\t\n" +
+	"xt_request\x18\x02 \x01(\v2\x0e.poc.XTRequestH\x00R\txtRequest\x12\x1f\n" +
+	"\x04vote\x18\x03 \x01(\v2\t.poc.VoteH\x00R\x04vote\x12(\n" +
+	"\adecided\x18\x04 \x01(\v2\f.poc.DecidedH\x00R\adecided\x12\"\n" +
+	"\x05block\x18\x05 \x01(\v2\n" +
+	".poc.BlockH\x00R\x05blockB\t\n" +
 	"\apayloadB<Z:github.com/ssv-labs/rollup-shared-publisher/internal/protob\x06proto3"
 
 var (
@@ -222,20 +461,26 @@ func file_messages_proto_rawDescGZIP() []byte {
 	return file_messages_proto_rawDescData
 }
 
-var file_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_messages_proto_goTypes = []any{
 	(*XTRequest)(nil),          // 0: poc.XTRequest
 	(*TransactionRequest)(nil), // 1: poc.TransactionRequest
-	(*Message)(nil),            // 2: poc.Message
+	(*Vote)(nil),               // 2: poc.Vote
+	(*Decided)(nil),            // 3: poc.Decided
+	(*Block)(nil),              // 4: poc.Block
+	(*Message)(nil),            // 5: poc.Message
 }
 var file_messages_proto_depIdxs = []int32{
 	1, // 0: poc.XTRequest.transactions:type_name -> poc.TransactionRequest
 	0, // 1: poc.Message.xt_request:type_name -> poc.XTRequest
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	2, // 2: poc.Message.vote:type_name -> poc.Vote
+	3, // 3: poc.Message.decided:type_name -> poc.Decided
+	4, // 4: poc.Message.block:type_name -> poc.Block
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_messages_proto_init() }
@@ -243,8 +488,11 @@ func file_messages_proto_init() {
 	if File_messages_proto != nil {
 		return
 	}
-	file_messages_proto_msgTypes[2].OneofWrappers = []any{
+	file_messages_proto_msgTypes[5].OneofWrappers = []any{
 		(*Message_XtRequest)(nil),
+		(*Message_Vote)(nil),
+		(*Message_Decided)(nil),
+		(*Message_Block)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -252,7 +500,7 @@ func file_messages_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_messages_proto_rawDesc), len(file_messages_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
