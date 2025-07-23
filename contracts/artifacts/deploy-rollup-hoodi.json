@@ -1,0 +1,11 @@
+{
+  "addresses": {
+    "Coordinator": "0x5b73C5498c1E3b4dbA84de0F1833c4a029d90519",
+    "Mailbox": "0xEd3afBc0af3B010815dd242f1aA20d493Ae3160d",
+    "PingPong": "0x5217C9034048B1Fa9Fb1e300F94fCd7002138Ea5"
+  },
+  "chainInfo": {
+    "chainId": 22222,
+    "deploymentBlock": 248821
+  }
+}
