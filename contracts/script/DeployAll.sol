@@ -6,6 +6,7 @@ import { stdJson } from "forge-std/StdJson.sol";
 
 import { Mailbox } from "@ssv/src/Mailbox.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
+import { MyToken } from "@ssv/src/Token.sol";
 
 contract DeployAll is Script {
     using stdJson for string;
@@ -17,20 +18,23 @@ contract DeployAll is Script {
 
         Mailbox mailbox = new Mailbox(coordinator);
         PingPong pingpong = new PingPong(address(mailbox));
+        MyToken myToken = new MyToken();
 
         vm.stopBroadcast();
 
         console.log("Mailbox:  ", address(mailbox));
         console.log("PingPong:  ", address(pingpong));
         console.log("Coordinator:  ", coordinator);
+        console.log("MyToken:  ", address(myToken));
 
-        return saveToJson(mailbox, pingpong, coordinator, json);
+        return saveToJson(mailbox, pingpong, coordinator, myToken, json);
     }
 
     function saveToJson(
         Mailbox mailbox,
         PingPong pingpong,
         address coordinator,
+        MyToken myToken,
         string memory json
     ) internal returns (string memory) {
         string memory parent = "parent";
@@ -38,6 +42,7 @@ contract DeployAll is Script {
         string memory deployed_addresses = "addresses";
         vm.serializeAddress(deployed_addresses, "Mailbox", address(mailbox));
         vm.serializeAddress(deployed_addresses, "PingPong", address(pingpong));
+        vm.serializeAddress(deployed_addresses, "MyToken", address(myToken));
 
         string memory deployed_addresses_output = vm.serializeAddress(
             deployed_addresses,
