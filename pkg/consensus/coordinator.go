@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -91,6 +92,75 @@ func (c *Coordinator) StartTransaction(from string, xtReq *pb.XTRequest) error {
 	}
 
 	return nil
+}
+
+func (c *Coordinator) RecordCIRCMessage(circMessage *pb.CIRCMessage) error {
+	xtID := circMessage.XtId
+	c.mu.Lock()
+	xtIDStr := xtID.Hex()
+	state, exists := c.states[xtIDStr]
+	if !exists {
+		c.mu.Unlock()
+		return fmt.Errorf("transaction %s not found", xtIDStr)
+	}
+	c.mu.Unlock()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	sourceChainID := hex.EncodeToString(circMessage.SourceChain)
+
+	if _, isParticipant := state.ParticipatingChains[sourceChainID]; !isParticipant {
+		return fmt.Errorf("chain %s not participating in transaction %s", sourceChainID, xtIDStr)
+	}
+
+	sourceChainIDInt := new(big.Int).SetBytes(circMessage.SourceChain)
+
+	log.Info("Received CIRC message", "xt_id", xtIDStr, "role", c.role.String(), "chainID", sourceChainIDInt.String())
+
+	circMessages, ok := state.CIRCMessages[sourceChainID]
+	if !ok {
+		circMessages = make([]*pb.CIRCMessage, 0)
+	}
+
+	circMessages = append(circMessages, circMessage)
+
+	state.CIRCMessages[sourceChainID] = circMessages
+
+	return nil
+}
+
+func (c *Coordinator) ConsumeCIRCMessage(xtID *pb.XtID, sourceChainID string) (*pb.CIRCMessage, error) {
+	c.mu.Lock()
+	xtIDStr := xtID.Hex()
+	state, exists := c.states[xtIDStr]
+	if !exists {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("transaction %s not found", xtIDStr)
+	}
+	c.mu.Unlock()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	if _, isParticipant := state.ParticipatingChains[sourceChainID]; !isParticipant {
+		return nil, fmt.Errorf("chain %s not participating in transaction %s", sourceChainID, xtIDStr)
+	}
+
+	circMessages, ok := state.CIRCMessages[sourceChainID]
+	if !ok || len(circMessages) == 0 {
+		return nil, fmt.Errorf("no messages available for chain %s in transaction %s", sourceChainID, xtIDStr)
+	}
+
+	message := circMessages[0]
+
+	state.CIRCMessages[sourceChainID] = circMessages[1:]
+
+	if len(state.CIRCMessages[sourceChainID]) == 0 {
+		delete(state.CIRCMessages, sourceChainID)
+	}
+
+	return message, nil
 }
 
 func (c *Coordinator) RecordVote(xtID *pb.XtID, chainID string, vote bool) (DecisionState, error) {

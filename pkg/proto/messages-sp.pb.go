@@ -338,6 +338,99 @@ func (x *Block) GetIncludedXtIds() []*XtID {
 	return nil
 }
 
+// Direct CIRC message exchange between sequencers (without SP involvement)
+type CIRCMessage struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	SourceChain      []byte                 `protobuf:"bytes,1,opt,name=source_chain,json=sourceChain,proto3" json:"source_chain,omitempty"`
+	DestinationChain []byte                 `protobuf:"bytes,2,opt,name=destination_chain,json=destinationChain,proto3" json:"destination_chain,omitempty"`
+	Source           [][]byte               `protobuf:"bytes,3,rep,name=source,proto3" json:"source,omitempty"`
+	Receiver         [][]byte               `protobuf:"bytes,4,rep,name=receiver,proto3" json:"receiver,omitempty"`
+	XtId             *XtID                  `protobuf:"bytes,5,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"`
+	Label            string                 `protobuf:"bytes,6,opt,name=label,proto3" json:"label,omitempty"`
+	Data             [][]byte               `protobuf:"bytes,7,rep,name=data,proto3" json:"data,omitempty"` // ABI encoded data
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *CIRCMessage) Reset() {
+	*x = CIRCMessage{}
+	mi := &file_messages_sp_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CIRCMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CIRCMessage) ProtoMessage() {}
+
+func (x *CIRCMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_messages_sp_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CIRCMessage.ProtoReflect.Descriptor instead.
+func (*CIRCMessage) Descriptor() ([]byte, []int) {
+	return file_messages_sp_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CIRCMessage) GetSourceChain() []byte {
+	if x != nil {
+		return x.SourceChain
+	}
+	return nil
+}
+
+func (x *CIRCMessage) GetDestinationChain() []byte {
+	if x != nil {
+		return x.DestinationChain
+	}
+	return nil
+}
+
+func (x *CIRCMessage) GetSource() [][]byte {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *CIRCMessage) GetReceiver() [][]byte {
+	if x != nil {
+		return x.Receiver
+	}
+	return nil
+}
+
+func (x *CIRCMessage) GetXtId() *XtID {
+	if x != nil {
+		return x.XtId
+	}
+	return nil
+}
+
+func (x *CIRCMessage) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *CIRCMessage) GetData() [][]byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 // Wrapper for all messages
 type Message struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
@@ -348,6 +441,7 @@ type Message struct {
 	//	*Message_Vote
 	//	*Message_Decided
 	//	*Message_Block
+	//	*Message_CircMessage
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -355,7 +449,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_messages_sp_proto_msgTypes[6]
+	mi := &file_messages_sp_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -367,7 +461,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_messages_sp_proto_msgTypes[6]
+	mi := &file_messages_sp_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -380,7 +474,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_messages_sp_proto_rawDescGZIP(), []int{6}
+	return file_messages_sp_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Message) GetSenderId() string {
@@ -433,6 +527,15 @@ func (x *Message) GetBlock() *Block {
 	return nil
 }
 
+func (x *Message) GetCircMessage() *CIRCMessage {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_CircMessage); ok {
+			return x.CircMessage
+		}
+	}
+	return nil
+}
+
 type isMessage_Payload interface {
 	isMessage_Payload()
 }
@@ -453,6 +556,10 @@ type Message_Block struct {
 	Block *Block `protobuf:"bytes,5,opt,name=block,proto3,oneof"`
 }
 
+type Message_CircMessage struct {
+	CircMessage *CIRCMessage `protobuf:"bytes,6,opt,name=circ_message,json=circMessage,proto3,oneof"`
+}
+
 func (*Message_XtRequest) isMessage_Payload() {}
 
 func (*Message_Vote) isMessage_Payload() {}
@@ -460,6 +567,8 @@ func (*Message_Vote) isMessage_Payload() {}
 func (*Message_Decided) isMessage_Payload() {}
 
 func (*Message_Block) isMessage_Payload() {}
+
+func (*Message_CircMessage) isMessage_Payload() {}
 
 var File_messages_sp_proto protoreflect.FileDescriptor
 
@@ -484,7 +593,15 @@ const file_messages_sp_proto_rawDesc = "" +
 	"\bchain_id\x18\x01 \x01(\fR\achainId\x12\x1d\n" +
 	"\n" +
 	"block_data\x18\x02 \x01(\fR\tblockData\x121\n" +
-	"\x0fincluded_xt_ids\x18\x03 \x03(\v2\t.poc.XtIDR\rincludedXtIds\"\xd1\x01\n" +
+	"\x0fincluded_xt_ids\x18\x03 \x03(\v2\t.poc.XtIDR\rincludedXtIds\"\xdb\x01\n" +
+	"\vCIRCMessage\x12!\n" +
+	"\fsource_chain\x18\x01 \x01(\fR\vsourceChain\x12+\n" +
+	"\x11destination_chain\x18\x02 \x01(\fR\x10destinationChain\x12\x16\n" +
+	"\x06source\x18\x03 \x03(\fR\x06source\x12\x1a\n" +
+	"\breceiver\x18\x04 \x03(\fR\breceiver\x12\x1e\n" +
+	"\x05xt_id\x18\x05 \x01(\v2\t.poc.XtIDR\x04xtId\x12\x14\n" +
+	"\x05label\x18\x06 \x01(\tR\x05label\x12\x12\n" +
+	"\x04data\x18\a \x03(\fR\x04data\"\x88\x02\n" +
 	"\aMessage\x12\x1b\n" +
 	"\tsender_id\x18\x01 \x01(\tR\bsenderId\x12/\n" +
 	"\n" +
@@ -492,7 +609,8 @@ const file_messages_sp_proto_rawDesc = "" +
 	"\x04vote\x18\x03 \x01(\v2\t.poc.VoteH\x00R\x04vote\x12(\n" +
 	"\adecided\x18\x04 \x01(\v2\f.poc.DecidedH\x00R\adecided\x12\"\n" +
 	"\x05block\x18\x05 \x01(\v2\n" +
-	".poc.BlockH\x00R\x05blockB\t\n" +
+	".poc.BlockH\x00R\x05block\x125\n" +
+	"\fcirc_message\x18\x06 \x01(\v2\x10.poc.CIRCMessageH\x00R\vcircMessageB\t\n" +
 	"\apayloadB6Z4github.com/ssvlabs/rollup-shared-publisher/pkg/protob\x06proto3"
 
 var (
@@ -507,7 +625,7 @@ func file_messages_sp_proto_rawDescGZIP() []byte {
 	return file_messages_sp_proto_rawDescData
 }
 
-var file_messages_sp_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_messages_sp_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_messages_sp_proto_goTypes = []any{
 	(*XtID)(nil),               // 0: poc.XtID
 	(*XTRequest)(nil),          // 1: poc.XTRequest
@@ -515,22 +633,25 @@ var file_messages_sp_proto_goTypes = []any{
 	(*Vote)(nil),               // 3: poc.Vote
 	(*Decided)(nil),            // 4: poc.Decided
 	(*Block)(nil),              // 5: poc.Block
-	(*Message)(nil),            // 6: poc.Message
+	(*CIRCMessage)(nil),        // 6: poc.CIRCMessage
+	(*Message)(nil),            // 7: poc.Message
 }
 var file_messages_sp_proto_depIdxs = []int32{
-	2, // 0: poc.XTRequest.transactions:type_name -> poc.TransactionRequest
-	0, // 1: poc.Vote.xt_id:type_name -> poc.XtID
-	0, // 2: poc.Decided.xt_id:type_name -> poc.XtID
-	0, // 3: poc.Block.included_xt_ids:type_name -> poc.XtID
-	1, // 4: poc.Message.xt_request:type_name -> poc.XTRequest
-	3, // 5: poc.Message.vote:type_name -> poc.Vote
-	4, // 6: poc.Message.decided:type_name -> poc.Decided
-	5, // 7: poc.Message.block:type_name -> poc.Block
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	2,  // 0: poc.XTRequest.transactions:type_name -> poc.TransactionRequest
+	0,  // 1: poc.Vote.xt_id:type_name -> poc.XtID
+	0,  // 2: poc.Decided.xt_id:type_name -> poc.XtID
+	0,  // 3: poc.Block.included_xt_ids:type_name -> poc.XtID
+	0,  // 4: poc.CIRCMessage.xt_id:type_name -> poc.XtID
+	1,  // 5: poc.Message.xt_request:type_name -> poc.XTRequest
+	3,  // 6: poc.Message.vote:type_name -> poc.Vote
+	4,  // 7: poc.Message.decided:type_name -> poc.Decided
+	5,  // 8: poc.Message.block:type_name -> poc.Block
+	6,  // 9: poc.Message.circ_message:type_name -> poc.CIRCMessage
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_messages_sp_proto_init() }
@@ -538,11 +659,12 @@ func file_messages_sp_proto_init() {
 	if File_messages_sp_proto != nil {
 		return
 	}
-	file_messages_sp_proto_msgTypes[6].OneofWrappers = []any{
+	file_messages_sp_proto_msgTypes[7].OneofWrappers = []any{
 		(*Message_XtRequest)(nil),
 		(*Message_Vote)(nil),
 		(*Message_Decided)(nil),
 		(*Message_Block)(nil),
+		(*Message_CircMessage)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -550,7 +672,7 @@ func file_messages_sp_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_messages_sp_proto_rawDesc), len(file_messages_sp_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

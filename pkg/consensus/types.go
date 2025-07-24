@@ -63,6 +63,7 @@ type TwoPCState struct {
 	Timer               *time.Timer
 	StartTime           time.Time
 	XTRequest           *pb.XTRequest
+	CIRCMessages        map[string][]*pb.CIRCMessage
 }
 
 // NewTwoPCState creates a new 2PC state.
@@ -74,6 +75,7 @@ func NewTwoPCState(xtID *pb.XtID, req *pb.XTRequest, chains map[string]struct{})
 		Votes:               make(map[string]bool),
 		StartTime:           time.Now(),
 		XTRequest:           req,
+		CIRCMessages:        make(map[string][]*pb.CIRCMessage, 0),
 	}
 }
 

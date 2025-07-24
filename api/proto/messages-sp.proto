@@ -39,6 +39,18 @@ message Block {
   repeated XtID included_xt_ids = 3; // Which xTs are included
 }
 
+// Direct CIRC message exchange between sequencers (without SP involvement)
+message CIRCMessage {
+  bytes source_chain = 1;
+  bytes destination_chain = 2;
+  repeated bytes source = 3;
+  repeated bytes receiver = 4;
+  XtID xt_id = 5;
+  string label = 6;
+  repeated bytes data = 7; // ABI encoded data
+}
+
+
 // Wrapper for all messages
 message Message {
   string sender_id = 1; // Identifier of the sender
@@ -47,5 +59,6 @@ message Message {
     Vote vote = 3;
     Decided decided = 4;
     Block block = 5;
+    CIRCMessage circ_message = 6;
   }
 }
