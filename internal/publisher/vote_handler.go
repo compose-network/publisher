@@ -3,8 +3,8 @@ package publisher
 import (
 	"encoding/hex"
 
-	"github.com/ssvlabs/rollup-shared-publisher/internal/consensus"
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/consensus"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
 // handleVote processes vote messages from sequencers.
@@ -13,7 +13,7 @@ func (p *Publisher) handleVote(from string, vote *pb.Vote) error {
 
 	log := p.log.With().
 		Str("from", from).
-		Uint32("xt_id", vote.XtId).
+		Str("xt_id", vote.XtId.Hex()).
 		Str("chain", chainID).
 		Bool("vote", vote.Vote).
 		Logger()

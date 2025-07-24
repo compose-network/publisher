@@ -1,4 +1,4 @@
-package network
+package errors
 
 import "errors"
 

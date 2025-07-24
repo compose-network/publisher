@@ -1,11 +1,35 @@
 package consensus
 
 import (
+	"context"
 	"sync"
 	"time"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
+
+type StartFn func(ctx context.Context, from string, xtReq *pb.XTRequest) error
+type VoteFn func(ctx context.Context, xtID *pb.XtID, vote bool) error
+type DecisionFn func(ctx context.Context, xtID *pb.XtID, decision bool) error
+
+// Role represents the role of a coordinator in the consensus system
+type Role int
+
+const (
+	Follower Role = iota
+	Leader
+)
+
+func (r Role) String() string {
+	switch r {
+	case Follower:
+		return "follower"
+	case Leader:
+		return "leader"
+	default:
+		return "unknown"
+	}
+}
 
 // DecisionState represents the possible outcomes of the 2PC protocol.
 type DecisionState int
@@ -32,7 +56,7 @@ func (s DecisionState) String() string {
 // TwoPCState holds the state for a single cross-chain transaction.
 type TwoPCState struct {
 	mu                  sync.RWMutex
-	XTID                uint32
+	XTID                *pb.XtID
 	Decision            DecisionState
 	ParticipatingChains map[string]struct{}
 	Votes               map[string]bool
@@ -42,7 +66,7 @@ type TwoPCState struct {
 }
 
 // NewTwoPCState creates a new 2PC state.
-func NewTwoPCState(xtID uint32, req *pb.XTRequest, chains map[string]struct{}) *TwoPCState {
+func NewTwoPCState(xtID *pb.XtID, req *pb.XTRequest, chains map[string]struct{}) *TwoPCState {
 	return &TwoPCState{
 		XTID:                xtID,
 		Decision:            StateUndecided,

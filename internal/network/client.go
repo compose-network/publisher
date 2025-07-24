@@ -3,6 +3,8 @@ package network
 import (
 	"context"
 	"fmt"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/codec"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
 	"io"
 	"net"
 	"sync"
@@ -12,7 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
 // ClientConfig contains client configuration.
@@ -30,11 +32,11 @@ type client struct {
 	cfg     ClientConfig
 	id      string
 	handler MessageHandler
-	codec   *Codec
+	codec   *codec.Codec
 	log     zerolog.Logger
 
 	conn      net.Conn
-	writer    *StreamWriter
+	writer    *codec.StreamWriter
 	connected atomic.Bool
 	mu        sync.RWMutex
 
@@ -48,7 +50,7 @@ func NewClient(cfg ClientConfig, log zerolog.Logger) Client {
 	return &client{
 		cfg:   cfg,
 		id:    uuid.New().String(),
-		codec: NewCodec(cfg.MaxMessageSize),
+		codec: codec.NewCodec(cfg.MaxMessageSize),
 		log:   log.With().Str("component", "client").Logger(),
 	}
 }
@@ -59,7 +61,7 @@ func (c *client) Connect(ctx context.Context) error {
 	defer c.mu.Unlock()
 
 	if c.connected.Load() {
-		return ErrAlreadyConnected
+		return errors.ErrAlreadyConnected
 	}
 
 	connCtx, cancel := context.WithTimeout(ctx, c.cfg.ConnectTimeout)
@@ -76,7 +78,7 @@ func (c *client) Connect(ctx context.Context) error {
 	}
 
 	c.conn = conn
-	c.writer = NewStreamWriter(conn, c.codec)
+	c.writer = codec.NewStreamWriter(conn, c.codec)
 	c.connected.Store(true)
 
 	ctx, c.cancel = context.WithCancel(context.Background())
@@ -98,7 +100,7 @@ func (c *client) Disconnect(ctx context.Context) error {
 	defer c.mu.Unlock()
 
 	if !c.connected.Load() {
-		return ErrNotConnected
+		return errors.ErrNotConnected
 	}
 
 	c.log.Info().Msg("Disconnecting")
@@ -136,7 +138,7 @@ func (c *client) Send(_ context.Context, msg *pb.Message) error {
 	c.mu.RUnlock()
 
 	if !c.connected.Load() || writer == nil {
-		return ErrNotConnected
+		return errors.ErrNotConnected
 	}
 
 	msg.SenderId = c.id

@@ -19,6 +19,7 @@ type Metrics struct {
 	Timeouts                   prometheus.Counter
 	ParticipantsPerTransaction prometheus.Histogram
 	DecisionsBroadcast         *prometheus.CounterVec
+	VoteBroadcast              *prometheus.CounterVec
 }
 
 // NewMetrics creates consensus metrics.
@@ -70,6 +71,11 @@ func NewMetrics() *Metrics {
 			Name: "decisions_broadcast_total",
 			Help: "Total number of decisions broadcast",
 		}, []string{"decision"}),
+
+		VoteBroadcast: reg.NewCounterVec(prometheus.CounterOpts{
+			Name: "vote_broadcast_total",
+			Help: "Total number of votes broadcast",
+		}, []string{"vote"}),
 	}
 }
 
@@ -112,4 +118,14 @@ func (m *Metrics) RecordDecisionBroadcast(decision bool) {
 	}
 
 	m.DecisionsBroadcast.WithLabelValues(state.String()).Inc()
+}
+
+// RecordDecisionBroadcast records a decision broadcast.
+func (m *Metrics) RecordVoteBroadcast(vote bool) {
+	state := StateCommit
+	if !vote {
+		state = StateAbort
+	}
+
+	m.VoteBroadcast.WithLabelValues(state.String()).Inc()
 }

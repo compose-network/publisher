@@ -2,7 +2,12 @@ syntax = "proto3";
 
 package poc;
 
-option go_package = "github.com/ssv-labs/rollup-shared-publisher/internal/proto";
+option go_package = "github.com/ssvlabs/rollup-shared-publisher/pkg/proto";
+
+// Transaction ID (SHA256 hash)
+message XtID {
+  bytes hash = 1; // 32-byte SHA256 hash
+}
 
 // Cross-chain transaction request
 message XTRequest {
@@ -17,13 +22,13 @@ message TransactionRequest {
 // 2PC Vote message from a sequencer to the SP
 message Vote {
   bytes sender_chain_id = 1;  // Which chain is voting
-  uint32 xt_id = 2;           // Transaction ID
+  XtID xt_id = 2;             // Transaction ID
   bool vote = 3;              // true = Commit, false = Abort
 }
 
 // 2PC Decision message from the SP to sequencers
 message Decided {
-  uint32 xt_id = 1;           // Transaction ID
+  XtID xt_id = 1;             // Transaction ID
   bool decision = 2;          // true = Commit, false = Abort
 }
 
@@ -31,7 +36,7 @@ message Decided {
 message Block {
   bytes chain_id = 1;         // Which chain's block
   bytes block_data = 2;       // The actual block data
-  repeated uint32 included_xt_ids = 3; // Which xTs are included
+  repeated XtID included_xt_ids = 3; // Which xTs are included
 }
 
 // Wrapper for all messages

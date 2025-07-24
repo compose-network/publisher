@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 
-	"github.com/ssvlabs/rollup-shared-publisher/internal/consensus"
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/consensus"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
 // handleBlock processes block submissions from sequencers.
@@ -27,9 +27,10 @@ func (p *Publisher) handleBlock(ctx context.Context, from string, block *pb.Bloc
 		}
 
 		if state == consensus.StateCommit {
-			p.activeTxs.Delete(xtID)
+			xtIDStr := xtID.Hex()
+			p.activeTxs.Delete(xtIDStr)
 			log.Debug().
-				Uint32("xt_id", xtID).
+				Str("xt_id", xtIDStr).
 				Msg("Confirmed xT inclusion in block")
 		}
 	}

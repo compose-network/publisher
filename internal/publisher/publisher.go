@@ -7,14 +7,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/internal/consensus"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/consensus"
 
 	"github.com/rs/zerolog"
 
 	"github.com/ssvlabs/rollup-shared-publisher/internal/config"
 	"github.com/ssvlabs/rollup-shared-publisher/internal/network"
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
 	"github.com/ssvlabs/rollup-shared-publisher/pkg/metrics"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
 // Publisher orchestrates the shared publisher functionality.
@@ -33,23 +33,25 @@ type Publisher struct {
 	metrics      *Metrics
 
 	activeTxs   sync.Map
-	nextXTID    atomic.Uint32
 	coordinator *consensus.Coordinator
 }
 
 // New creates a new publisher instance.
 func New(cfg *config.Config, server network.Server, log zerolog.Logger) *Publisher {
+	// Generate a unique node ID for this publisher instance
+	nodeID := fmt.Sprintf("publisher-%d", time.Now().UnixNano())
+
 	p := &Publisher{
 		cfg:         cfg,
 		server:      server,
 		log:         log.With().Str("component", "publisher").Logger(),
 		chains:      make(map[string]bool),
-		coordinator: consensus.NewCoordinator(log),
+		coordinator: consensus.NewCoordinator(nodeID, true, time.Minute),
 		metrics:     NewMetrics(),
 		startTime:   time.Now(),
 	}
 
-	p.coordinator.SetBroadcastCallback(p.broadcastDecision)
+	p.coordinator.SetDecisionCallback(p.broadcastDecision)
 
 	return p
 }

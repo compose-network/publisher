@@ -3,6 +3,9 @@ package network
 import (
 	"context"
 	"fmt"
+	codec "github.com/ssvlabs/rollup-shared-publisher/pkg/codec"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/network"
 	"io"
 	"net"
 	"sync"
@@ -12,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
 // ServerConfig contains server configuration.
@@ -28,7 +31,7 @@ type server struct {
 	cfg      ServerConfig
 	listener net.Listener
 	handler  MessageHandler
-	codec    *Codec
+	codec    *codec.Codec
 	log      zerolog.Logger
 
 	connections sync.Map // map[string]Connection
@@ -42,7 +45,7 @@ type server struct {
 func NewServer(cfg ServerConfig, log zerolog.Logger) Server {
 	return &server{
 		cfg:   cfg,
-		codec: NewCodec(cfg.MaxMessageSize),
+		codec: codec.NewCodec(cfg.MaxMessageSize),
 		log:   log.With().Str("component", "server").Logger(),
 	}
 }
@@ -50,7 +53,7 @@ func NewServer(cfg ServerConfig, log zerolog.Logger) Server {
 // Start starts the server.
 func (s *server) Start(ctx context.Context) error {
 	if !s.running.CompareAndSwap(false, true) {
-		return ErrServerRunning
+		return errors.ErrServerRunning
 	}
 
 	listener, err := net.Listen("tcp", s.cfg.ListenAddr)
@@ -74,7 +77,7 @@ func (s *server) Start(ctx context.Context) error {
 // Stop gracefully stops the server.
 func (s *server) Stop(ctx context.Context) error {
 	if !s.running.CompareAndSwap(true, false) {
-		return ErrServerNotRunning
+		return errors.ErrServerNotRunning
 	}
 
 	s.log.Info().Msg("Stopping server")
@@ -149,7 +152,7 @@ func (s *server) acceptLoop(ctx context.Context) {
 				s.log.Warn().
 					Int("current", connCount).
 					Int("max", s.cfg.MaxConnections).
-					Msg(ErrConnectionLimit.Error())
+					Msg(errors.ErrConnectionLimit.Error())
 				netConn.Close()
 				continue
 			}
@@ -182,7 +185,7 @@ func (s *server) handleConnection(ctx context.Context, netConn net.Conn) {
 
 	// Store connection
 	s.connections.Store(connID, conn)
-	writer := NewStreamWriter(conn, s.codec)
+	writer := codec.NewStreamWriter(conn, s.codec)
 	s.writers.Store(connID, writer)
 
 	defer func() {
@@ -232,9 +235,12 @@ func (s *server) Broadcast(ctx context.Context, msg *pb.Message, excludeID strin
 		sent    atomic.Int32
 	)
 
+	// override senderID with server id
+	msg.SenderId = network.SharedPublisherSenderID
+
 	s.writers.Range(func(key, value interface{}) bool {
 		connID := key.(string)
-		writer := value.(*StreamWriter)
+		writer := value.(*codec.StreamWriter)
 
 		if connID == excludeID {
 			return true
@@ -288,7 +294,7 @@ func (s *server) Send(_ context.Context, clientID string, msg *pb.Message) error
 		return fmt.Errorf("client %s not found", clientID)
 	}
 
-	return writer.(*StreamWriter).Write(msg)
+	return writer.(*codec.StreamWriter).Write(msg)
 }
 
 // GetConnections returns all active connections.

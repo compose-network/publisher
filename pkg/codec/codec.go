@@ -1,9 +1,10 @@
-package network
+package codec
 
 import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
 	"io"
 	"sync"
 
@@ -37,7 +38,7 @@ func (c *Codec) Encode(msg proto.Message) ([]byte, error) {
 
 	dataLen := len(data)
 	if dataLen > c.maxMessageSize {
-		return nil, fmt.Errorf("%w: message size %d exceeds max %d", ErrMessageTooLarge, dataLen, c.maxMessageSize)
+		return nil, fmt.Errorf("%w: message size %d exceeds max %d", errors.ErrMessageTooLarge, dataLen, c.maxMessageSize)
 	}
 
 	if dataLen > int(^uint32(0)) {
@@ -60,7 +61,7 @@ func (c *Codec) Decode(r io.Reader, msg proto.Message) error {
 
 	length := binary.BigEndian.Uint32(lengthBuf)
 	if int(length) > c.maxMessageSize {
-		return fmt.Errorf("%w: message size %d exceeds max %d", ErrMessageTooLarge, length, c.maxMessageSize)
+		return fmt.Errorf("%w: message size %d exceeds max %d", errors.ErrMessageTooLarge, length, c.maxMessageSize)
 	}
 
 	data := make([]byte, length)

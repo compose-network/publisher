@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/internal/proto"
+	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
 // Server interface defines the server contract
