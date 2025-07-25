@@ -2,7 +2,7 @@ name: Workflow main
 on:
   push:
     branches:
-      - "stage-ci"
+      - "stage"
 jobs:
   build-image-and-deploy:
     container:
@@ -24,7 +24,7 @@ jobs:
           argo_workflow_file: .argo/deploy.yaml
           parameters: '["gitopsRepo=gitops-stage",
                       "imageTag=${GITHUB_SHA}",
-                      "filePath=environments/stage/rollup/rollup-shared-publisher.yaml"]'
+                      "filePath=environments/ovh/rollup/rollup-shared-publisher.yaml"]'
   publish-charts:
     runs-on: self-hosted
     container:
