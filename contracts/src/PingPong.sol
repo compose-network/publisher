@@ -38,7 +38,6 @@ contract PingPong is IPingPong {
     /// @param receiver address of the recipient of the tokens (on the destination chain)
     /// @param sessionId identifier of the user session
     /// @param data the data to write
-    /// @param label label to be able to differentiate between different operations within a same session.
     /// @return pongMessage the message data
     function ping(
         uint256 chainSrc,
@@ -46,8 +45,7 @@ contract PingPong is IPingPong {
         address sender,
         address receiver,
         uint256 sessionId,
-        bytes calldata data,
-        bytes calldata label
+        bytes calldata data
     ) external returns (bytes memory pongMessage) {
         IMailbox(mailbox).write(
             chainSrc,
@@ -75,7 +73,6 @@ contract PingPong is IPingPong {
     /// @param receiver address of the recipient of the tokens (on the destination chain)
     /// @param sessionId identifier of the user session
     /// @param data the data to write
-    /// @param label label to be able to differentiate between different operations within a same session.
     /// @return pingMessage the message data
     function pong(
         uint256 chainSrc,
@@ -83,8 +80,7 @@ contract PingPong is IPingPong {
         address sender,
         address receiver,
         uint256 sessionId,
-        bytes calldata data,
-        bytes calldata label
+        bytes calldata data
     ) external returns (bytes memory pingMessage) {
         IMailbox(mailbox).write(
             chainSrc,

@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import { IMailbox } from "@ssv/src/interfaces/IMailbox.sol";
+import { console } from "forge-std/console.sol";
 
 /**
  * @title Mailbox
@@ -46,6 +47,17 @@ contract Mailbox is IMailbox {
         coordinator = _coordinator;
     }
 
+    function clear() public onlyCoordinator {
+        for (uint256 i = 0; i < keyListInbox.length; i++) {
+            bytes32 key = keyListInbox[i];
+            delete inbox[key];
+        }
+        for (uint256 i = 0; i < keyListOutbox.length; i++) {
+            bytes32 key = keyListOutbox[i];
+            delete outbox[key];
+        }
+    }
+
     /// @notice creates the key for the inbox and outbox
     /// @param chainSrc identifier of the source chain
     /// @param chainDest identifier of the destination chain
@@ -61,7 +73,7 @@ contract Mailbox is IMailbox {
         address receiver,
         uint256 sessionId,
         bytes calldata label
-    ) internal pure returns (bytes32 key) {
+    ) public pure returns (bytes32 key) {
         key = keccak256(
             (
                 abi.encodePacked(

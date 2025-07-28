@@ -8,8 +8,7 @@ interface IPingPong {
         address sender,
         address receiver,
         uint256 sessionId,
-        bytes calldata data,
-        bytes calldata label
+        bytes calldata data
     ) external returns (bytes memory message);
     function pong(
         uint256 chainSrc,
@@ -17,7 +16,6 @@ interface IPingPong {
         address sender,
         address receiver,
         uint256 sessionId,
-        bytes calldata data,
-        bytes calldata label
+        bytes calldata data
     ) external returns (bytes memory message);
 }
