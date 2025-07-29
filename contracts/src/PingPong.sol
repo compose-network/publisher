@@ -30,6 +30,9 @@ contract PingPong is IPingPong {
         mailbox = IMailbox(_mailbox);
     }
 
+    error PingMessageEmpty();
+    error PongMessageEmpty();
+
     /// @notice sends a PING message and reads a PONG
     /// @dev messages from the inbox can be read by any contract any number of times.
     /// @param chainSrc identifier of the source chain
@@ -47,14 +50,6 @@ contract PingPong is IPingPong {
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory pongMessage) {
-        IMailbox(mailbox).write(
-            chainSrc,
-            chainDest,
-            receiver,
-            sessionId,
-            data,
-            "PING"
-        );
         pongMessage = IMailbox(mailbox).read(
             chainSrc,
             chainDest,
@@ -62,6 +57,17 @@ contract PingPong is IPingPong {
             receiver,
             sessionId,
             "PONG"
+        );
+        if (pongMessage.length == 0) {
+            revert PongMessageEmpty();
+        }
+        IMailbox(mailbox).write(
+            chainSrc,
+            chainDest,
+            receiver,
+            sessionId,
+            data,
+            "PING"
         );
     }
 
@@ -82,14 +88,6 @@ contract PingPong is IPingPong {
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory pingMessage) {
-        IMailbox(mailbox).write(
-            chainSrc,
-            chainDest,
-            receiver,
-            sessionId,
-            data,
-            "PONG"
-        );
         pingMessage = IMailbox(mailbox).read(
             chainSrc,
             chainDest,
@@ -97,6 +95,17 @@ contract PingPong is IPingPong {
             receiver,
             sessionId,
             "PING"
+        );
+        if (pingMessage.length == 0) {
+            revert PingMessageEmpty();
+        }
+        IMailbox(mailbox).write(
+            chainSrc,
+            chainDest,
+            receiver,
+            sessionId,
+            data,
+            "PONG"
         );
     }
 }

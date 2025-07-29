@@ -111,6 +111,9 @@ contract MailboxTest is Test {
 
     function testPing() public {
         vm.prank(address(DEPLOYER));
+        vm.expectRevert(
+            abi.encodeWithSelector(PingPong.PongMessageEmpty.selector)
+        );
         bytes memory pong = pingPong.ping(
             1,
             2,
@@ -123,6 +126,9 @@ contract MailboxTest is Test {
     }
 
     function testPong() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(PingPong.PingMessageEmpty.selector)
+        );
         bytes memory ping = pingPong.pong(
             1,
             2,
