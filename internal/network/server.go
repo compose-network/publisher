@@ -3,9 +3,6 @@ package network
 import (
 	"context"
 	"fmt"
-	codec "github.com/ssvlabs/rollup-shared-publisher/pkg/codec"
-	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
-	"github.com/ssvlabs/rollup-shared-publisher/pkg/network"
 	"io"
 	"net"
 	"sync"
@@ -15,6 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
+	codec "github.com/ssvlabs/rollup-shared-publisher/pkg/codec"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/network"
 	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 

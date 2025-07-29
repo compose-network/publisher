@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
-	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
 	"io"
 	"sync"
 
 	"google.golang.org/protobuf/proto"
+
+	"github.com/ssvlabs/rollup-shared-publisher/pkg/errors"
 )
 
 // Codec handles message encoding/decoding with pooling for performance.

@@ -1,7 +1,6 @@
 package publisher
 
 import (
-	"context"
 	"encoding/hex"
 
 	"github.com/ssvlabs/rollup-shared-publisher/pkg/consensus"
@@ -9,48 +8,50 @@ import (
 )
 
 // handleBlock processes block submissions from sequencers.
-func (p *Publisher) handleBlock(ctx context.Context, from string, block *pb.Block) error {
+func (p *Publisher) handleBlock(from string, block *pb.Block) {
 	chainID := hex.EncodeToString(block.ChainId)
 
 	log := p.log.With().
 		Str("from", from).
 		Str("chain", chainID).
 		Int("included_xts", len(block.IncludedXtIds)).
+		Int("block_data_size", len(block.BlockData)).
 		Logger()
 
 	log.Info().Msg("Received block")
 
+	if len(block.IncludedXtIds) > 0 {
+		xtIDs := make([]string, len(block.IncludedXtIds))
+		for i, xtID := range block.IncludedXtIds {
+			xtIDs[i] = xtID.Hex()
+		}
+		log.Info().
+			Strs("included_xt_ids", xtIDs).
+			Msg("Block contains cross-chain transactions")
+	}
+
 	for _, xtID := range block.IncludedXtIds {
 		state, err := p.coordinator.GetTransactionState(xtID)
 		if err != nil {
+			log.Debug().
+				Str("xt_id", xtID.Hex()).
+				Err(err).
+				Msg("Could not get transaction state")
 			continue
 		}
 
 		if state == consensus.StateCommit {
 			xtIDStr := xtID.Hex()
 			p.activeTxs.Delete(xtIDStr)
-			log.Debug().
+			log.Info().
 				Str("xt_id", xtIDStr).
+				Str("state", state.String()).
 				Msg("Confirmed xT inclusion in block")
+		} else {
+			log.Debug().
+				Str("xt_id", xtID.Hex()).
+				Str("state", state.String()).
+				Msg("xT in block but not in commit state")
 		}
 	}
-
-	connections := p.server.GetConnections()
-	recipientCount := len(connections) - 1
-
-	if recipientCount > 0 {
-		if err := p.server.Broadcast(ctx, &pb.Message{
-			SenderId: "shared-publisher",
-			Payload: &pb.Message_Block{
-				Block: block,
-			},
-		}, from); err != nil {
-			log.Error().Err(err).Msg("Failed to broadcast block")
-			return err
-		}
-
-		p.broadcastCnt.Add(1)
-	}
-
-	return nil
 }

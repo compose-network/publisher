@@ -78,7 +78,11 @@ func (c *Coordinator) StartTransaction(from string, xtReq *pb.XTRequest) error {
 
 	c.metrics.RecordTransactionStarted(len(chains))
 
-	log.Info("Started 2PC transaction", "xt_id", xtIDStr, "role", c.role.String(), "participating_chains", len(chains), "timeout", c.timeout)
+	log.Info("Started 2PC transaction",
+		"xt_id", xtIDStr,
+		"role", c.role.String(),
+		"participating_chains", len(chains),
+		"timeout", c.timeout)
 
 	if c.startCallbackFn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -86,8 +90,6 @@ func (c *Coordinator) StartTransaction(from string, xtReq *pb.XTRequest) error {
 
 		if err := c.startCallbackFn(ctx, from, xtReq); err != nil {
 			log.Error("Failed to callback start", "error", err, "xt_id", xtIDStr)
-		} else {
-			//c.metrics.RecordStartCallback(vote)
 		}
 	}
 
@@ -192,10 +194,16 @@ func (c *Coordinator) RecordVote(xtID *pb.XtID, chainID string, vote bool) (Deci
 	voteLatency := time.Since(state.StartTime)
 	c.metrics.RecordVote(chainID, vote, voteLatency)
 
-	log.Info("Recorded vote", "xt_id", xtIDStr, "role", c.role.String(), "chain", chainID, "vote", vote, "votes_recorded", len(state.Votes), "votes_required", len(state.ParticipatingChains))
+	log.Info("Recorded vote",
+		"xt_id", xtIDStr,
+		"role", c.role.String(),
+		"chain", chainID,
+		"vote", vote,
+		"votes_recorded", len(state.Votes),
+		"votes_required", len(state.ParticipatingChains))
 
 	if !vote {
-		return c.handleAbort(xtID, state)
+		return c.handleAbort(xtID, state), nil
 	}
 
 	switch c.role {
@@ -215,7 +223,7 @@ func (c *Coordinator) RecordVote(xtID *pb.XtID, chainID string, vote bool) (Deci
 	return StateUndecided, nil
 }
 
-func (c *Coordinator) handleAbort(xtID *pb.XtID, state *TwoPCState) (DecisionState, error) {
+func (c *Coordinator) handleAbort(xtID *pb.XtID, state *TwoPCState) DecisionState {
 	state.Decision = StateAbort
 	if state.Timer != nil {
 		state.Timer.Stop()
@@ -229,7 +237,7 @@ func (c *Coordinator) handleAbort(xtID *pb.XtID, state *TwoPCState) (DecisionSta
 		go c.broadcastVote(xtID, false, duration)
 	}
 
-	return StateAbort, nil
+	return StateAbort
 }
 
 func (c *Coordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
@@ -243,7 +251,10 @@ func (c *Coordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
 	c.mu.Unlock()
 
 	if !exists {
-		log.Debug("Received decision for unknown transaction", "xt_id", xtIDStr, "role", c.role.String(), "decision", decision)
+		log.Debug("Received decision for unknown transaction",
+			"xt_id", xtIDStr,
+			"role", c.role.String(),
+			"decision", decision)
 		return nil // Ignore decisions for unknown transactions
 	}
 
@@ -251,7 +262,10 @@ func (c *Coordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
 	defer state.mu.Unlock()
 
 	if state.Decision != StateUndecided {
-		log.Debug("Received decision for already committed transaction", "xt_id", xtIDStr, "role", c.role.String(), "decision", decision)
+		log.Debug("Received decision for already committed transaction",
+			"xt_id", xtIDStr,
+			"role", c.role.String(),
+			"decision", decision)
 		return nil // Already decided
 	}
 
@@ -265,7 +279,11 @@ func (c *Coordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
 		state.Timer.Stop()
 	}
 
-	log.Info("Recorded decision", "xt_id", xtIDStr, "role", c.role.String(), "decision", decision, "decision_state", state.Decision.String())
+	log.Info("Recorded decision",
+		"xt_id", xtIDStr,
+		"role", c.role.String(),
+		"decision", decision,
+		"decision_state", state.Decision.String())
 
 	time.AfterFunc(5*time.Minute, func() {
 		c.removeTransaction(xtID)

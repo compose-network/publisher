@@ -8,6 +8,10 @@ import (
 	pb "github.com/ssvlabs/rollup-shared-publisher/pkg/proto"
 )
 
+const (
+	UnknownRole = "unknown"
+)
+
 type StartFn func(ctx context.Context, from string, xtReq *pb.XTRequest) error
 type VoteFn func(ctx context.Context, xtID *pb.XtID, vote bool) error
 type DecisionFn func(ctx context.Context, xtID *pb.XtID, decision bool) error
@@ -27,7 +31,7 @@ func (r Role) String() string {
 	case Leader:
 		return "leader"
 	default:
-		return "unknown"
+		return UnknownRole
 	}
 }
 
@@ -49,7 +53,7 @@ func (s DecisionState) String() string {
 	case StateAbort:
 		return "abort"
 	default:
-		return "unknown"
+		return UnknownRole
 	}
 }
 

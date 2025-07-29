@@ -106,7 +106,7 @@ func (p *Publisher) handleMessage(ctx context.Context, from string, msg *pb.Mess
 	case *pb.Message_Vote:
 		err = p.handleVote(from, payload.Vote)
 	case *pb.Message_Block:
-		err = p.handleBlock(ctx, from, payload.Block)
+		p.handleBlock(from, payload.Block)
 	default:
 		p.metrics.RecordError("unknown_message_type", "handle_message")
 		err = fmt.Errorf("unknown message type: %T", payload)
