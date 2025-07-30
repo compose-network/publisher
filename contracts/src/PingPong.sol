@@ -50,6 +50,14 @@ contract PingPong is IPingPong {
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory pongMessage) {
+        IMailbox(mailbox).write(
+            chainSrc,
+            chainDest,
+            receiver,
+            sessionId,
+            data,
+            "PING"
+        );
         pongMessage = IMailbox(mailbox).read(
             chainSrc,
             chainDest,
@@ -61,14 +69,6 @@ contract PingPong is IPingPong {
         if (pongMessage.length == 0) {
             revert PongMessageEmpty();
         }
-        IMailbox(mailbox).write(
-            chainSrc,
-            chainDest,
-            receiver,
-            sessionId,
-            data,
-            "PING"
-        );
     }
 
     /// @notice sends a PONG message and reads a PING
