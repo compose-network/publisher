@@ -10,9 +10,7 @@ contract DeployAllRollup is Script, DeployAll {
             revert("This script is only for Rollup B with L1 Hoodi");
         }
 
-        string memory finalJson = _deployAll(
-            vm.readFile("script/config/rollup-b.json")
-        );
+        string memory finalJson = _deployAll();
 
         vm.writeJson(finalJson, "artifacts/deploy-rollup-b.json");
     }

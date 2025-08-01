@@ -11,37 +11,36 @@ import { MyToken } from "@ssv/src/Token.sol";
 contract DeployAll is Script {
     using stdJson for string;
 
-    function _deployAll(string memory json) internal returns (string memory) {
+    function _deployAll() internal returns (string memory) {
         vm.startBroadcast();
 
         address coordinator = vm.envOr("DEPLOYER_ADDRESS", address(this));
 
         Mailbox mailbox = new Mailbox(coordinator);
-        PingPong pingpong = new PingPong(address(mailbox));
+        PingPong pingPong = new PingPong(address(mailbox));
         MyToken myToken = new MyToken();
 
         vm.stopBroadcast();
 
         console.log("Mailbox:  ", address(mailbox));
-        console.log("PingPong:  ", address(pingpong));
+        console.log("PingPong:  ", address(pingPong));
         console.log("Coordinator:  ", coordinator);
         console.log("MyToken:  ", address(myToken));
 
-        return saveToJson(mailbox, pingpong, coordinator, myToken, json);
+        return saveToJson(mailbox, pingPong, coordinator, myToken);
     }
 
     function saveToJson(
         Mailbox mailbox,
-        PingPong pingpong,
+        PingPong pingPong,
         address coordinator,
-        MyToken myToken,
-        string memory json
+        MyToken myToken
     ) internal returns (string memory) {
         string memory parent = "parent";
 
         string memory deployed_addresses = "addresses";
         vm.serializeAddress(deployed_addresses, "Mailbox", address(mailbox));
-        vm.serializeAddress(deployed_addresses, "PingPong", address(pingpong));
+        vm.serializeAddress(deployed_addresses, "PingPong", address(pingPong));
         vm.serializeAddress(deployed_addresses, "MyToken", address(myToken));
 
         string memory deployed_addresses_output = vm.serializeAddress(
@@ -58,7 +57,6 @@ contract DeployAll is Script {
             block.chainid
         );
 
-        // serialize all the data
         vm.serializeString(
             parent,
             deployed_addresses,
