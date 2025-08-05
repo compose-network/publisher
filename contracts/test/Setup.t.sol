@@ -5,11 +5,13 @@ import { Test } from "forge-std/Test.sol";
 import { Mailbox } from "@ssv/src/Mailbox.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
 import { MyToken } from "@ssv/src/Token.sol";
+import { Bridge } from "@ssv/src/Bridge.sol";
 
 contract Setup is Test {
     Mailbox public mailbox;
     PingPong public pingPong;
     MyToken public myToken;
+    Bridge public bridge;
 
     address public immutable DEPLOYER = makeAddr("Deployer");
     address public immutable COORDINATOR = makeAddr("Coordinator");
@@ -27,9 +29,11 @@ contract Setup is Test {
         mailbox = new Mailbox(address(COORDINATOR));
         pingPong = new PingPong(address(mailbox));
         myToken = new MyToken();
+        bridge = new Bridge(address(mailbox));
 
         vm.label(address(mailbox), "Mailbox");
         vm.label(address(pingPong), "PingPong");
         vm.label(address(myToken), "MyToken");
+        vm.label(address(bridge), "Bridge");
     }
 }

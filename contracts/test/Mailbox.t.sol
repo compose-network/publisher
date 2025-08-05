@@ -17,14 +17,14 @@ contract MailboxTest is Setup {
     function testWriteOutboxSingle() public returns (bytes32 key) {
         vm.prank(DEPLOYER);
         mailbox.write(1, 2, COORDINATOR, 1, "hello", "SWAP");
-        key = mailbox.getKey(1, 2, DEPLOYER, COORDINATOR, 1, "SWAP");
+        key = mailbox.getKey(1, 2, COORDINATOR, 1, "SWAP");
         assertEq(mailbox.outbox(key), "hello", "The message should match");
     }
 
     function testWriteInboxSingle() public returns (bytes32 key) {
         vm.prank(COORDINATOR);
         mailbox.putInbox(1, 2, DEPLOYER, 1, "salut", "SWAP");
-        key = mailbox.getKey(1, 2, COORDINATOR, DEPLOYER, 1, "SWAP");
+        key = mailbox.getKey(1, 2, DEPLOYER, 1, "SWAP");
         assertEq(mailbox.inbox(key), "salut", "The message should match");
     }
 
@@ -32,7 +32,7 @@ contract MailboxTest is Setup {
         testWriteOutboxSingle();
         vm.prank(DEPLOYER);
         mailbox.write(1, 2, COORDINATOR, 1, "hello2", "SWAP");
-        key = mailbox.getKey(1, 2, DEPLOYER, COORDINATOR, 1, "SWAP");
+        key = mailbox.getKey(1, 2, COORDINATOR, 1, "SWAP");
         assertEq(mailbox.outbox(key), "hello2", "The message should match");
     }
 
@@ -40,20 +40,13 @@ contract MailboxTest is Setup {
         testWriteInboxSingle();
         vm.prank(COORDINATOR);
         mailbox.putInbox(1, 2, DEPLOYER, 1, "salut2", "SWAP");
-        key = mailbox.getKey(1, 2, COORDINATOR, DEPLOYER, 1, "SWAP");
+        key = mailbox.getKey(1, 2, DEPLOYER, 1, "SWAP");
         assertEq(mailbox.inbox(key), "salut2", "The message should match");
     }
 
     function testRead() public {
         testWriteInboxSingle();
-        bytes memory data = mailbox.read(
-            1,
-            2,
-            COORDINATOR,
-            DEPLOYER,
-            1,
-            "SWAP"
-        );
+        bytes memory data = mailbox.read(1, 2, DEPLOYER, 1, "SWAP");
         assertEq(data, "salut", "Should match the read message");
     }
 

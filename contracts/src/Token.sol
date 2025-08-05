@@ -1,10 +1,11 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 // import { ERC20Bridgeable } from "@openzeppelin/contracts/token/ERC20/extensions/draft-ERC20Bridgeable.sol";
+import { IToken } from "@ssv/src/interfaces/IToken.sol";
 
-contract MyToken is ERC20 {
+contract MyToken is ERC20, IToken {
     address internal constant TOKEN_BRIDGE =
         0x4200000000000000000000000000000000000028;
 

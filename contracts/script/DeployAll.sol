@@ -7,6 +7,7 @@ import { stdJson } from "forge-std/StdJson.sol";
 import { Mailbox } from "@ssv/src/Mailbox.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
 import { MyToken } from "@ssv/src/Token.sol";
+import { Bridge } from "@ssv/src/Bridge.sol";
 
 contract DeployAll is Script {
     using stdJson for string;
@@ -18,7 +19,8 @@ contract DeployAll is Script {
 
         Mailbox mailbox = new Mailbox(coordinator);
         PingPong pingPong = new PingPong(address(mailbox));
-        MyToken myToken = new MyToken();
+        Bridge bridge = new Bridge(address(mailbox));
+        MyToken myToken = new MyToken(); // MyToken = 0x6d19CB7639DeB366c334BD69f030A38e226BA6d2
 
         vm.stopBroadcast();
 
@@ -26,15 +28,17 @@ contract DeployAll is Script {
         console.log("PingPong:  ", address(pingPong));
         console.log("Coordinator:  ", coordinator);
         console.log("MyToken:  ", address(myToken));
+        console.log("Bridge:  ", address(bridge));
 
-        return saveToJson(mailbox, pingPong, coordinator, myToken);
+        return saveToJson(mailbox, pingPong, coordinator, myToken, bridge);
     }
 
     function saveToJson(
         Mailbox mailbox,
         PingPong pingPong,
         address coordinator,
-        MyToken myToken
+        MyToken myToken,
+        Bridge bridge
     ) internal returns (string memory) {
         string memory parent = "parent";
 
@@ -42,6 +46,7 @@ contract DeployAll is Script {
         vm.serializeAddress(deployed_addresses, "Mailbox", address(mailbox));
         vm.serializeAddress(deployed_addresses, "PingPong", address(pingPong));
         vm.serializeAddress(deployed_addresses, "MyToken", address(myToken));
+        vm.serializeAddress(deployed_addresses, "Bridge", address(bridge));
 
         string memory deployed_addresses_output = vm.serializeAddress(
             deployed_addresses,

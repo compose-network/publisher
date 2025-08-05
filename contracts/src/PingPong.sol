@@ -61,7 +61,6 @@ contract PingPong is IPingPong {
         pongMessage = IMailbox(mailbox).read(
             chainSrc,
             chainDest,
-            sender,
             receiver,
             sessionId,
             "PONG"
@@ -91,7 +90,6 @@ contract PingPong is IPingPong {
         pingMessage = IMailbox(mailbox).read(
             chainSrc,
             chainDest,
-            sender,
             receiver,
             sessionId,
             "PING"

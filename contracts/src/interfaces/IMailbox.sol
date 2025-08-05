@@ -5,7 +5,6 @@ interface IMailbox {
     function read(
         uint256 chainSrc,
         uint256 chainDest,
-        address sender,
         address receiver,
         uint256 sessionId,
         bytes calldata label
