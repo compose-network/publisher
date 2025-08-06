@@ -59,8 +59,8 @@ contract Bridge is IBridge {
             "ACK SEND"
         );
         if (m.length == 0) {
-            emit EmptyEvent();
-            // revert();
+            //emit EmptyEvent();
+            revert();
         }
     }
 
@@ -89,8 +89,8 @@ contract Bridge is IBridge {
         );
         // Check the message is valid
         if (m.length == 0) {
-            // revert();
-            emit EmptyEvent();
+            revert();
+            //emit EmptyEvent();
         }
 
         // Mint the assets
@@ -101,9 +101,8 @@ contract Bridge is IBridge {
             m,
             (address, address, address, uint256)
         );
-        // token = address(0x2e234DAe75C793f67A35089C9d99245E1C58470b);
         // amount = 100;
-        //token = address(0x6d19CB7639DeB366c334BD69f030A38e226BA6d2);
+        // token = address(0x6d19CB7639DeB366c334BD69f030A38e226BA6d2);
 
         require(readSender == sender, "The sender should match");
         require(readReceiver == receiver, "The receiver should match");
