@@ -1,12 +1,10 @@
 {
   "addresses": {
-    "Coordinator": "0x0f10aF865F68F5aA1dDB7c5b5A1a0f396232C6Be",
-    "Mailbox": "0x7ca2b4e61909a94C5D769C9072032350CAc3D02E",
-    "MyToken": "0xB6B0824e258Bd56f0f99D93899688Bfc38a90151",
-    "PingPong": "0x8c113C07901a86A34ddbAeAE811eBc41e8c64067"
+    "Bridge": "0x10B87e6131448244bf0945239815Ae57be5aA5A3",
+    "Coordinator": "0x0f10aF865F68F5aA1dDB7c5b5A1a0f396232C6Be"
   },
   "chainInfo": {
     "chainId": 22222,
-    "deploymentBlock": 552467
+    "deploymentBlock": 849695
   }
 }
