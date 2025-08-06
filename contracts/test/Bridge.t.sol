@@ -17,28 +17,36 @@ contract BridgeTest is Setup {
         myToken.mint(DEPLOYER, 100);
         bridge.send(1, 2, address(myToken), DEPLOYER, COORDINATOR, 100, 1);
     }
+
     function testReceive() public {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, COORDINATOR, 1, "test message", "SEND");
+        address sender = address(DEPLOYER);
+        address receiver = address(COORDINATOR);
+        address token = 0x2e234DAe75C793f67A35089C9d99245E1C58470b;
+        uint256 amount = 100;
+        bytes memory data = abi.encode(sender, receiver, token, amount);
+        (
+            address readSender,
+            address readReceiver,
+            address decodedToken,
+            uint256 decodedAmount
+        ) = abi.decode(data, (address, address, address, uint256));
+        assertEq(readSender, sender, "should match");
+        mailbox.putInbox(1, 2, COORDINATOR, 1, data, "SEND");
         bytes32 key = mailbox.getKey(1, 2, COORDINATOR, 1, "SEND");
-        assertEq(
-            mailbox.inbox(key),
-            "test message",
-            "The message should match"
-        );
+        assertEq(mailbox.inbox(key), data, "The message should match");
         vm.startPrank(DEPLOYER);
-        (address token, uint256 amount) = bridge.receiveTokens(
+        (address receivedToken, uint256 receivedAmount) = bridge.receiveTokens(
             1,
             2,
             DEPLOYER,
             COORDINATOR,
             1
         );
-        // bridge.receive(1, 2, DEPLOYER, COORDINATOR, 1);
-        // bridge.receive(chainSrc, chainDest, sender, receiver, sessionId);(1, 2, DEPLOYER, COORDINATOR, 1);
-        // bridge.receive(chainSrc, chainDest, sender, receiver, sessionId);
+        assertEq(receivedToken, token, "should match the token");
     }
-    function testEncode() public view {
+
+    function testEncode() public pure {
         address sender = 0xA139A1776E60F9645533a9AD419461818D6839a1;
         address receiver = 0xA139A1776E60F9645533a9AD419461818D6839a1;
         address token = 0x6d19CB7639DeB366c334BD69f030A38e226BA6d2;

@@ -97,16 +97,16 @@ contract Bridge is IBridge {
         address readSender;
         address readReceiver;
 
-        /*(readSender, readReceiver, token, amount) = abi.decode(
+        (readSender, readReceiver, token, amount) = abi.decode(
             m,
             (address, address, address, uint256)
-        );*/
-        token = address(0x2e234DAe75C793f67A35089C9d99245E1C58470b);
-        amount = 100;
+        );
+        // token = address(0x2e234DAe75C793f67A35089C9d99245E1C58470b);
+        // amount = 100;
         //token = address(0x6d19CB7639DeB366c334BD69f030A38e226BA6d2);
 
-        // require(readSender == sender, "The sender should match");
-        // require(readReceiver == receiver, "The receiver should match");
+        require(readSender == sender, "The sender should match");
+        require(readReceiver == receiver, "The receiver should match");
 
         IToken(token).mint(receiver, 100);
 
