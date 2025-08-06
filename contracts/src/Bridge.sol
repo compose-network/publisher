@@ -108,7 +108,7 @@ contract Bridge is IBridge {
         require(readSender == sender, "The sender should match");
         require(readReceiver == receiver, "The receiver should match");
 
-        IToken(token).mint(receiver, 100);
+        IToken(token).mint(receiver, amount);
 
         // Acknowledge the reception of funds
         m = abi.encode("OK");
