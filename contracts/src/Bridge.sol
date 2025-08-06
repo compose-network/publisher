@@ -8,6 +8,7 @@ contract Bridge {
     IMailbox public mailbox;
 
     event EmptyEvent();
+    event DataWritten(bytes data);
 
     constructor(address _mailbox) {
         mailbox = IMailbox(_mailbox);
@@ -34,15 +35,19 @@ contract Bridge {
         // Burn the assets
         IToken(token).burn(sender, amount);
 
+        bytes memory data = abi.encode(sender, receiver, token, amount);
+
         // Write to the outbox
         mailbox.write(
             chainSrc, // a
             chainDest, // b
             receiver,
             sessionId,
-            abi.encode(sender, receiver, token, amount),
+            data,
             "SEND"
         );
+
+        emit DataWritten(data);
 
         // Check the funds have been received on the other chain
         bytes memory m = mailbox.read(
@@ -83,13 +88,13 @@ contract Bridge {
         );
         // Check the message is valid
         if (m.length == 0) {
-            //revert();
+            // revert();
             emit EmptyEvent();
         }
 
         // Mint the assets
-        address readSender;
-        address readReceiver;
+        // address readSender;
+        // address readReceiver;
 
         (sender, receiver, token, amount) = abi.decode(
             m,

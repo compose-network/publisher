@@ -14,7 +14,7 @@ interface IMailbox {
         uint256 chainDest,
         address receiver,
         uint256 sessionId,
-        bytes memory data,
+        bytes calldata data,
         bytes calldata label
     ) external;
     function putInbox(
@@ -22,7 +22,7 @@ interface IMailbox {
         uint256 chainDest,
         address receiver,
         uint256 sessionId,
-        bytes memory data,
+        bytes calldata data,
         bytes calldata label
     ) external;
 }

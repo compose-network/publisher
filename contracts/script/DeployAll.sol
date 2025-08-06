@@ -22,8 +22,8 @@ contract DeployAll is Script {
         //mailbox a = 0x33C061304de440B89BC829bD4dC4eF688E5d1Cef
         // mailbox b = 0xbB6A1eCF93641122E5c76b6978bb4B7304879Dd5
         // is it the same for rollupA and rollupB?
-        //address mailbox = 0x7ca2b4e61909a94C5D769C9072032350CAc3D02E;
-        address mailbox = address(mailboxC);
+        address mailbox = 0x33C061304de440B89BC829bD4dC4eF688E5d1Cef;
+        // address mailbox = address(mailboxC);
         // PingPong pingPong = new PingPong(mailbox);
         Bridge bridge = new Bridge(mailbox);
         // MyToken myToken = new MyToken(); // MyToken = 0x6d19CB7639DeB366c334BD69f030A38e226BA6d2

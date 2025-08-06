@@ -31,4 +31,18 @@ contract BridgeTest is Setup {
         // bridge.receive(chainSrc, chainDest, sender, receiver, sessionId);(1, 2, DEPLOYER, COORDINATOR, 1);
         // bridge.receive(chainSrc, chainDest, sender, receiver, sessionId);
     }
+    function testEncode() public {
+        address sender = 0xA139A1776E60F9645533a9AD419461818D6839a1;
+        address receiver = 0xA139A1776E60F9645533a9AD419461818D6839a1;
+        address token = 0x6d19CB7639DeB366c334BD69f030A38e226BA6d2;
+        uint256 amount = 100;
+
+        bytes memory data = abi.encode(sender, receiver, token, amount);
+        // bytes memory data = "";
+        (address senderDecoded, , , ) = abi.decode(
+            data,
+            (address, address, address, uint256)
+        );
+        assertEq(sender, senderDecoded, "Should match the original sender");
+    }
 }
