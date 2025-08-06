@@ -3,8 +3,9 @@ pragma solidity 0.8.30;
 
 import { IToken } from "@ssv/src/interfaces/IToken.sol";
 import { IMailbox } from "@ssv/src/interfaces/IMailbox.sol";
+import { IBridge } from "@ssv/src/interfaces/IBridge.sol";
 
-contract Bridge {
+contract Bridge is IBridge {
     IMailbox public mailbox;
 
     event EmptyEvent();
@@ -71,7 +72,7 @@ contract Bridge {
     /// @param sessionId identifier of the user session
     /// @return token address of the token that was transferred
     /// @return amount amount of tokens transferred
-    function receive(
+    function receiveTokens(
         uint256 chainSrc, // a
         uint256 chainDest, // b
         address sender,
@@ -93,22 +94,25 @@ contract Bridge {
         }
 
         // Mint the assets
-        // address readSender;
-        // address readReceiver;
+        address readSender;
+        address readReceiver;
 
-        (sender, receiver, token, amount) = abi.decode(
+        /*(readSender, readReceiver, token, amount) = abi.decode(
             m,
             (address, address, address, uint256)
-        );
+        );*/
+        token = address(0x2e234DAe75C793f67A35089C9d99245E1C58470b);
+        amount = 100;
+        //token = address(0x6d19CB7639DeB366c334BD69f030A38e226BA6d2);
 
         // require(readSender == sender, "The sender should match");
         // require(readReceiver == receiver, "The receiver should match");
 
-        IToken(token).mint(receiver, amount);
+        IToken(token).mint(receiver, 100);
 
         // Acknowledge the reception of funds
         m = abi.encode("OK");
-        mailbox.write(chainSrc, chainDest, sender, sessionId, "ACK SEND", m);
+        mailbox.write(chainSrc, chainDest, sender, sessionId, m, "ACK SEND");
 
         return (token, amount);
     }

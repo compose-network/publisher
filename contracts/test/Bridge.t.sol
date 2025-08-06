@@ -27,11 +27,18 @@ contract BridgeTest is Setup {
             "The message should match"
         );
         vm.startPrank(DEPLOYER);
+        (address token, uint256 amount) = bridge.receiveTokens(
+            1,
+            2,
+            DEPLOYER,
+            COORDINATOR,
+            1
+        );
         // bridge.receive(1, 2, DEPLOYER, COORDINATOR, 1);
         // bridge.receive(chainSrc, chainDest, sender, receiver, sessionId);(1, 2, DEPLOYER, COORDINATOR, 1);
         // bridge.receive(chainSrc, chainDest, sender, receiver, sessionId);
     }
-    function testEncode() public {
+    function testEncode() public view {
         address sender = 0xA139A1776E60F9645533a9AD419461818D6839a1;
         address receiver = 0xA139A1776E60F9645533a9AD419461818D6839a1;
         address token = 0x6d19CB7639DeB366c334BD69f030A38e226BA6d2;

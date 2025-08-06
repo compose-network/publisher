@@ -12,6 +12,6 @@ contract DeployAllRollup is Script, DeployAll {
 
         string memory finalJson = _deployAll();
 
-        vm.writeJson(finalJson, "artifacts/deploy-rollup-b.json");
+        vm.writeJson(finalJson, "artifacts/deploy-rollup-a.json");
     }
 }
