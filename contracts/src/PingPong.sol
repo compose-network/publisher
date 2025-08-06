@@ -43,8 +43,8 @@ contract PingPong is IPingPong {
     /// @param data the data to write
     /// @return pongMessage the message data
     function ping(
-        uint256 chainSrc,
-        uint256 chainDest,
+        uint256 chainSrc,  // 11111
+        uint256 chainDest, // 22222
         address sender,
         address receiver,
         uint256 sessionId,
@@ -59,8 +59,8 @@ contract PingPong is IPingPong {
             "PING"
         );
         pongMessage = IMailbox(mailbox).read(
-            chainSrc,
             chainDest,
+            chainSrc,
             receiver,
             sessionId,
             "PONG"
@@ -80,8 +80,8 @@ contract PingPong is IPingPong {
     /// @param data the data to write
     /// @return pingMessage the message data
     function pong(
-        uint256 chainSrc,
-        uint256 chainDest,
+        uint256 chainSrc,  // 11111
+        uint256 chainDest, // 22222
         address sender,
         address receiver,
         uint256 sessionId,
@@ -98,8 +98,8 @@ contract PingPong is IPingPong {
             revert PingMessageEmpty();
         }
         IMailbox(mailbox).write(
-            chainSrc,
             chainDest,
+            chainSrc,
             receiver,
             sessionId,
             data,
