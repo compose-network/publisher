@@ -24,8 +24,8 @@ contract Bridge is IBridge {
     /// @param amount amount of tokens to be bridged
     /// @param sessionId identifier of the user session
     function send(
-        uint256 chainSrc,
-        uint256 chainDest,
+        uint256 chainSrc, // a
+        uint256 chainDest, // b
         address token,
         address sender,
         address receiver,
@@ -52,8 +52,8 @@ contract Bridge is IBridge {
 
         // Check the funds have been received on the other chain
         bytes memory m = mailbox.read(
-            chainSrc,
-            chainDest,
+            chainDest, // B
+            chainSrc, // A
             receiver,
             sessionId,
             "ACK SEND"
@@ -81,8 +81,8 @@ contract Bridge is IBridge {
     ) external returns (address token, uint256 amount) {
         // Fetch the message
         bytes memory m = mailbox.read(
-            chainSrc,
-            chainDest,
+            chainSrc, //a
+            chainDest, //b
             receiver,
             sessionId,
             "SEND"
@@ -101,8 +101,8 @@ contract Bridge is IBridge {
             m,
             (address, address, address, uint256)
         );
-        // amount = 100;
-        // token = address(0x6d19CB7639DeB366c334BD69f030A38e226BA6d2);
+        //amount = 100;
+        //token = address(0x6d19CB7639DeB366c334BD69f030A38e226BA6d2);
 
         require(readSender == sender, "The sender should match");
         require(readReceiver == receiver, "The receiver should match");
@@ -111,7 +111,8 @@ contract Bridge is IBridge {
 
         // Acknowledge the reception of funds
         m = abi.encode("OK");
-        mailbox.write(chainSrc, chainDest, sender, sessionId, m, "ACK SEND");
+        // a, b
+        mailbox.write(chainDest, chainSrc, sender, sessionId, m, "ACK SEND");
 
         return (token, amount);
     }

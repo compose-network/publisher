@@ -1,10 +1,10 @@
 {
   "addresses": {
-    "Bridge": "0xed85e8adf511359537593027e8AE05B577481E0d",
+    "Bridge": "0xf345667F3D3eEdF9dd2A5F26B73f0aeC43455C6F",
     "Coordinator": "0x0f10aF865F68F5aA1dDB7c5b5A1a0f396232C6Be"
   },
   "chainInfo": {
     "chainId": 11111,
-    "deploymentBlock": 1171653
+    "deploymentBlock": 1216443
   }
 }

@@ -2,12 +2,13 @@
 pragma solidity 0.8.30;
 
 import { Setup } from "@ssv/test/Setup.t.sol";
+import { console } from "forge-std/console.sol";
 
 contract BridgeTest is Setup {
     function testSend() public {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, COORDINATOR, 1, "test message", "ACK SEND");
-        bytes32 key = mailbox.getKey(1, 2, COORDINATOR, 1, "ACK SEND");
+        mailbox.putInbox(2, 1, COORDINATOR, 1, "test message", "ACK SEND");
+        bytes32 key = mailbox.getKey(2, 1, COORDINATOR, 1, "ACK SEND");
         assertEq(
             mailbox.inbox(key),
             "test message",
@@ -35,6 +36,7 @@ contract BridgeTest is Setup {
         mailbox.putInbox(1, 2, COORDINATOR, 1, data, "SEND");
         bytes32 key = mailbox.getKey(1, 2, COORDINATOR, 1, "SEND");
         assertEq(mailbox.inbox(key), data, "The message should match");
+
         vm.startPrank(DEPLOYER);
         (address receivedToken, uint256 receivedAmount) = bridge.receiveTokens(
             1,
@@ -53,6 +55,8 @@ contract BridgeTest is Setup {
         uint256 amount = 100;
 
         bytes memory data = abi.encode(sender, receiver, token, amount);
+        console.logBytes(data);
+
         // bytes memory data = "";
         (address senderDecoded, , , ) = abi.decode(
             data,
