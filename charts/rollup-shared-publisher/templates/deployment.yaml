@@ -42,7 +42,7 @@ spec:
                   key: L1_SHARED_PUBLISHER_PK_HEX
           {{ range $key, $value := .Values.envs }}
             - name: {{ $key }}
-              value: {{ $value }}
+              value: "{{ $value }}"
           {{- end }}
           ports:
             - name: http
