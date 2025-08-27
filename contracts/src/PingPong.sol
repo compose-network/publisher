@@ -52,15 +52,14 @@ contract PingPong is IPingPong {
     ) external returns (bytes memory pongMessage) {
         IMailbox(mailbox).write(
             chainSrc,
-            chainDest,
             receiver,
             sessionId,
-            data,
-            "PING"
+            "PING",
+            data
         );
         pongMessage = IMailbox(mailbox).read(
             chainSrc,
-            chainDest,
+            sender,
             receiver,
             sessionId,
             "PONG"
@@ -89,7 +88,7 @@ contract PingPong is IPingPong {
     ) external returns (bytes memory pingMessage) {
         pingMessage = IMailbox(mailbox).read(
             chainSrc,
-            chainDest,
+            sender,
             receiver,
             sessionId,
             "PING"
@@ -98,12 +97,11 @@ contract PingPong is IPingPong {
             revert PingMessageEmpty();
         }
         IMailbox(mailbox).write(
-            chainSrc,
             chainDest,
             receiver,
             sessionId,
-            data,
-            "PONG"
+            "PONG",
+            data
         );
     }
 }

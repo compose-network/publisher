@@ -17,7 +17,7 @@ contract DeployAll is Script {
 
         address coordinator = vm.envOr("DEPLOYER_ADDRESS", address(this));
 
-        Mailbox mailboxC = new Mailbox(coordinator);
+        Mailbox mailboxC = new Mailbox(coordinator, block.chainid);
 
         // mailbox a = 0x33C061304de440B89BC829bD4dC4eF688E5d1Cef
         // mailbox b = 0xbB6A1eCF93641122E5c76b6978bb4B7304879Dd5

@@ -7,19 +7,21 @@ import { PingPong } from "@ssv/src/PingPong.sol";
 contract PingPongTest is Setup {
     function testWritePingToInbox() public returns (bytes32 key) {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, DEPLOYER, 1, "first ping", "PING");
-        key = mailbox.getKey(1, 2, DEPLOYER, 1, "PING");
+        mailbox.putInbox(2, DEPLOYER, DEPLOYER, 1, "PING", "first ping");
+        key = mailbox.getKey(2, 1, DEPLOYER, DEPLOYER, 1, "PING");
         assertEq(mailbox.inbox(key), "first ping", "The message should match");
     }
     function testWritePongToInbox() public returns (bytes32 key) {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, DEPLOYER, 1, "first pong", "PONG");
-        key = mailbox.getKey(1, 2, DEPLOYER, 1, "PONG");
+        mailbox.putInbox(2, DEPLOYER, DEPLOYER, 1, "PONG", "first pong");
+        key = mailbox.getKey(2, 1, DEPLOYER, DEPLOYER, 1, "PONG");
         assertEq(mailbox.inbox(key), "first pong", "The message should match");
     }
 
     function testPing() public {
-        vm.prank(address(DEPLOYER));
+        vm.prank(COORDINATOR);
+        mailbox.putInbox(1, DEPLOYER, DEPLOYER, 1, "PONG", "");
+        vm.prank(DEPLOYER);
         vm.expectRevert(
             abi.encodeWithSelector(PingPong.PongMessageEmpty.selector)
         );
@@ -35,6 +37,9 @@ contract PingPongTest is Setup {
     }
 
     function testPong() public {
+        vm.prank(COORDINATOR);
+        mailbox.putInbox(1, DEPLOYER, DEPLOYER, 1, "PING", "");
+        vm.prank(DEPLOYER);
         vm.expectRevert(
             abi.encodeWithSelector(PingPong.PingMessageEmpty.selector)
         );
@@ -52,9 +57,9 @@ contract PingPongTest is Setup {
     function testPongAfterPing() public {
         testWritePingToInbox();
         bytes memory ping = pingPong.pong(
-            1,
             2,
-            COORDINATOR,
+            1,
+            DEPLOYER,
             DEPLOYER,
             1,
             "first pong"
@@ -65,9 +70,9 @@ contract PingPongTest is Setup {
     function testPingAfterPong() public {
         testWritePongToInbox();
         bytes memory pong = pingPong.ping(
-            1,
             2,
-            COORDINATOR,
+            1,
+            DEPLOYER,
             DEPLOYER,
             1,
             "first ping"
