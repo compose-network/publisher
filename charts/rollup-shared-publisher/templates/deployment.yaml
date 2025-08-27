@@ -35,6 +35,11 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            - name: L1_SHARED_PUBLISHER_PK_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rollup-shared-publisher.fullname" . }}
+                  key: L1_SHARED_PUBLISHER_PK_HEX
           {{ range $key, $value := .Values.envs }}
             - name: {{ $key }}
               value: {{ $value }}
