@@ -27,7 +27,7 @@ contract Setup is Test {
         vm.deal(COORDINATOR, INITIAL_ETH_BALANCE);
 
         vm.prank(DEPLOYER);
-        mailbox = new Mailbox(address(COORDINATOR));
+        mailbox = new Mailbox(address(COORDINATOR), 1);
         pingPong = new PingPong(address(mailbox));
         myToken = new MyToken();
         bridge = new Bridge(address(mailbox));

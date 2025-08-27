@@ -6,8 +6,8 @@ import { Setup } from "@ssv/test/Setup.t.sol";
 contract BridgeTest is Setup {
     function testSend() public {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, COORDINATOR, 1, "test message", "ACK SEND");
-        bytes32 key = mailbox.getKey(1, 2, COORDINATOR, 1, "ACK SEND");
+        mailbox.putInbox(2, DEPLOYER, COORDINATOR, 1, "ACK SEND", "test message");
+        bytes32 key = mailbox.getKey(2, 1, DEPLOYER, COORDINATOR, 1, "ACK SEND");
         assertEq(
             mailbox.inbox(key),
             "test message",
@@ -32,8 +32,8 @@ contract BridgeTest is Setup {
             uint256 decodedAmount
         ) = abi.decode(data, (address, address, address, uint256));
         assertEq(readSender, sender, "should match");
-        mailbox.putInbox(1, 2, COORDINATOR, 1, data, "SEND");
-        bytes32 key = mailbox.getKey(1, 2, COORDINATOR, 1, "SEND");
+        mailbox.putInbox(1, DEPLOYER, COORDINATOR, 1, "SEND", data);
+        bytes32 key = mailbox.getKey(1, 1, DEPLOYER, COORDINATOR, 1, "SEND");
         assertEq(mailbox.inbox(key), data, "The message should match");
         vm.startPrank(DEPLOYER);
         (address receivedToken, uint256 receivedAmount) = bridge.receiveTokens(
