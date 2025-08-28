@@ -1,0 +1,45 @@
+{
+  "name": "rollup-contracts",
+  "version": "0.0.1",
+  "description": "SSV Rollup Contracts",
+  "author": "SSV.Network",
+  "contributors": [
+    "Riccardo Persiani <r.persiani92@gmail.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ssvlabs/rollup-shared-publisher.git"
+  },
+  "keywords": [
+    "CIRC",
+    "Espresso",
+    "Rollup",
+    "Mailbox",
+    "SSV"
+  ],
+  "license": "UNLICENSED",
+  "scripts": {
+    "compile": "forge compile",
+    "build": "npm run lint:fix && forge clean && forge build",
+    "deploy:rollup-a": "source .env && forge script script/DeployRollupA.s.sol --rpc-url $ROLLUP_A_RPC_URL --private-key $DEPLOYER_PRIVATE_KEY -vvv --broadcast",
+    "deploy:rollup-b": "source .env && forge script script/DeployRollupB.s.sol --rpc-url $ROLLUP_B_RPC_URL --private-key $DEPLOYER_PRIVATE_KEY -vvv --broadcast",
+    "gas-report": "forge test --gas-report",
+    "lint:solhint": "solhint './src/**/*.sol'",
+    "lint:check": "prettier --check **.sol",
+    "lint:fix": "prettier --write **.sol",
+    "prepare": "husky",
+    "test": "forge test",
+    "test-coverage": "forge coverage --no-match-coverage \"(script|test)\"",
+    "test-coverage-report": "forge coverage --no-match-coverage \"(script|test)\" --report debug > test.txt"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
+    "prettier-plugin-solidity": "^2.1.0",
+    "solhint": "^6.0.0"
+  },
+  "lint-staged": {
+    "src/**/*.sol": "solhint"
+  }
+}
