@@ -754,6 +754,23 @@ func (c *Coordinator) sendStartSlotMessages(
 		blockRequests = append(blockRequests, req)
 	}
 
+	// Log which ChainIDs are being requested for this slot (diagnostics)
+	if len(blockRequests) > 0 {
+		ids := make([]string, 0, len(blockRequests))
+		for _, r := range blockRequests {
+			ids = append(ids, fmt.Sprintf("%x", r.ChainId))
+		}
+		c.log.Info().
+			Uint64("slot", slot).
+			Int("l2_requests", len(blockRequests)).
+			Strs("chain_ids", ids).
+			Msg("Broadcasting StartSlot with L2 block requests")
+	} else {
+		c.log.Info().
+			Uint64("slot", slot).
+			Msg("Broadcasting StartSlot with no L2 block requests")
+	}
+
 	startSlotMsg := &pb.Message{
 		SenderId: "shared-publisher",
 		Payload: &pb.Message_StartSlot{
