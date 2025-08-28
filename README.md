@@ -1,331 +1,370 @@
-# POC Shared Publisher - Phase 2
+# Root README.md
 
-A proof-of-concept implementation of a shared publisher for cross-chain transaction coordination. This is **Phase 2** -
-a stateful coordinator that implements a **Two-Phase Commit (2PC)** protocol to ensure atomic transactions across
-multiple rollups.
 
-## Architecture (Phase 2)
+The Rollup Shared Publisher is a decentralized coordination layer for cross-chain atomic transaction execution across
+EVM-compatible rollups. It implements a two-phase commit (2PC) protocol to ensure transactions are either all committed
+or all aborted across participating chains.
 
-The system has evolved from a simple message relay to a central coordinator. The Shared Publisher (SP) now acts as the
-leader in the 2PC protocol, managing the lifecycle of each cross-chain transaction (`XTRequest`).
+**WARNING**: This project is in active development. Breaking changes may occur.
 
-```
-┌───────────┐          ┌─────────────────┐          ┌───────────┐
-│ Sequencer │          │     Shared      │          │ Sequencer │
-│     A     │          │    Publisher    │          │     B     │
-└───────────┘          └─────────────────┘          └───────────┘
-      │                      │                          │
-      │ 1. XTRequest         │                          │
-      ├─────────────────────>│                          │
-      │                      │ 2. XTRequest (Broadcast) │
-      │                      ├─────────────────────────>│
-      │<─────────────────────┤                          │
-      │                      │                          │
-      │ 3. Vote(Commit)      │ 3. Vote(Commit)          │
-      ├─────────────────────>│<─────────────────────────┤
-      │                      │                          │
-      │                      │ 4. Decided(Commit)       │
-      │<─────────────────────├─────────────────────────>│
-      │                      │                          │
-      │ 5. Block(Includes xT)│ 5. Block(Includes xT)    │
-      ├─────────────────────>│<─────────────────────────┤
-      │                      │                          │
-```
-
-### Components
-
-1. **Shared Publisher (SP)** - The central coordinator.
-    - Initiates and manages the 2PC protocol for each `XTRequest`.
-    - Collects votes from sequencers and broadcasts the final decision (Commit/Abort).
-    - Receives blocks from sequencers to confirm transaction inclusion.
-    - Exposes detailed metrics and health endpoints on port `8081`.
-
-2. **Sequencers (A, B, ...)** - Participants in the 2PC protocol.
-    - Submit `XTRequest` bundles to the SP.
-    - Send `Vote` messages (Commit/Abort) to the SP.
-    - Receive final `Decided` messages from the SP.
-    - On a `Commit` decision, include the transaction in a block and send the `Block` to the SP.
-
-## Message Flow (Phase 2 - 2PC)
-
-1. **Transaction Submission**: A client or sequencer sends an `XTRequest` to the SP.
-2. **Initiate 2PC & Broadcast**: The SP assigns a unique `xt_id` to the transaction, starts a 3-minute timer, and
-   broadcasts the `XTRequest` to all connected sequencers.
-3. **Voting**: Each participating sequencer simulates the transaction and sends a `Vote` message to the SP.
-4. **Decision**: The SP collects votes. If any sequencer votes `false` or the timer expires, the SP decides to **Abort
-   **. If all vote `true`, the SP decides to **Commit**. The SP broadcasts the final `Decided` message.
-5. **Block Submission**: Upon receiving a `Commit` decision, sequencers include the transaction in their next block and
-   send the `Block` message to the SP.
-
-### Message Types
-
-Based on the protobuf definition in `api/proto/messages.proto`:
-
-```protobuf
-// User request for a cross-chain transaction
-message XTRequest {
-  repeated TransactionRequest transactions = 1;
-}
-
-message TransactionRequest {
-  bytes chain_id = 1;
-  repeated bytes transaction = 2;
-}
-
-// 2PC Vote message from a sequencer to the SP
-message Vote {
-  bytes sender_chain_id = 1;  // Which chain is voting
-  uint32 xt_id = 2;           // Transaction ID
-  bool vote = 3;              // true = Commit, false = Abort
-}
-
-// 2PC Decision message from the SP to sequencers
-message Decided {
-  uint32 xt_id = 1;           // Transaction ID
-  bool decision = 2;          // true = Commit, false = Abort
-}
-
-// Block submission from a sequencer to the SP
-message Block {
-  bytes chain_id = 1;         // Which chain's block
-  bytes block_data = 2;       // The actual block data
-  repeated uint32 included_xt_ids = 3; // Which xTs are included
-}
-
-// Wrapper for all messages sent over the wire
-message Message {
-  string sender_id = 1; // Connection ID of the sender
-  oneof payload {
-    XTRequest xt_request = 2;
-    Vote vote = 3;
-    Decided decided = 4;
-    Block block = 5;
-  }
-}
-```
+**Note**: Requires Go 1.24+ for building applications.
 
 ## Quick Start
 
-### Prerequisites
-
-- Go 1.24+
-- Docker and Docker Compose
-- Make
-
-### Running with Docker
+### Running the Shared Publisher (Leader)
 
 ```bash
-# Build and run the system
-make docker-run
-
-# Or manually
-docker-compose up --build
-```
-
-### Running Locally
-
-```bash
-# Build the application
+# Build
 make build
 
-# Run the publisher
-make run
+# Run with default config
+./bin/rollup-shared-publisher
 
-# Or directly
-./bin/rollup-shared-publisher -config configs/config.yaml
+# Run with custom config
+./bin/rollup-shared-publisher --config shared-publisher-leader-app/configs/config.yaml
 ```
 
-### Testing the System
+### Implementing a Sequencer (Follower)
 
-Use the provided Python scripts to simulate sequencers:
+See [Sequencer Implementation Guide](#sequencer-implementation-guide) below.
+
+## Architecture
+
+The system uses a leader-follower model with the Shared Publisher coordinating cross-chain transactions:
+
+```
+┌─────────────────────────┐
+│   Shared Publisher      │
+│      (Leader)           │
+└───────────┬─────────────┘
+            │ 2PC Protocol
+    ┌───────┴───────┐
+    │               │
+┌───▼──────┐   ┌────▼────┐
+│Rollup A  │   │Rollup B │
+│Sequencer │   │Sequencer│
+└──────────┘   └─────────┘
+```
+
+## Modules
+
+The Rollup Shared Publisher maintains several production-grade modules. See [x/README.md](./x/README.md) for detailed
+documentation.
+
+### Core Modules
+
+* [Publisher](./x/publisher/README.md) - Central coordinator for 2PC protocol
+* [Consensus](./x/consensus/README.md) - Two-phase commit implementation
+* [Transport](./x/transport/README.md) - High-performance TCP networking layer
+
+### Supporting Modules
+
+* [Adapter](./x/adapter/README.md) - Interface for rollup integration
+* [Auth](./x/auth/README.md) - ECDSA-based authentication
+* [Codec](./x/codec/README.md) - Protobuf message encoding/decoding
+
+## Sequencer Implementation Guide
+
+To integrate your rollup as a sequencer (follower) in the system:
+
+### 1. Install the SDK
 
 ```bash
-# Terminal 1: Start the publisher
-make docker-run
+go get github.com/ssvlabs/rollup-shared-publisher
+```
 
-# Terminal 2: Send a test transaction
-python3 scripts/send_request.py
+### 2. Implement the Adapter Interface
 
-# Terminal 3: Run multiple clients simulation
-python3 scripts/multiple_clients.py
+```go
+package sequencer
+
+import (
+	"context"
+	"encoding/hex"
+
+	"github.com/ssvlabs/rollup-shared-publisher/x/adapter"
+	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	"github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
+)
+
+type MySequencerAdapter struct {
+	adapter.BaseAdapter
+
+	client  transport.Client
+	chainID []byte
+
+	// Your rollup-specific fields
+	txPool   *TxPool
+	executor *Executor
+	mailbox  *Mailbox
+}
+
+func NewSequencerAdapter(chainID string, txPool *TxPool) *MySequencerAdapter {
+	chainIDBytes, _ := hex.DecodeString(chainID)
+
+	return &MySequencerAdapter{
+		BaseAdapter: *adapter.NewBaseAdapter("my-rollup", "1.0.0", chainID),
+		chainID:     chainIDBytes,
+		txPool:      txPool,
+		executor:    NewExecutor(),
+		mailbox:     NewMailbox(),
+	}
+}
+```
+
+### 3. Handle Protocol Messages
+
+```go
+// Handle incoming cross-chain transaction request
+func (s *MySequencerAdapter) HandleXTRequest(ctx context.Context, from string, req *pb.XTRequest) error {
+    xtID, _ := req.XtID()
+
+    // Extract transactions for this chain
+    for _, tx := range req.Transactions {
+        if bytes.Equal(tx.ChainId, s.chainID) {
+        // Start timer for timeout
+        timer := time.AfterFunc(3*time.Minute, func () {
+        s.sendVote(xtID, false) // Vote abort on timeout
+        })
+
+    // Simulate transaction
+    result := s.executor.Simulate(tx.Transaction)
+
+    if result.RequiresCIRC {
+        // Wait for CIRC messages from other chains
+        s.waitForCIRC(xtID, result.Dependencies)
+    } else {
+        // Send vote immediately
+        s.sendVote(xtID, result.Success)
+    }
+
+    timer.Stop()
+        }
+    }
+    return nil
+}
+
+// Handle 2PC decision from publisher
+func (s *MySequencerAdapter) HandleDecision(ctx context.Context, from string, decision *pb.Decided) error {
+    if decision.Decision {
+    // Commit: Include transaction in next block
+        s.txPool.AddCrossChainTx(decision.XtId)
+    } else {
+    // Abort: Remove from pending
+        s.txPool.RemovePending(decision.XtId)
+    }
+    return nil
+}
+
+// Send vote to publisher
+func (s *MySequencerAdapter) sendVote(xtID *pb.XtID, vote bool) error {
+    msg := &pb.Message{
+        SenderId: s.client.GetID(),
+        Payload: &pb.Message_Vote{
+            Vote: &pb.Vote{
+            SenderChainId: s.chainID,
+            XtId:          xtID,
+            Vote:          vote,
+            },
+        },
+    }
+
+    return s.client.Send(context.Background(), msg)
+}
+```
+
+### 4. Connect to Shared Publisher
+
+```go
+func (s *MySequencerAdapter) Start(ctx context.Context) error {
+    // Create TCP client with optional authentication
+    config := tcp.DefaultClientConfig()
+    config.ServerAddr = "publisher.example.com:8080"
+
+    s.client = tcp.NewClient(config, log)
+
+    // Optional: Add ECDSA authentication
+    if privateKey != nil {
+        authManager := auth.NewManager(privateKey)
+        s.client = s.client.WithAuth(authManager)
+    }
+
+    // Set message handler
+    s.client.SetHandler(s.handleMessage)
+
+    // Connect with retry
+    return s.client.ConnectWithRetry(ctx, "", 5)
+}
+
+func (s *MySequencerAdapter) handleMessage(ctx context.Context, from string, msg *pb.Message) error {
+    switch payload := msg.Payload.(type) {
+    case *pb.Message_XtRequest:
+        return s.HandleXTRequest(ctx, from, payload.XtRequest)
+    case *pb.Message_Decided:
+        return s.HandleDecision(ctx, from, payload.Decided)
+    case *pb.Message_CircMessage:
+        return s.HandleCIRC(ctx, from, payload.CircMessage)
+    default:
+        return fmt.Errorf("unknown message type: %T", payload)
+    }
+}
+```
+
+### 5. Submit Blocks
+
+```go
+func (s *MySequencerAdapter) SubmitBlock(ctx context.Context, block *types.Block) error {
+    // Get included cross-chain transactions
+    includedXTs := s.txPool.GetIncludedCrossChainTxs(block)
+
+    xtIDs := make([]*pb.XtID, len(includedXTs))
+    for i, xt := range includedXTs {
+        xtIDs[i] = xt.ID
+    }
+
+    // Submit block to publisher
+    msg := &pb.Message{
+        Payload: &pb.Message_Block{
+        Block: &pb.Block{
+        ChainId:       s.chainID,
+        BlockData:     block.Encode(),
+        IncludedXtIds: xtIDs,
+        },
+        },
+    }
+
+return s.client.Send(ctx, msg)
+}
+```
+
+### 6. Handle CIRC Messages (Optional)
+
+For rollups supporting inter-rollup communication:
+
+```go
+func (s *MySequencerAdapter) HandleCIRC(ctx context.Context, from string, circ *pb.CIRCMessage) error {
+    // Add CIRC message to mailbox
+    s.mailbox.AddMessage(circ)
+
+    // Resume transaction simulation if waiting
+    if waiter := s.getWaiter(circ.XtId); waiter != nil {
+        waiter.Resume()
+    }
+
+return nil
+}
 ```
 
 ## Configuration
 
-The system uses a YAML configuration file (`configs/config.yaml`):
+### Publisher Configuration
 
 ```yaml
 server:
-  listen_addr: ":8080"          # TCP port for sequencer connections
-  write_timeout: 30s            # Connection write timeout
-  max_message_size: 10485760    # 10MB max message size
-  max_connections: 10           # Max concurrent connections (Phase 1)
+  listen_addr: ":8080"
+  max_connections: 1000
+  read_timeout: 30s
+  write_timeout: 30s
+  max_message_size: 10485760  # 10MB
+
+consensus:
+  timeout: 60s
 
 metrics:
-  enabled: true                 # Enable Prometheus metrics
-  port: 8081                    # HTTP port for metrics
-
-log:
-  level: info                   # Log level
-  pretty: false                 # JSON logging for Loki
-  output: stdout                # Output to stdout (Loki integration)
+  enabled: true
+  port: 8081
 ```
 
-### Environment Variables
+### Sequencer Configuration
 
-All configuration values can be overridden using environment variables:
-
-```bash
-# Server configuration
-export SERVER_LISTEN_ADDR=":9090"
-export SERVER_MAX_CONNECTIONS=200
-
-# Metrics configuration
-export METRICS_PORT=3000
-export METRICS_ENABLED=false
-
-# Logging configuration
-export LOG_LEVEL=debug
-export LOG_PRETTY=true
+```go
+config := tcp.ClientConfig{
+    ServerAddr:      "publisher.example.com:8080",
+    ConnectTimeout:  10 * time.Second,
+    ReadTimeout:     30 * time.Second,
+    WriteTimeout:    10 * time.Second,
+    ReconnectDelay:  5 * time.Second,
+    MaxMessageSize:  10 * 1024 * 1024,
+    KeepAlive:       true,
+    KeepAlivePeriod: 30 * time.Second,
+}
 ```
-
-**Pattern**: `<SECTION>_<KEY>` (dots replaced with underscores, all uppercase)
-
-**Examples**:
-
-- `server.listen_addr` → `SERVER_LISTEN_ADDR`
-- `metrics.port` → `METRICS_PORT`
-- `log.level` → `LOG_LEVEL`
-
-**Priority**: ENV variables > YAML config > Default values
 
 ## Monitoring
 
-### Metrics
+### Endpoints
 
-Prometheus metrics are exposed on `http://localhost:8081/metrics`. In addition to the base-level metrics, Phase 2
-introduces a rich set of metrics for the consensus protocol.
+- **Metrics**: `http://localhost:8081/metrics`
+- **Health**: `http://localhost:8081/health`
+- **Ready**: `http://localhost:8081/ready`
+- **Stats**: `http://localhost:8081/stats`
 
-**New Consensus Metrics (`publisher_consensus_*`)**
+### Key Metrics
 
-- `publisher_consensus_transactions_total`: Total 2PC transactions, labeled by final state (`initiated`, `commit`,
-  `abort`, `timeout`).
-- `publisher_consensus_active_transactions`: A gauge showing the number of 2PC transactions currently in progress.
-- `publisher_consensus_duration_seconds`: A histogram of the time it takes for a 2PC transaction to complete, labeled by
-  state.
-- `publisher_consensus_votes_received_total`: Total votes received, labeled by `chain_id` and `vote` (commit/abort).
-- `publisher_consensus_vote_latency_seconds`: A histogram of the time from transaction start to vote reception.
-- `publisher_consensus_timeouts_total`: A counter for the total number of transactions that timed out.
-- `publisher_consensus_participants_per_transaction`: A histogram of how many chains participate in each transaction.
-- `publisher_consensus_decisions_broadcast_total`: Total decisions broadcast, labeled by `decision` (commit/abort).
-
-### Health Checks
-
-- **Health**: `http://localhost:8081/health` - System health status
-- **Ready**: `http://localhost:8081/ready` - Readiness status (has connections)
-- **Stats**: `http://localhost:8081/stats` - Publisher statistics, including active 2PC transactions
-- **Connections**: `http://localhost:8081/connections` - Active connections info
-
-### Prometheus Setup
-
-Use the provided Prometheus configuration:
-
-```bash
-# The config is optimized for Phase 1 development
-cat monitoring/prometheus/prometheus.yml
+```
+publisher_consensus_active_transactions
+publisher_consensus_transactions_total{state="commit|abort"}
+publisher_consensus_duration_seconds
+publisher_transport_connections_active
+publisher_transport_messages_total{type,direction}
 ```
 
 ## Development
 
+### Prerequisites
+
+- Go 1.24+
+- Docker & Docker Compose
+- Protocol Buffers compiler
+
 ### Building
 
 ```bash
-# Build binary
+# Build all components
 make build
 
 # Run tests
 make test
 
-# Run tests with coverage
+# Run with coverage
 make coverage
 
-# Run linters
+# Lint code
 make lint
 
-# Generate protobuf files
-make proto
+# Generate protobuf
+make proto-gen
 ```
 
-### Project Structure
+### Running Locally
 
-```
-├── api/proto/              # Protobuf definitions
-├── cmd/publisher/          # Main application entry point
-├── configs/               # Configuration files
-├── internal/
-│   ├── config/           # Configuration management
-│   ├── consensus/        # Core 2PC coordinator logic and state management
-│   ├── network/          # TCP server/client implementation
-│   ├── proto/            # Generated protobuf files
-│   └── publisher/        # Core publisher logic, message handlers, and integration
-├── monitoring/           # Prometheus configuration
-├── pkg/
-│   ├── logger/          # Logging utilities
-│   └── metrics/         # Prometheus metrics
-└── scripts/             # Development and testing scripts
+```bash
+# Start publisher with docker-compose
+docker-compose up -d
+
+# Check logs
+docker-compose logs -f publisher
+
+# Stop
+docker-compose down
 ```
 
-## Communication Protocol
+## Protocol Specification
 
-The publisher and sequencers communicate over a custom TCP-based protocol designed for high performance and low
-overhead. It does **not** use HTTP or gRPC. Clients must implement the following protocol to connect and interact with
-the publisher.
+See [Superblock Construction Protocol](./docs/superblock_construction_protocol.md) for detailed protocol specification.
 
-### Protocol Design
+## Security
 
-The protocol is built on two core concepts:
+- **Authentication**: Optional ECDSA-based message signing
+- **Authorization**: Trusted key management for known sequencers
+- **Network**: TLS support (recommended for production)
+- **Timeouts**: Configurable timeouts prevent indefinite blocking
 
-1. **Persistent TCP Connections**: Clients establish a long-lived TCP connection to the publisher. This avoids the
-   overhead of repeated handshakes (like in HTTP) and is ideal for the frequent, low-latency communication required
-   between sequencers.
+## Contributing
 
-2. **Length-Prefixed Message Framing**: TCP is a stream-oriented protocol, meaning it does not have a built-in concept
-   of message boundaries. To solve this, we implement a message framing strategy. Each Protobuf message is prefixed with
-   a 4-byte header that specifies the exact length of the message that follows.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull
+requests.
 
-This design ensures that the receiver can reliably read complete messages from the stream without corruption or
-ambiguity.
+## License
 
-### Message Format
-
-Every message sent over the TCP socket **must** adhere to the following binary format:
-
-```
-[ 4-byte Header | Protobuf Message Payload ]
-```
-
-* **Header (`[4-byte-length]`)**:
-    * **Size**: 4 bytes (32 bits).
-    * **Content**: An unsigned integer representing the size of the *Protobuf Message Payload* in bytes.
-    * **Encoding**: Big Endian byte order.
-
-* **Protobuf Message Payload**:
-    * **Content**: The binary data resulting from serializing a `Message` struct (defined in `api/proto/messages.proto`)
-      using the Protocol Buffers library.
-
-### How to Connect and Send a Request
-
-A client (sequencer) implementation must perform the following steps:
-
-1. **Establish Connection**: Open a standard TCP socket to the publisher's listen address (e.g., `localhost:8080`).
-
-2. **Construct Message**: Create an instance of the `XTRequest` message and populate it with the necessary transaction
-   data. Wrap this `XTRequest` inside the top-level `Message` object.
-
-3. **Serialize**: Use the Protobuf library for your language to serialize the `Message` object into a byte array.
-
-4. **Frame and Send**:
-   a. Get the length of the serialized byte array from the previous step.
-   b. Create a 4-byte buffer containing this length, encoded as a Big Endian `uint32`.
-   c. Write the 4-byte length header to the TCP socket.
-   d. Immediately after, write the serialized message byte array to the socket.
+TODO

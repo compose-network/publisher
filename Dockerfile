@@ -21,7 +21,7 @@ ARG GIT_COMMIT=unknown
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
     -o rollup-shared-publisher \
-    cmd/publisher/main.go
+    shared-publisher-leader-app/main.go shared-publisher-leader-app/app.go shared-publisher-leader-app/version.go
 
 # Runtime stage
 FROM alpine:3.19
@@ -37,7 +37,7 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /build/rollup-shared-publisher /app/
-COPY --from=builder /build/configs/config.yaml /app/configs/
+COPY --from=builder /build/shared-publisher-leader-app/configs/config.yaml /app/configs/
 
 # Create directory for logs
 RUN mkdir -p /app/logs && chown -R publisher:publisher /app
@@ -53,4 +53,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8081/health || exit 1
 
 ENTRYPOINT ["/app/rollup-shared-publisher"]
-CMD ["-config", "/app/configs/config.yaml"]
+CMD ["--config", "/app/configs/config.yaml"]

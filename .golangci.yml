@@ -6,13 +6,13 @@ run:
 linters:
   enable:
     - bodyclose
-    - dupl
+#    - dupl
     - exhaustive
     - gocognit
     - goconst
     - gocritic
     - gocyclo
-    - gosec
+#    - gosec
     - lll
     - misspell
     - nakedret

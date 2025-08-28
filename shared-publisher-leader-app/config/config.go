@@ -1,0 +1,261 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/viper"
+	l1cfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
+)
+
+// Config holds the complete application configuration
+type Config struct {
+	Server    ServerConfig    `mapstructure:"server" yaml:"server"`
+	Consensus ConsensusConfig `mapstructure:"consensus" yaml:"consensus"`
+	Metrics   MetricsConfig   `mapstructure:"metrics" yaml:"metrics"`
+	Log       LogConfig       `mapstructure:"log" yaml:"log"`
+	Auth      AuthConfig      `mapstructure:"auth" yaml:"auth"`
+	L1        l1cfg.Config    `mapstructure:"l1" yaml:"l1"`
+}
+
+// ServerConfig holds server configuration
+type ServerConfig struct {
+	ListenAddr     string        `mapstructure:"listen_addr" yaml:"listen_addr" env:"SERVER_LISTEN_ADDR"`
+	ReadTimeout    time.Duration `mapstructure:"read_timeout" yaml:"read_timeout" env:"SERVER_READ_TIMEOUT"`
+	WriteTimeout   time.Duration `mapstructure:"write_timeout" yaml:"write_timeout" env:"SERVER_WRITE_TIMEOUT"`
+	MaxMessageSize int           `mapstructure:"max_message_size" yaml:"max_message_size" env:"SERVER_MAX_MESSAGE_SIZE"`
+	MaxConnections int           `mapstructure:"max_connections" yaml:"max_connections" env:"SERVER_MAX_CONNECTIONS"`
+}
+
+// ConsensusConfig holds consensus configuration
+type ConsensusConfig struct {
+	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout" env:"CONSENSUS_TIMEOUT"`
+	// Optional: present for completeness; leader app always runs in leader mode
+	Role string `mapstructure:"role" yaml:"role" env:"CONSENSUS_ROLE"`
+}
+
+// MetricsConfig holds metrics configuration
+type MetricsConfig struct {
+	Enabled bool   `mapstructure:"enabled" yaml:"enabled" env:"METRICS_ENABLED"`
+	Port    int    `mapstructure:"port" yaml:"port" env:"METRICS_PORT"`
+	Path    string `mapstructure:"path" yaml:"path" env:"METRICS_PATH"`
+}
+
+// LogConfig holds logging configuration
+type LogConfig struct {
+	Level  string `mapstructure:"level" yaml:"level" env:"LOG_LEVEL"`
+	Pretty bool   `mapstructure:"pretty" yaml:"pretty" env:"LOG_PRETTY"`
+	Output string `mapstructure:"output" yaml:"output" env:"LOG_OUTPUT"`
+	File   string `mapstructure:"file" yaml:"file" env:"LOG_FILE"`
+}
+
+// AuthConfig holds authentication configuration for the TCP server
+type AuthConfig struct {
+	Enabled           bool               `mapstructure:"enabled" yaml:"enabled" env:"AUTH_ENABLED"`
+	PrivateKey        string             `mapstructure:"private_key" yaml:"private_key" env:"AUTH_PRIVATE_KEY"`
+	TrustedSequencers []TrustedSequencer `mapstructure:"trusted_sequencers" yaml:"trusted_sequencers"`
+}
+
+// TrustedSequencer represents a known sequencer identity
+type TrustedSequencer struct {
+	ID        string `mapstructure:"id" yaml:"id"`
+	PublicKey string `mapstructure:"public_key" yaml:"public_key"`
+}
+
+// Load loads configuration from file and environment
+func Load(configPath string) (*Config, error) {
+	v := viper.New()
+
+	v.SetConfigFile(configPath)
+	v.SetConfigType("yaml")
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	setDefaults(v)
+
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
+	}
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Fallback env aliases for L1
+	if strings.TrimSpace(cfg.L1.RPCEndpoint) == "" {
+		if v := strings.TrimSpace(os.Getenv("L1_RPC_ENDPOINT")); v != "" {
+			cfg.L1.RPCEndpoint = v
+		}
+	}
+	if strings.TrimSpace(cfg.L1.SuperblockContract) == "" {
+		if v := strings.TrimSpace(os.Getenv("L1_SUPERBLOCK_CONTRACT")); v != "" {
+			cfg.L1.SuperblockContract = v
+		}
+	}
+	if strings.TrimSpace(cfg.L1.SharedPublisherPkHex) == "" {
+		if v := strings.TrimSpace(os.Getenv("L1_SHARED_PUBLISHER_PK_HEX")); v != "" {
+			cfg.L1.SharedPublisherPkHex = v
+		}
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+// setDefaults sets default configuration values
+func setDefaults(v *viper.Viper) {
+	v.SetDefault("server.listen_addr", ":8080")
+	v.SetDefault("server.read_timeout", "30s")
+	v.SetDefault("server.write_timeout", "30s")
+	v.SetDefault("server.max_message_size", 10*1024*1024) // 10MB
+	v.SetDefault("server.max_connections", 1000)
+
+	v.SetDefault("consensus.timeout", "60s")
+
+	v.SetDefault("metrics.enabled", true)
+	v.SetDefault("metrics.port", 8081)
+	v.SetDefault("metrics.path", "/metrics")
+
+	v.SetDefault("log.level", "info")
+	v.SetDefault("log.pretty", false)
+	v.SetDefault("log.output", "stdout")
+
+	v.SetDefault("auth.enabled", false)
+	v.SetDefault("auth.private_key", "")
+	v.SetDefault("auth.trusted_sequencers", []map[string]string{})
+	v.SetDefault("auth.allow_untrusted", false)
+	v.SetDefault("auth.require_auth", true)
+
+	// L1 defaults
+	v.SetDefault("l1.rpc_endpoint", "")
+	v.SetDefault("l1.superblock_contract", "")
+	v.SetDefault("l1.chain_id", 0)
+	v.SetDefault("l1.confirmations", 2)
+	v.SetDefault("l1.finality_depth", 64)
+	v.SetDefault("l1.use_eip1559", true)
+	v.SetDefault("l1.max_fee_per_gas_wei", "0")
+	v.SetDefault("l1.max_priority_fee_wei", "0")
+	v.SetDefault("l1.gas_limit_buffer_pct", 15)
+	v.SetDefault("l1.shared_publisher_pk_hex", "")
+	v.SetDefault("l1.from_address", "")
+}
+
+// Validate validates the configuration
+func (c *Config) Validate() error {
+	if err := c.validateServer(); err != nil {
+		return err
+	}
+	if err := c.validateConsensus(); err != nil {
+		return err
+	}
+	if err := c.validateMetrics(); err != nil {
+		return err
+	}
+	if err := c.validateAuth(); err != nil {
+		return err
+	}
+	if err := c.validateL1(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) validateServer() error {
+	if c.Server.MaxMessageSize <= 0 {
+		return fmt.Errorf("server.max_message_size must be positive, got %d", c.Server.MaxMessageSize)
+	}
+	if c.Server.MaxConnections <= 0 {
+		return fmt.Errorf("server.max_connections must be positive, got %d", c.Server.MaxConnections)
+	}
+	if c.Server.ReadTimeout <= 0 {
+		return fmt.Errorf("server.read_timeout must be positive")
+	}
+	if c.Server.WriteTimeout <= 0 {
+		return fmt.Errorf("server.write_timeout must be positive")
+	}
+	return nil
+}
+
+func (c *Config) validateConsensus() error {
+	if c.Consensus.Timeout <= 0 {
+		return fmt.Errorf("consensus.timeout must be positive")
+	}
+	return nil
+}
+
+func (c *Config) validateMetrics() error {
+	if c.Metrics.Enabled && (c.Metrics.Port <= 0 || c.Metrics.Port > 65535) {
+		return fmt.Errorf("metrics.port must be between 1-65535 when metrics enabled, got %d", c.Metrics.Port)
+	}
+	return nil
+}
+
+func (c *Config) validateAuth() error {
+	if !c.Auth.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(c.Auth.PrivateKey) == "" {
+		return fmt.Errorf("auth.enabled is true but auth.private_key is empty")
+	}
+	for _, ts := range c.Auth.TrustedSequencers {
+		if strings.TrimSpace(ts.ID) == "" {
+			return fmt.Errorf("auth.trusted_sequencers contains an entry with empty id")
+		}
+		if strings.TrimSpace(ts.PublicKey) == "" {
+			return fmt.Errorf("auth.trusted_sequencers[%s] public_key is empty", ts.ID)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateL1() error {
+	if strings.TrimSpace(c.L1.RPCEndpoint) == "" && strings.TrimSpace(c.L1.SuperblockContract) == "" {
+		return nil // L1 not configured
+	}
+	if strings.TrimSpace(c.L1.RPCEndpoint) == "" {
+		return fmt.Errorf("l1.rpc_endpoint is required when L1 is configured")
+	}
+	if strings.TrimSpace(c.L1.SuperblockContract) == "" {
+		return fmt.Errorf("l1.superblock_contract is required when L1 is configured")
+	}
+	return nil
+}
+
+// Default returns default configuration
+func Default() *Config {
+	return &Config{
+		Server: ServerConfig{
+			ListenAddr:     ":8080",
+			ReadTimeout:    30 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			MaxMessageSize: 10 * 1024 * 1024,
+			MaxConnections: 1000,
+		},
+		Consensus: ConsensusConfig{
+			Timeout: 60 * time.Second,
+			Role:    "leader",
+		},
+		Metrics: MetricsConfig{
+			Enabled: true,
+			Port:    8081,
+			Path:    "/metrics",
+		},
+		Log: LogConfig{
+			Level:  "info",
+			Pretty: false,
+			Output: "stdout",
+		},
+		Auth: AuthConfig{
+			Enabled:           false,
+			PrivateKey:        "",
+			TrustedSequencers: []TrustedSequencer{},
+		},
+		L1: l1cfg.Config{},
+	}
+}

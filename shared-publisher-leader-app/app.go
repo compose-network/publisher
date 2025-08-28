@@ -1,0 +1,321 @@
+package main
+
+import (
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
+	sbadapter "github.com/ssvlabs/rollup-shared-publisher/x/superblock/adapter"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
+	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
+
+	"github.com/ssvlabs/rollup-shared-publisher/metrics"
+	"github.com/ssvlabs/rollup-shared-publisher/shared-publisher-leader-app/config"
+	"github.com/ssvlabs/rollup-shared-publisher/x/auth"
+	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
+	"github.com/ssvlabs/rollup-shared-publisher/x/publisher"
+	"github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
+)
+
+// App represents the shared publisher application
+type App struct {
+	cfg       *config.Config
+	publisher publisher.Publisher
+	log       zerolog.Logger
+
+	// HTTP server for metrics and health
+	httpServer *http.Server
+
+	// Shutdown management
+	shutdownFns []func() error
+
+	cancel context.CancelFunc
+}
+
+// NewApp creates a new application instance
+func NewApp(cfg *config.Config, log zerolog.Logger) (*App, error) {
+	app := &App{
+		cfg:         cfg,
+		log:         log.With().Str("component", "app").Logger(),
+		shutdownFns: make([]func() error, 0),
+	}
+
+	if err := app.initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize app: %w", err)
+	}
+
+	return app, nil
+}
+
+// initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
+func (a *App) initialize() error {
+	consensusConfig := consensus.Config{
+		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
+		IsLeader: true,
+		Timeout:  a.cfg.Consensus.Timeout,
+		Role:     consensus.Leader,
+	}
+	coordinator := consensus.New(a.log, consensusConfig)
+	a.addShutdownFn(coordinator.Shutdown)
+
+	transportConfig := transport.Config{}
+	transportConfig.ListenAddr = a.cfg.Server.ListenAddr
+	transportConfig.MaxConnections = a.cfg.Server.MaxConnections
+	transportConfig.ReadTimeout = a.cfg.Server.ReadTimeout
+	transportConfig.WriteTimeout = a.cfg.Server.WriteTimeout
+	transportConfig.MaxMessageSize = a.cfg.Server.MaxMessageSize
+
+	tcpServer := tcp.NewServer(transportConfig, a.log)
+
+	if a.cfg.Auth.Enabled {
+		authManager, err := auth.NewManagerFromHex(a.cfg.Auth.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to initialize auth manager: %w", err)
+		}
+
+		for _, seq := range a.cfg.Auth.TrustedSequencers {
+			pubKeyBytes, err := hex.DecodeString(seq.PublicKey)
+			if err != nil {
+				return fmt.Errorf("invalid public key for %s: %w", seq.ID, err)
+			}
+			if err := authManager.AddTrustedKey(seq.ID, pubKeyBytes); err != nil {
+				return fmt.Errorf("failed to add trusted key for %s: %w", seq.ID, err)
+			}
+			a.log.Info().Str("id", seq.ID).Msg("Added trusted sequencer")
+		}
+
+		tcpServer = tcpServer.(*tcp.Server).WithAuth(authManager)
+		a.log.Info().
+			Str("address", authManager.Address()).
+			Str("public_key", authManager.PublicKeyString()).
+			Msg("Authentication enabled for shared publisher")
+	}
+
+	coordinatorConfig := superblock.DefaultConfig()
+	coordinatorConfig.Slot = slot.Config{
+		Duration:    12 * time.Second,
+		SealCutover: 2.0 / 3.0,
+		GenesisTime: time.Now().Add(5 * time.Second), // mock, in 5 seconds
+	}
+	coordinatorConfig.Queue = queue.Config{
+		MaxSize:           1000,
+		RequestExpiration: 30 * time.Second,
+	}
+	coordinatorConfig.L1 = a.cfg.L1
+
+	pub, err := publisher.New(
+		a.log,
+		publisher.WithTransport(tcpServer),
+		publisher.WithConsensus(coordinator),
+		publisher.WithTimeout(a.cfg.Consensus.Timeout),
+		publisher.WithMetrics(a.cfg.Metrics.Enabled),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create publisher: %w", err)
+	}
+
+	sbPub, err := sbadapter.WrapPublisher(
+		pub,
+		coordinatorConfig,
+		a.log,
+		coordinator,
+		tcpServer,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create superblock publisher: %w", err)
+	}
+	a.publisher = sbPub
+
+	if a.cfg.Metrics.Enabled {
+		a.setupHTTPServer()
+	}
+
+	return nil
+}
+
+// setupHTTPServer creates an HTTP server for metrics and health endpoints.
+func (a *App) setupHTTPServer() {
+	mux := http.NewServeMux()
+
+	// Health endpoints
+	mux.HandleFunc("/health", a.handleHealth)
+	mux.HandleFunc("/ready", a.handleReady)
+	mux.HandleFunc("/stats", a.handleStats)
+
+	// Metrics endpoint (own registry)
+	if a.cfg.Metrics.Enabled {
+		mux.Handle("/metrics", promhttp.HandlerFor(metrics.GetRegistry(), promhttp.HandlerOpts{}))
+	}
+
+	addr := fmt.Sprintf(":%d", a.cfg.Metrics.Port)
+	a.httpServer = &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+}
+
+// Run starts the application and blocks until shutdown.
+func (a *App) Run(ctx context.Context) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	a.cancel = cancel
+
+	if err := a.publisher.Start(runCtx); err != nil {
+		return fmt.Errorf("failed to start publisher: %w", err)
+	}
+
+	if a.httpServer != nil {
+		go func() {
+			a.log.Info().
+				Str("addr", a.httpServer.Addr).
+				Msg("Starting HTTP server")
+			if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				a.log.Error().Err(err).Msg("HTTP server error")
+			}
+		}()
+	}
+
+	go a.metricsReporter(runCtx)
+
+	return a.runWithGracefulShutdown(runCtx)
+}
+
+// runWithGracefulShutdown handles shutdown signals.
+func (a *App) runWithGracefulShutdown(ctx context.Context) error {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	a.log.Info().Msg("Rollup shared publisher started successfully")
+
+	select {
+	case <-ctx.Done():
+		a.log.Info().Msg("Context canceled, initiating shutdown")
+	case sig := <-sigCh:
+		a.log.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
+	}
+
+	if a.cancel != nil {
+		a.cancel()
+	}
+
+	return a.shutdown()
+}
+
+// shutdown gracefully shuts down the application by stopping
+// the HTTP server, publisher, and executing shutdown functions.
+func (a *App) shutdown() error {
+	a.log.Info().Msg("Initiating graceful shutdown")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Shutdown HTTP server first
+	if a.httpServer != nil {
+		if err := a.httpServer.Shutdown(shutdownCtx); err != nil {
+			a.log.Error().Err(err).Msg("HTTP server shutdown error")
+		}
+	}
+
+	// Shutdown publisher
+	if err := a.publisher.Stop(shutdownCtx); err != nil {
+		a.log.Error().Err(err).Msg("Publisher shutdown error")
+		return err
+	}
+
+	// Run shutdown functions
+	for _, fn := range a.shutdownFns {
+		if err := fn(); err != nil {
+			a.log.Error().Err(err).Msg("Shutdown function error")
+		}
+	}
+
+	a.log.Info().Msg("Graceful shutdown complete")
+	return nil
+}
+
+// addShutdownFn adds a function to be called during shutdown.
+func (a *App) addShutdownFn(fn func() error) {
+	a.shutdownFns = append(a.shutdownFns, fn)
+}
+
+// handleHealth responds to health check requests.
+func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"status":"healthy","timestamp":"%s"}`, time.Now().UTC().Format(time.RFC3339))
+}
+
+func (a *App) handleReady(w http.ResponseWriter, r *http.Request) {
+	stats := a.publisher.GetStats()
+	connections := stats["active_connections"].(int)
+
+	status := "ready"
+	code := http.StatusOK
+
+	if connections == 0 {
+		status = "no_connections"
+		code = http.StatusServiceUnavailable
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	fmt.Fprintf(w, `{"status":"%s","connections":%d}`, status, connections)
+}
+
+func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
+	stats := a.publisher.GetStats()
+	stats["app_version"] = Version
+	stats["app_build_time"] = BuildTime
+	stats["app_git_commit"] = GitCommit
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
+// GetStats returns application statistics.
+func (a *App) GetStats() map[string]interface{} {
+	stats := a.publisher.GetStats()
+	stats["app_version"] = Version
+	stats["app_build_time"] = BuildTime
+	stats["app_git_commit"] = GitCommit
+	return stats
+}
+
+// metricsReporter periodically reports application statistics.
+func (a *App) metricsReporter(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			stats := a.GetStats()
+
+			a.log.Info().
+				Str("mode", "leader").
+				Int("active_connections", stats["active_connections"].(int)).
+				Uint64("messages_processed", stats["messages_processed"].(uint64)).
+				Uint64("broadcasts_sent", stats["broadcasts_sent"].(uint64)).
+				Int("chains_count", stats["chains_count"].(int)).
+				Int("active_2pc_transactions", stats["active_2pc_transactions"].(int)).
+				Float64("uptime_seconds", stats["uptime_seconds"].(float64)).
+				Msg("Shared Publisher statistics")
+		}
+	}
+}
