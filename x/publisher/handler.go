@@ -88,7 +88,7 @@ func (p *publisher) handleVote(ctx context.Context, from string, msg *pb.Message
 		return fmt.Errorf("invalid payload type for Vote")
 	}
 	vote := payload.Vote
-	chainID := hex.EncodeToString(vote.SenderChainId)
+	chainID := consensus.ChainKeyBytes(vote.SenderChainId)
 
 	log := p.log.With().
 		Str("from", from).

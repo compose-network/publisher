@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"time"
@@ -54,10 +53,12 @@ func (c *coordinator) StartTransaction(from string, xtReq *pb.XTRequest) error {
 		return err
 	}
 
-	// Set timeout timer
-	state.Timer = time.AfterFunc(c.config.Timeout, func() {
-		c.handleTimeout(xtID)
-	})
+	// Timeout only for leader; followers rely on the SP decision
+	if c.config.Role == Leader {
+		state.Timer = time.AfterFunc(c.config.Timeout, func() {
+			c.handleTimeout(xtID)
+		})
+	}
 
 	c.metrics.RecordTransactionStarted(len(chains))
 
@@ -198,7 +199,7 @@ func (c *coordinator) RecordCIRCMessage(circMessage *pb.CIRCMessage) error {
 		return fmt.Errorf("transaction %s not found", xtID.Hex())
 	}
 
-	sourceChainID := hex.EncodeToString(circMessage.SourceChain)
+	sourceChainID := ChainKeyBytes(circMessage.SourceChain)
 
 	state.mu.Lock()
 	defer state.mu.Unlock()

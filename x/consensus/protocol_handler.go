@@ -53,7 +53,7 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 
 	case MsgVote:
 		vote := msg.GetVote()
-		chainID := string(vote.SenderChainId)
+		chainID := ChainKeyBytes(vote.SenderChainId)
 		_, err := h.coordinator.RecordVote(vote.XtId, chainID, vote.Vote)
 		return err
 
