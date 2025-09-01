@@ -789,8 +789,21 @@ func (c *Coordinator) sendStartSlotMessages(
 }
 
 func (c *Coordinator) sendStartSCMessages(instance *slot.SCPInstance) {
+	xtIDStr := fmt.Sprintf("%x", instance.XtID)
+
+	// Check if transaction already exists in consensus layer
+	xtID, err := instance.Request.XtID()
+	if err != nil {
+		return
+	}
+
+	if _, exists := c.consensusCoord.GetState(xtID); exists {
+		c.log.Warn().Str("xt_id", xtIDStr).Msg("SCP transaction already exists, skipping duplicate start")
+		return
+	}
+
 	if err := c.consensusCoord.StartTransaction("superblock-coordinator", instance.Request); err != nil {
-		c.log.Error().Err(err).Str("xt_id", fmt.Sprintf("%x", instance.XtID)).Msg("Failed to start SCP transaction")
+		c.log.Error().Err(err).Str("xt_id", xtIDStr).Msg("Failed to start SCP transaction")
 	}
 }
 
