@@ -23,8 +23,8 @@ import (
 )
 
 // TODO: Mock IDs for testing
-var mockID1 = big.NewInt(55555).Bytes()
-var mockID2 = big.NewInt(66666).Bytes()
+var mockID1 = big.NewInt(77777).Bytes()
+var mockID2 = big.NewInt(88888).Bytes()
 
 // SuperblockPublisher wraps the base publisher with SBCP capabilities
 type SuperblockPublisher struct {

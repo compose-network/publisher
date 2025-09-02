@@ -15,8 +15,8 @@ import (
 
 //nolint:gocyclo // its test app, we don't care about
 func main() {
-	fmt.Printf("CHainID: 1 = seq-1, 2 = seq-2: %v\n", hex.EncodeToString(big.NewInt(55555).Bytes()))
-	fmt.Printf("CHainID: 2 = seq-1, 2 = seq-2: %v\n", hex.EncodeToString(big.NewInt(66666).Bytes()))
+	fmt.Printf("CHainID: 1 = seq-1, 2 = seq-2: %v\n", hex.EncodeToString(big.NewInt(77777).Bytes()))
+	fmt.Printf("CHainID: 2 = seq-1, 2 = seq-2: %v\n", hex.EncodeToString(big.NewInt(88888).Bytes()))
 	var (
 		spAddr     string
 		chainID    int
@@ -67,9 +67,9 @@ func main() {
 	var chainIDBytes []byte
 	switch chainID {
 	case 1:
-		chainIDBytes = big.NewInt(55555).Bytes() // mockID1
+		chainIDBytes = big.NewInt(77777).Bytes() // mockID1
 	case 2:
-		chainIDBytes = big.NewInt(66666).Bytes() // mockID2
+		chainIDBytes = big.NewInt(88888).Bytes() // mockID2
 	default:
 		chainIDBytes = []byte{byte(chainID & 0xFF)} // fallback for other IDs
 	}
@@ -113,8 +113,8 @@ func main() {
 		// Build an XT request with both chains participating using mock chain IDs
 		xt := &pb.XTRequest{
 			Transactions: []*pb.TransactionRequest{
-				{ChainId: big.NewInt(55555).Bytes(), Transaction: [][]byte{[]byte("tx-1-a"), []byte("tx-1-b")}}, // mockID1
-				{ChainId: big.NewInt(66666).Bytes(), Transaction: [][]byte{[]byte("tx-2-a")}},                   // mockID2
+				{ChainId: big.NewInt(77777).Bytes(), Transaction: [][]byte{[]byte("tx-1-a"), []byte("tx-1-b")}}, // mockID1
+				{ChainId: big.NewInt(88888).Bytes(), Transaction: [][]byte{[]byte("tx-2-a")}},                   // mockID2
 			},
 		}
 		if err := seq.InitiateXT(ctx, xt); err != nil {

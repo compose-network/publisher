@@ -52,12 +52,12 @@ func NewSequencer(name string, chainID []byte, spAddr string, log zerolog.Logger
 	var p2pListen string
 	peers := map[string]string{}
 	switch chainIDStr {
-	case "d903": // 55555
+	case "012fd1": // 77777
 		p2pListen = defaultP2PPort
-		peers["66666"] = "localhost:9001"
-	case "01046a": // 66666
+		peers["88888"] = "localhost:9001"
+	case "015b38": // 88888
 		p2pListen = ":9001"
-		peers["55555"] = "localhost" + defaultP2PPort
+		peers["77777"] = "localhost" + defaultP2PPort
 	default:
 		p2pListen = ":9002"
 	}
