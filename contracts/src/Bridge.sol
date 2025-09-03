@@ -51,7 +51,7 @@ contract Bridge is IBridge {
 
         // Check the funds have been received on the other chain
         bytes memory m = mailbox.read(
-            chainSrc,
+            chainDest, // ACK is sent from the destination chain back to the source
             sender,
             receiver,
             sessionId,
