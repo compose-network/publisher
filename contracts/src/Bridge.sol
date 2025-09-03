@@ -40,7 +40,7 @@ contract Bridge is IBridge {
 
         // Write to the outbox
         mailbox.write(
-            chainSrc,
+            chainDest,
             receiver,
             sessionId,
             "SEND",
@@ -51,7 +51,7 @@ contract Bridge is IBridge {
 
         // Check the funds have been received on the other chain
         bytes memory m = mailbox.read(
-            chainDest,
+            chainSrc,
             sender,
             receiver,
             sessionId,
@@ -111,7 +111,7 @@ contract Bridge is IBridge {
         // Acknowledge the reception of funds
         m = abi.encode("OK");
         mailbox.write(
-            chainDest,
+            chainSrc,
             receiver,
             sessionId,
             "ACK SEND",
