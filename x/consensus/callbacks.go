@@ -50,7 +50,7 @@ func (cm *CallbackManager) SetBlockCallback(fn BlockFn) {
 }
 
 // InvokeStart calls the start callback with timeout and error handling
-func (cm *CallbackManager) InvokeStart(from string, xtReq *pb.XTRequest) {
+func (cm *CallbackManager) InvokeStart(ctx context.Context, from string, xtReq *pb.XTRequest) {
 	if cm.startFn == nil {
 		return
 	}
@@ -58,7 +58,7 @@ func (cm *CallbackManager) InvokeStart(from string, xtReq *pb.XTRequest) {
 	xtID, _ := xtReq.XtID()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), cm.timeout)
+		ctx, cancel := context.WithTimeout(ctx, cm.timeout)
 		defer cancel()
 
 		if err := cm.startFn(ctx, from, xtReq); err != nil {

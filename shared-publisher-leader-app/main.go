@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -124,7 +123,7 @@ func runApp(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to create application: %w", err)
 	}
 
-	return application.Run(context.Background())
+	return application.Run(cmd.Context())
 }
 
 func runVersion(*cobra.Command, []string) {

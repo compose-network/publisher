@@ -64,7 +64,7 @@ func (si *SCPIntegration) HandleStartSC(ctx context.Context, startSC *pb.StartSC
 
 	// Ensure local consensus state exists for this xT so CIRC
 	// messages can be recorded/consumed by the sequencer's coordinator
-	if err := si.consensus.StartTransaction("sequencer", startSC.XtRequest); err != nil {
+	if err := si.consensus.StartTransaction(ctx, "sequencer", startSC.XtRequest); err != nil {
 		// Do not fail the flow – log and continue to avoid blocking SBCP.
 		// CIRC Record/Consume will clearly error if state is missing.
 		si.log.Error().

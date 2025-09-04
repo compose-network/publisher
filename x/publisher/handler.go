@@ -49,7 +49,7 @@ func (p *publisher) handleXTRequest(ctx context.Context, from string, msg *pb.Me
 		return fmt.Errorf("no participating chains found")
 	}
 
-	if err := p.consensus.StartTransaction(from, xtReq); err != nil {
+	if err := p.consensus.StartTransaction(ctx, from, xtReq); err != nil {
 		log.Error().Err(err).Msg("Failed to start 2PC transaction")
 		return err
 	}

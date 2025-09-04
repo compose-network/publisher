@@ -12,7 +12,7 @@ import (
 // Coordinator defines the consensus coordinator interface
 type Coordinator interface {
 	// Transaction lifecycle
-	StartTransaction(from string, xtReq *pb.XTRequest) error
+	StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error
 	RecordVote(xtID *pb.XtID, chainID string, vote bool) (DecisionState, error)
 	RecordDecision(xtID *pb.XtID, decision bool) error
 	GetTransactionState(xtID *pb.XtID) (DecisionState, error)

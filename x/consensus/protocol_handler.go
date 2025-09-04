@@ -49,7 +49,7 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 	switch msgType {
 	case MsgXTRequest:
 		xtReq := msg.GetXtRequest()
-		return h.coordinator.StartTransaction(from, xtReq)
+		return h.coordinator.StartTransaction(ctx, from, xtReq)
 
 	case MsgVote:
 		vote := msg.GetVote()

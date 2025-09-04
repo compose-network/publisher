@@ -111,7 +111,7 @@ func (c *coordinator) OnL2BlockCommitted(ctx context.Context, block *pb.L2Block)
 }
 
 // StartTransaction initiates a new 2PC transaction
-func (c *coordinator) StartTransaction(from string, xtReq *pb.XTRequest) error {
+func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error {
 	xtID, err := xtReq.XtID()
 	if err != nil {
 		return fmt.Errorf("failed to generate xtID: %w", err)
@@ -143,7 +143,7 @@ func (c *coordinator) StartTransaction(from string, xtReq *pb.XTRequest) error {
 		Msg("Started 2PC transaction")
 
 	// Invoke start callback
-	c.callbackMgr.InvokeStart(from, xtReq)
+	c.callbackMgr.InvokeStart(ctx, from, xtReq)
 
 	return nil
 }

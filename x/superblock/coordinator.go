@@ -413,7 +413,7 @@ func (c *Coordinator) startSCP(ctx context.Context, queuedRequest *queue.QueuedX
 		c.log.Error().Err(err).Msg("Failed to broadcast StartSC message")
 	}
 
-	c.sendStartSCMessages(scpInstance)
+	c.sendStartSCMessages(ctx, scpInstance)
 
 	c.log.Info().
 		Str("xt_id", fmt.Sprintf("%x", scpInstance.XtID)).
@@ -788,7 +788,7 @@ func (c *Coordinator) sendStartSlotMessages(
 	}
 }
 
-func (c *Coordinator) sendStartSCMessages(instance *slot.SCPInstance) {
+func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SCPInstance) {
 	xtIDStr := fmt.Sprintf("%x", instance.XtID)
 
 	// Check if transaction already exists in consensus layer
@@ -802,7 +802,7 @@ func (c *Coordinator) sendStartSCMessages(instance *slot.SCPInstance) {
 		return
 	}
 
-	if err := c.consensusCoord.StartTransaction("superblock-coordinator", instance.Request); err != nil {
+	if err := c.consensusCoord.StartTransaction(ctx, "superblock-coordinator", instance.Request); err != nil {
 		c.log.Error().Err(err).Str("xt_id", xtIDStr).Msg("Failed to start SCP transaction")
 	}
 }
