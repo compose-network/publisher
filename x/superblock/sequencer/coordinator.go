@@ -303,7 +303,11 @@ func (sc *SequencerCoordinator) handleRollBackAndStartSlot(
 }
 
 //nolint:unparam // in progress
-func (sc *SequencerCoordinator) handleStartSC(ctx context.Context, from string, startSC *pb.StartSC) error {
+func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
+	ctx context.Context,
+	from string,
+	startSC *pb.StartSC,
+) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
@@ -322,7 +326,7 @@ func (sc *SequencerCoordinator) handleStartSC(ctx context.Context, from string, 
 		return nil
 	}
 
-	// Enforce StartSC ordering: previous instance must be decided and sequence must be monotonic
+	// Enforce StartSC ordering
 	if sc.scpIntegration.GetActiveCount() > 0 {
 		sc.log.Warn().
 			Uint64("sequence", startSC.XtSequenceNumber).
@@ -358,7 +362,7 @@ func (sc *SequencerCoordinator) handleStartSC(ctx context.Context, from string, 
 		return err
 	}
 
-	// Handle SCP integration
+	// Handle SCP integration (this starts local consensus state)
 	if err := sc.scpIntegration.HandleStartSC(ctx, startSC); err != nil {
 		return err
 	}
@@ -367,7 +371,9 @@ func (sc *SequencerCoordinator) handleStartSC(ctx context.Context, from string, 
 	myTxs := sc.extractMyTransactions(startSC.XtRequest)
 
 	var voteResult = true
+	var circMessages []*pb.CIRCMessage
 
+	// Simulate if we have transactions
 	if sc.callbacks.SimulateAndVote != nil && len(myTxs) > 0 {
 		success, err := sc.callbacks.SimulateAndVote(ctx, startSC.XtRequest, xtID)
 		if err != nil {
@@ -376,14 +382,37 @@ func (sc *SequencerCoordinator) handleStartSC(ctx context.Context, from string, 
 		} else {
 			voteResult = success
 		}
+
+		// After simulation, collect any CIRC messages that were generated
+		if state, exists := sc.consensusCoord.GetState(xtID); exists {
+			for _, msgs := range state.CIRCMessages {
+				circMessages = append(circMessages, msgs...)
+			}
+		}
 	} else if len(myTxs) > 0 {
-		// TODO: handle this case
+		// No simulation callback but we have transactions - vote true optimistically
 		sc.log.Warn().
 			Str("xt_id", xtID.Hex()).
-			Msg("No simulation callback configured, voting true blindly")
+			Msg("No simulation callback configured, voting true optimistically")
 	}
 
-	// Send vote based on a simulation result
+	// Send CIRC messages to peers if we have any
+	if sc.callbacks.SendCIRC != nil && len(circMessages) > 0 {
+		for _, circ := range circMessages {
+			if err := sc.callbacks.SendCIRC(ctx, circ); err != nil {
+				sc.log.Error().
+					Err(err).
+					Str("dest", fmt.Sprintf("%x", circ.DestinationChain)).
+					Msg("Failed to send CIRC to peer")
+			}
+		}
+		sc.log.Info().
+			Str("xt_id", xtID.Hex()).
+			Int("count", len(circMessages)).
+			Msg("Sent CIRC messages to peers")
+	}
+
+	// Send vote to SP
 	vote := &pb.Vote{
 		SenderChainId: sc.chainID,
 		XtId:          xtID,
@@ -403,7 +432,7 @@ func (sc *SequencerCoordinator) handleStartSC(ctx context.Context, from string, 
 	sc.log.Info().
 		Str("xt_id", xtID.Hex()).
 		Bool("vote", voteResult).
-		Msg("Sent vote to SP based on simulation")
+		Msg("Sent vote to SP")
 
 	return nil
 }

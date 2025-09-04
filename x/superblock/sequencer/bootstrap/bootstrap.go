@@ -169,6 +169,11 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 		log:         log,
 		cfg:         cfg,
 	}
+
+	coord.SetCallbacks(sequencer.CoordinatorCallbacks{
+		SendCIRC: rt.SendCIRC,
+	})
+
 	return rt, nil
 }
 

@@ -22,6 +22,7 @@ type CoordinatorCallbacks struct {
 	OnBlockReady        func(ctx context.Context, block *pb.L2Block, xtIDs []*pb.XtID) error
 	OnStateTransition   func(from, to State, slot uint64, reason string)
 
+	SendCIRC func(ctx context.Context, circ *pb.CIRCMessage) error
 	// TODO: new interface for simulation and voting?
 	SimulateAndVote func(ctx context.Context, xtReq *pb.XTRequest, xtID *pb.XtID) (bool, error)
 }
