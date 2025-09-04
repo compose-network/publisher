@@ -19,7 +19,7 @@ type coordinator struct {
 	config       Config
 	stateManager *StateManager
 	callbackMgr  *CallbackManager
-	metrics      *Metrics
+	metrics      MetricsRecorder
 	log          zerolog.Logger
 
 	// Track committed xTs already sent with a block to avoid duplicates
@@ -29,6 +29,12 @@ type coordinator struct {
 
 // New creates a new coordinator instance
 func New(log zerolog.Logger, config Config) Coordinator {
+	return NewWithMetrics(log, config, NewMetrics())
+}
+
+// NewWithMetrics creates a new coordinator instance with custom metrics recorder
+// TODO: check best practices for metrics recorder
+func NewWithMetrics(log zerolog.Logger, config Config, metrics MetricsRecorder) Coordinator {
 	logger := log.With().
 		Str("component", "consensus-coordinator").
 		Str("role", config.Role.String()).
@@ -39,7 +45,7 @@ func New(log zerolog.Logger, config Config) Coordinator {
 		config:       config,
 		stateManager: NewStateManager(),
 		callbackMgr:  NewCallbackManager(30*time.Second, logger),
-		metrics:      NewMetrics(),
+		metrics:      metrics,
 		log:          logger,
 		sentMap:      make(map[string]bool),
 	}
