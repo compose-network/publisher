@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -219,9 +218,17 @@ func (sp *SuperblockPublisher) handleVote(ctx context.Context, from string, msg 
 		Bool("vote", payload.Vote.Vote).
 		Msg("Routing vote to coordinator")
 
-	chainID := hex.EncodeToString(payload.Vote.SenderChainId)
-	_, err := sp.coordinator.Consensus().RecordVote(payload.Vote.XtId, chainID, payload.Vote.Vote)
-	return err
+	chainID := consensus.ChainKeyBytes(payload.Vote.SenderChainId)
+	decision, err := sp.coordinator.Consensus().RecordVote(payload.Vote.XtId, chainID, payload.Vote.Vote)
+	if err != nil {
+		return err
+	}
+	sp.log.Info().
+		Str("xt_id", payload.Vote.XtId.Hex()).
+		Str("chain", chainID).
+		Str("decision_state", decision.String()).
+		Msg("Vote processed by coordinator")
+	return nil
 }
 
 // Consensus callbacks - route to SBCP coordinator
