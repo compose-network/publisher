@@ -104,9 +104,10 @@ func (a *App) initialize() error {
 	}
 
 	coordinatorConfig := superblock.DefaultConfig()
+	// TODO: Relax slot timing for debug to give SBCP more room to finish
 	coordinatorConfig.Slot = slot.Config{
-		Duration:    12 * time.Second,
-		SealCutover: 2.0 / 3.0,
+		Duration:    20 * time.Second,
+		SealCutover: 0.90,                            // seal near end of slot
 		GenesisTime: time.Now().Add(5 * time.Second), // mock, in 5 seconds
 	}
 	coordinatorConfig.Queue = queue.Config{

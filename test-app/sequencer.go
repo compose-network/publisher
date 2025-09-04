@@ -64,13 +64,14 @@ func NewSequencer(name string, chainID []byte, spAddr string, log zerolog.Logger
 
 	// Bootstrap SBCP runtime
 	rt, err := bootstrap.Setup(context.Background(), bootstrap.Config{
-		ChainID:         chainID,
-		SPAddr:          spAddr,
-		PeerAddrs:       peers,
-		P2PListenAddr:   p2pListen,
-		Log:             s.log,
-		SlotDuration:    12 * time.Second,
-		SlotSealCutover: 2.0 / 3.0,
+		ChainID:       chainID,
+		SPAddr:        spAddr,
+		PeerAddrs:     peers,
+		P2PListenAddr: p2pListen,
+		Log:           s.log,
+		// Relaxed timing for debugging SBCP end-to-end
+		SlotDuration:    20 * time.Second,
+		SlotSealCutover: 0.90,
 	})
 	if err != nil {
 		s.log.Fatal().Err(err).Msg("bootstrap setup failed")
