@@ -6,7 +6,7 @@ import { DeployAll } from "./DeployAll.sol";
 
 contract DeployAllRollup is Script, DeployAll {
     function run() external {
-        if (block.chainid != 11111) {
+        if (block.chainid != 77777) {
             revert("This script is only for Rollup A with L1 Hoodi");
         }
 
