@@ -442,17 +442,27 @@ func (sc *SequencerCoordinator) extractMyTransactions(xtReq *pb.XTRequest) [][]b
 	return myTxs
 }
 
-//nolint:unparam // in progress
+//nolint:unparam,gocyclo // in progress
 func (sc *SequencerCoordinator) handleRequestSeal(ctx context.Context, from string, requestSeal *pb.RequestSeal) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
-	if requestSeal.Slot != sc.currentSlot {
+	if requestSeal.Slot < sc.currentSlot {
 		sc.log.Warn().
 			Uint64("msg_slot", requestSeal.Slot).
 			Uint64("current_slot", sc.currentSlot).
-			Msg("RequestSeal for wrong slot")
+			Msg("RequestSeal for old slot")
 		return nil
+	}
+
+	// If RequestSeal is for a newer slot, update our slot tracking
+	// This can happen if we missed StartSlot messages or during startup
+	if requestSeal.Slot > sc.currentSlot {
+		sc.log.Info().
+			Uint64("msg_slot", requestSeal.Slot).
+			Uint64("current_slot", sc.currentSlot).
+			Msg("Updating slot from RequestSeal message")
+		atomic.StoreUint64(&sc.currentSlot, requestSeal.Slot)
 	}
 
 	// If we are not participating in this slot (no current request/draft), ignore the seal politely
