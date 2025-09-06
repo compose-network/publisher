@@ -42,6 +42,13 @@ type SequencerCoordinator struct {
 	// Runtime state
 	running bool
 	stopCh  chan struct{}
+
+	// Queue StartSC messages that arrive while an SCP instance is active
+	// TODO: rethink
+	pendingStartSCs []struct {
+		from  string
+		start *pb.StartSC
+	}
 }
 
 // NewSequencerCoordinator creates a new sequencer coordinator
@@ -203,13 +210,13 @@ func (sc *SequencerCoordinator) handleStartSlot(startSlot *pb.StartSlot) error {
 	// Reset SCP per-slot tracking
 	sc.scpIntegration.ResetForSlot(startSlot.Slot)
 
-	// Transition to Building-Free
-	err := sc.stateMachine.TransitionTo(
-		StateBuildingFree,
-		startSlot.Slot,
-		"received StartSlot",
-	)
-	if err != nil {
+	// Per spec, StartSlot should be processed regardless of current state.
+	// If not in Waiting, first reset to Waiting; then move to Building-Free.
+	curr := sc.stateMachine.GetCurrentState()
+	if curr != StateWaiting {
+		_ = sc.stateMachine.TransitionTo(StateWaiting, startSlot.Slot, "reset by StartSlot")
+	}
+	if err := sc.stateMachine.TransitionTo(StateBuildingFree, startSlot.Slot, "received StartSlot"); err != nil {
 		return err
 	}
 
@@ -277,11 +284,12 @@ func (sc *SequencerCoordinator) handleRollBackAndStartSlot(
 	sc.scpIntegration.ResetForSlot(rb.CurrentSlot)
 
 	// Transition to Building-Free regardless of previous state
-	if err := sc.stateMachine.TransitionTo(
-		StateBuildingFree,
+	if sc.stateMachine.GetCurrentState() != StateWaiting {
+		_ = sc.stateMachine.TransitionTo(StateWaiting, rb.CurrentSlot, "reset by RollBackAndStartSlot")
+	}
+	if err := sc.stateMachine.TransitionTo(StateBuildingFree,
 		rb.CurrentSlot,
-		"received RollBackAndStartSlot",
-	); err != nil {
+		"received RollBackAndStartSlot"); err != nil {
 		return err
 	}
 
@@ -302,12 +310,10 @@ func (sc *SequencerCoordinator) handleRollBackAndStartSlot(
 	return nil
 }
 
-//nolint:unparam // in progress
-func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
+func (sc *SequencerCoordinator) handleStartSC(
 	ctx context.Context,
 	from string,
-	startSC *pb.StartSC,
-) error {
+	startSC *pb.StartSC) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
@@ -320,17 +326,28 @@ func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
 	}
 
 	if sc.stateMachine.GetCurrentState() != StateBuildingFree {
+		// Queue for later processing once the current SCP instance completes
+		sc.pendingStartSCs = append(sc.pendingStartSCs, struct {
+			from  string
+			start *pb.StartSC
+		}{from: from, start: startSC})
 		sc.log.Warn().
 			Str("state", sc.stateMachine.GetCurrentState().String()).
-			Msg("StartSC received in wrong state")
+			Int("queued", len(sc.pendingStartSCs)).
+			Msg("StartSC received while locked; queued for later")
 		return nil
 	}
 
-	// Enforce StartSC ordering
+	// Enforce StartSC ordering: previous instance must be decided and sequence must be monotonic
 	if sc.scpIntegration.GetActiveCount() > 0 {
+		sc.pendingStartSCs = append(sc.pendingStartSCs, struct {
+			from  string
+			start *pb.StartSC
+		}{from: from, start: startSC})
 		sc.log.Warn().
 			Uint64("sequence", startSC.XtSequenceNumber).
-			Msg("StartSC ignored: previous instance undecided")
+			Int("queued", len(sc.pendingStartSCs)).
+			Msg("StartSC queued: previous instance undecided")
 		return nil
 	}
 
@@ -362,7 +379,7 @@ func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
 		return err
 	}
 
-	// Handle SCP integration (this starts local consensus state)
+	// Handle SCP integration
 	if err := sc.scpIntegration.HandleStartSC(ctx, startSC); err != nil {
 		return err
 	}
@@ -371,9 +388,7 @@ func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
 	myTxs := sc.extractMyTransactions(startSC.XtRequest)
 
 	var voteResult = true
-	var circMessages []*pb.CIRCMessage
 
-	// Simulate if we have transactions
 	if sc.callbacks.SimulateAndVote != nil && len(myTxs) > 0 {
 		success, err := sc.callbacks.SimulateAndVote(ctx, startSC.XtRequest, xtID)
 		if err != nil {
@@ -382,37 +397,14 @@ func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
 		} else {
 			voteResult = success
 		}
-
-		// After simulation, collect any CIRC messages that were generated
-		if state, exists := sc.consensusCoord.GetState(xtID); exists {
-			for _, msgs := range state.CIRCMessages {
-				circMessages = append(circMessages, msgs...)
-			}
-		}
 	} else if len(myTxs) > 0 {
-		// No simulation callback but we have transactions - vote true optimistically
+		// TODO: handle this case
 		sc.log.Warn().
 			Str("xt_id", xtID.Hex()).
-			Msg("No simulation callback configured, voting true optimistically")
+			Msg("No simulation callback configured, voting true blindly")
 	}
 
-	// Send CIRC messages to peers if we have any
-	if sc.callbacks.SendCIRC != nil && len(circMessages) > 0 {
-		for _, circ := range circMessages {
-			if err := sc.callbacks.SendCIRC(ctx, circ); err != nil {
-				sc.log.Error().
-					Err(err).
-					Str("dest", fmt.Sprintf("%x", circ.DestinationChain)).
-					Msg("Failed to send CIRC to peer")
-			}
-		}
-		sc.log.Info().
-			Str("xt_id", xtID.Hex()).
-			Int("count", len(circMessages)).
-			Msg("Sent CIRC messages to peers")
-	}
-
-	// Send vote to SP
+	// Send vote based on a simulation result
 	vote := &pb.Vote{
 		SenderChainId: sc.chainID,
 		XtId:          xtID,
@@ -432,7 +424,7 @@ func (sc *SequencerCoordinator) handleStartSC( //nolint:gocyclo // in progress
 	sc.log.Info().
 		Str("xt_id", xtID.Hex()).
 		Bool("vote", voteResult).
-		Msg("Sent vote to SP")
+		Msg("Sent vote to SP based on simulation")
 
 	return nil
 }
@@ -524,20 +516,27 @@ func (sc *SequencerCoordinator) handleRequestSeal(ctx context.Context, from stri
 		}
 	}
 
-	// Transition to Submission
-	if err := sc.stateMachine.TransitionTo(
-		StateSubmission,
-		requestSeal.Slot,
-		"received RequestSeal",
-	); err != nil {
-		return err
+	// Transition to Submission if not already there; real block sealing/submission
+	// will be handled by the miner and EthAPIBackend once the block is actually built.
+	if sc.stateMachine.GetCurrentState() != StateSubmission {
+		if err := sc.stateMachine.TransitionTo(
+			StateSubmission,
+			requestSeal.Slot,
+			"received RequestSeal",
+		); err != nil {
+			return err
+		}
+	} else {
+		sc.log.Debug().
+			Uint64("slot", requestSeal.Slot).
+			Msg("RequestSeal received while already in Submission; idempotent no-op")
 	}
-
-	// Seal and submit block
-	return sc.sealAndSubmitBlock(ctx, requestSeal.IncludedXts)
+	return nil
 }
 
 // sealAndSubmitBlock seals the current block and submits to SP
+//
+//nolint:unused // in progress
 func (sc *SequencerCoordinator) sealAndSubmitBlock(ctx context.Context, includedXTs [][]byte) error {
 	// Build L2 block
 	l2Block, err := sc.blockBuilder.SealBlock(includedXTs)
@@ -582,7 +581,7 @@ func (sc *SequencerCoordinator) sealAndSubmitBlock(ctx context.Context, included
 	return nil
 }
 
-// State change callback
+// onStateChange handles actions on state transitions
 func (sc *SequencerCoordinator) onStateChange(from, to State, slot uint64, reason string) {
 	// Handle state-specific actions
 	switch to {
@@ -667,17 +666,19 @@ func (sc *SequencerCoordinator) GetStats() map[string]interface{} {
 // BlockLifecycleManager implementation
 
 // OnBlockBuildingStart is called when block building starts
+// TODO: rethink lock, it blocks ethapi engine
 func (sc *SequencerCoordinator) OnBlockBuildingStart(ctx context.Context, slot uint64) error {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-
 	active := 0
 	if sc.scpIntegration != nil {
 		active = sc.scpIntegration.GetActiveCount()
 	}
+	state := "unknown"
+	if sc.stateMachine != nil {
+		state = sc.stateMachine.GetCurrentState().String()
+	}
 	sc.log.Info().
 		Uint64("slot", slot).
-		Str("state", sc.stateMachine.GetCurrentState().String()).
+		Str("state", state).
 		Int("active_scp_instances", active).
 		Msg("Block building started")
 
@@ -712,11 +713,57 @@ func (sc *SequencerCoordinator) OnBlockBuildingComplete(ctx context.Context, blo
 		if sc.consensusCoord != nil {
 			_ = sc.consensusCoord.OnL2BlockCommitted(ctx, block)
 		}
+
+		// Transition back to Waiting after successful sealing
+		if sc.stateMachine.GetCurrentState() == StateSubmission {
+			if err := sc.stateMachine.TransitionTo(StateWaiting, block.Slot, "L2 block submitted"); err != nil {
+				sc.log.Error().Err(err).Msg("Failed to transition to Waiting after block submission")
+			}
+		}
+
+		// Reset block builder for next slot
+		if sc.blockBuilder != nil {
+			sc.blockBuilder.Reset()
+		}
 	} else {
 		sc.log.Warn().
 			Bool("success", success).
 			Msg("Block building completed with issues")
 	}
+	return nil
+}
+
+// OnConsensusDecision is invoked when the underlying 2PC (SCP) reaches a
+// final decision for the active StartSC. It updates the local SCP integration
+// and unblocks any queued StartSC messages.
+func (sc *SequencerCoordinator) OnConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	sc.log.Info().
+		Str("xt_id", xtID.Hex()).
+		Bool("decision", decision).
+		Msg("Processing consensus decision at coordinator")
+
+	if err := sc.scpIntegration.HandleDecision(xtID, decision); err != nil {
+		sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Failed to apply decision to SCP integration")
+		return err
+	}
+
+	// If we returned to Building-Free and have queued StartSCs, process the next one
+	if sc.stateMachine.GetCurrentState() == StateBuildingFree && len(sc.pendingStartSCs) > 0 {
+		next := sc.pendingStartSCs[0]
+		sc.pendingStartSCs = sc.pendingStartSCs[1:]
+		sc.log.Info().
+			Int("remaining", len(sc.pendingStartSCs)).
+			Uint64("slot", sc.currentSlot).
+			Msg("Starting next queued StartSC after decision")
+		// Drop lock while invoking handler to avoid deadlocks and allow nested transitions
+		sc.mu.Unlock()
+		defer sc.mu.Lock()
+		return sc.handleStartSC(ctx, next.from, next.start)
+	}
+
 	return nil
 }
 

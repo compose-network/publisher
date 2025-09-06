@@ -28,7 +28,7 @@ func (s State) String() string {
 	case StateSubmission:
 		return "submission"
 	default:
-		return "unknown"
+		return "unknown" //nolint:goconst // ok
 	}
 }
 
