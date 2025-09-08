@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -857,26 +856,13 @@ func (c *Coordinator) validateL2Blocks(blocks map[string]*pb.L2Block) bool {
 		}
 		// accept blocks that are at or ahead of the requested number.
 		// Reject only if the sequencer submitted an older block than requested.
-		// TODO: rethink
+		// TODO: rethink, parent hash validation too
 		if blk.BlockNumber < req.BlockNumber {
 			c.log.Error().
 				Uint64("expected_min", req.BlockNumber).
 				Uint64("got", blk.BlockNumber).
 				Msg("L2 block number below requested minimum")
 			return false
-		}
-
-		// Parent validation: only enforce if SP requested a non-zero, non-empty parent.
-		if len(req.ParentHash) > 0 {
-			// Treat all-zero parent as "unknown" and skip strict comparison
-			if !isZeroOrEmptyHash(req.ParentHash) {
-				if len(blk.ParentBlockHash) == 0 || string(blk.ParentBlockHash) != string(req.ParentHash) {
-					c.log.Error().
-						Str("chain", fmt.Sprintf("%x", blk.ChainId)).
-						Msg("L2 parent hash does not match requested parent")
-					return false
-				}
-			}
 		}
 	}
 
@@ -1029,15 +1015,4 @@ func (c *Coordinator) handleL2Block(ctx context.Context, from string, l2Block *p
 	}
 
 	return c.stateMachine.ReceiveL2Block(l2Block)
-}
-
-// isZeroOrEmptyHash returns true if b is empty or the 32-byte zero hash.
-func isZeroOrEmptyHash(b []byte) bool {
-	if len(b) == 0 {
-		return true
-	}
-	if len(b) != 32 {
-		return false
-	}
-	return common.BytesToHash(b) == (common.Hash{})
 }
