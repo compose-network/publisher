@@ -58,6 +58,7 @@ type Coordinator interface {
 	GetCurrentSlot() uint64
 	GetState() State
 	GetStats() map[string]interface{}
+	GetActiveSCPInstanceCount() int
 
 	// Consensus access
 	Consensus() consensus.Coordinator
@@ -66,6 +67,11 @@ type Coordinator interface {
 	BlockLifecycleManager
 	TransactionManager
 	CallbackManager
+
+	// Consensus integration (SCP): notify the coordinator about a final decision
+	// so it can update local SCP integration/state machine and unblock queued StartSCs.
+	// TODO: move it, refactor
+	OnConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error
 }
 
 // BlockBuilderInterface for L2 block construction
