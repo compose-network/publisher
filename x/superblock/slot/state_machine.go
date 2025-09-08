@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 type State int
@@ -378,6 +379,22 @@ func (sm *StateMachine) GetTransitionHistory() []StateTransition {
 	result := make([]StateTransition, len(sm.transitionHistory))
 	copy(result, sm.transitionHistory)
 	return result
+}
+
+// SeedLastHead seeds the last known L2 head for a chain. This allows BeginSlot
+// to compute correct L2BlockRequest values (next block number and parent hash)
+// even on the first slot or after restarts.
+func (sm *StateMachine) SeedLastHead(block *pb.L2Block) {
+	if block == nil || len(block.ChainId) == 0 {
+		return
+	}
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	chainIDStr := string(block.ChainId)
+	if prev, ok := sm.lastHeads[chainIDStr]; !ok || prev == nil || block.BlockNumber >= prev.BlockNumber {
+		cp := proto.Clone(block).(*pb.L2Block)
+		sm.lastHeads[chainIDStr] = cp
+	}
 }
 
 func (sm *StateMachine) isValidTransition(from, to State) bool {

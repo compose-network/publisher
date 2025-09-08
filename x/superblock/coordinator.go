@@ -303,6 +303,15 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 		lastHash = lastSuperblock.Hash
 	}
 
+	// Seed state machine with last known L2 heads from store so that
+	// L2BlocksRequest reflects actual chain heads (prevents block-number
+	// mismatches on first/early slots or after restarts).
+	for _, chainID := range activeRollups {
+		if latest, err := c.l2BlockStore.GetLatestL2Block(ctx, chainID); err == nil && latest != nil {
+			c.stateMachine.SeedLastHead(latest)
+		}
+	}
+
 	if err := c.stateMachine.BeginSlot(currentSlot, nextNumber, lastHash, activeRollups); err != nil {
 		return fmt.Errorf("failed to begin slot: %w", err)
 	}
@@ -852,10 +861,14 @@ func (c *Coordinator) validateL2Blocks(blocks map[string]*pb.L2Block) bool {
 				Msg("L2 block number mismatch")
 			return false
 		}
-		if len(blk.ParentBlockHash) == 0 || len(req.ParentHash) == 0 ||
-			string(blk.ParentBlockHash) != string(req.ParentHash) {
-			c.log.Error().Msg("L2 parent hash does not match requested parent")
-			return false
+
+		if len(req.ParentHash) > 0 {
+			if len(blk.ParentBlockHash) == 0 || string(blk.ParentBlockHash) != string(req.ParentHash) {
+				c.log.Error().
+					Str("chain", fmt.Sprintf("%x", blk.ChainId)).
+					Msg("L2 parent hash does not match requested parent")
+				return false
+			}
 		}
 	}
 
