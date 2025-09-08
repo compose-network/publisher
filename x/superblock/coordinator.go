@@ -455,15 +455,6 @@ func (c *Coordinator) buildSuperblock(ctx context.Context, slotNumber uint64) er
 	l2Blocks := c.stateMachine.GetReceivedL2Blocks()
 	includedXTs := c.stateMachine.GetIncludedXTs()
 
-	// Guard: avoid building/publishing empty superblocks.
-	// TODO: rethink
-	if len(l2Blocks) == 0 {
-		c.log.Warn().
-			Uint64("slot", slotNumber).
-			Msg("No L2 blocks received; failing slot instead of publishing empty superblock")
-		return c.failSlot(slotNumber, "no L2 blocks")
-	}
-
 	if !c.validateL2Blocks(l2Blocks) {
 		return c.failSlot(slotNumber, "invalid L2 blocks")
 	}

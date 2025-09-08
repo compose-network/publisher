@@ -229,7 +229,7 @@ func TestBasicValidator_ValidateL2Block(t *testing.T) {
 			errMsg:  "missing chain ID",
 		},
 		{
-			name: "zero block number returns error",
+			name: "zero block number is valid (genesis block)",
 			l2Block: &pb.L2Block{
 				Slot:        1,
 				ChainId:     []byte("chain1"),
@@ -237,8 +237,7 @@ func TestBasicValidator_ValidateL2Block(t *testing.T) {
 				BlockHash:   []byte("hash"),
 				Block:       []byte("data"),
 			},
-			wantErr: true,
-			errMsg:  "invalid block number: 0",
+			wantErr: false,
 		},
 		{
 			name: "missing block hash returns error",
@@ -506,13 +505,12 @@ func Test_validateL2BlockRequest(t *testing.T) {
 			errMsg:  "missing chain ID",
 		},
 		{
-			name: "zero block number returns error",
+			name: "zero block number is valid (genesis block)",
 			req: &pb.L2BlockRequest{
 				ChainId:     []byte("chain1"),
 				BlockNumber: 0,
 			},
-			wantErr: true,
-			errMsg:  "invalid block number: 0",
+			wantErr: false,
 		},
 	}
 
