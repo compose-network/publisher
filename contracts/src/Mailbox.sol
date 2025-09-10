@@ -23,22 +23,38 @@ import { console } from "forge-std/console.sol";
  * SSV Labs
  */
 contract Mailbox is IMailbox {
-
-    // Header for message
-    // TODO: check if declaration is okay
-    struct MessageHeader {
-        uint256 chainSrc;
-        uint256 chainDest;
-        address sender;
-        address receiver;
-        uint256 sessionId;
-        bytes label;
-    }
-
     /*
-    STORAGE KEYS:
-    TODO: explain how storage keys may be computed for the get_ethProof call (w link sources if possible)
-    */
+     * STORAGE KEYS:
+     *
+     *   solidity storage consists of slots, each slot is 32 bytes. each slot has a number,
+     *   numbers are distributed sequentially for simple data types and in harder way for complex
+     *
+     *   See https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html
+     *       https://ethereum.stackexchange.com/questions/133473/how-to-calculate-the-location-index-slot-in-storage-of-a-mapping-key
+     *       https://medium.com/@flores.eugenio03/exploring-the-storage-layout-in-solidity-and-how-to-access-state-variables-bf2cbc6f8018
+     *
+     *   --- how to compute slots ---
+     *
+     *   simple vars:
+     *       sequentially assigned (coordinator = slot 0 (0x0), chainId = slot 1 (0x1), etc.)
+     *
+     *   mapping:
+     *       mapping(a => b) someMapping is declared at slot N
+     *       storage key for someMapping[k] = keccak256(abi.encode(a, N))
+     *       ex: `inbox[0x123...]` stored at keccak256(0x123..., 2) since `inbox` is the 3rd var
+     *
+     *   dynamic arrays:
+     *       SomeType[] array at slot N
+     *       slot N stores array length (for array [1,2,3] slot N value would be equal to 3)
+     *       elements start at base = keccak256(abi.encode(N))
+     *       element i is at base + i
+     *       ex: `keyListInbox[0]` stored at keccak256(abi.encode(5)) + 0
+     *
+     *        once you know the slot formula, you can pass the 32-byte
+     *        storage key to eth_getProof to fetch proofs for that variable
+     *
+     *   Feel free to ping me if you have any questions :)
+     */
 
     /// @notice
     address public coordinator;
@@ -58,9 +74,6 @@ contract Mailbox is IMailbox {
     bytes32 public inboxRoot;
     /// @notice Incremental digest for outbox, updated on write.
     bytes32 public outboxRoot;
-
-    error InvalidCoordinator();
-    error MessageNotFound();
 
     modifier onlyCoordinator() {
         if (msg.sender != coordinator) revert InvalidCoordinator();
