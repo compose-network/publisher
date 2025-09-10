@@ -96,4 +96,17 @@ contract Bridge is IBridge {
 
         return (token, amount);
     }
+
+    /// Function to check if ACK is there
+    function checkAck(
+        uint256 chainSrc, // Source chain
+        uint256 chainDest, // Dest chain
+        address sender, // Original sender
+        address receiver, // Original receiver
+        uint256 sessionId, // Session ID
+        address destBridge // Dest Bridge address
+    ) external view returns (bytes memory) {
+        return
+            mailbox.read(chainDest, destBridge, sender, sessionId, "ACK SEND");
+    }
 }
