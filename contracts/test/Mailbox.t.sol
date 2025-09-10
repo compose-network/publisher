@@ -10,7 +10,11 @@ contract MailboxTest is Setup {
 
     /// @dev Tests constructor sets values correctly
     function testConstructor() public {
-        assertEq(mailbox.coordinator(), COORDINATOR, "Coordinator should be set");
+        assertEq(
+            mailbox.coordinator(),
+            COORDINATOR,
+            "Coordinator should be set"
+        );
         assertEq(mailbox.chainId(), chainA, "Chain ID should be set");
         assertEq(mailbox.inboxRoot(), 0, "Initial inbox root should be 0");
         assertEq(mailbox.outboxRoot(), 0, "Initial outbox root should be 0");
@@ -35,7 +39,10 @@ contract MailboxTest is Setup {
         vm.startPrank(DEPLOYER);
 
         vm.expectEmit(true, true, false, true);
-        emit IMailbox.NewOutboxKey(0, mailbox.getKey(chainA, chainB, DEPLOYER, COORDINATOR, 1, "SWAP"));
+        emit IMailbox.NewOutboxKey(
+            0,
+            mailbox.getKey(chainA, chainB, DEPLOYER, COORDINATOR, 1, "SWAP")
+        );
 
         mailbox.write(chainB, COORDINATOR, 1, "SWAP", "hello");
         vm.stopPrank();
@@ -45,7 +52,14 @@ contract MailboxTest is Setup {
         assertTrue(mailbox.createdKeys(key), "Key should be created");
 
         // check header
-        (uint256 hChainSrc, uint256 hChainDest, address hSender, address hReceiver, uint256 hSessionId, bytes memory hLabel) = mailbox.messageHeaderListOutbox(0);
+        (
+            uint256 hChainSrc,
+            uint256 hChainDest,
+            address hSender,
+            address hReceiver,
+            uint256 hSessionId,
+            bytes memory hLabel
+        ) = mailbox.messageHeaderListOutbox(0);
         assertEq(hChainSrc, chainA, "Source chain should match");
         assertEq(hChainDest, chainB, "Dest chain should match");
         assertEq(hSender, DEPLOYER, "Sender should match");
@@ -54,7 +68,11 @@ contract MailboxTest is Setup {
         assertEq(keccak256(hLabel), keccak256("SWAP"), "Label should match");
 
         bytes32 expectedRoot = keccak256(abi.encode(0, key, "hello"));
-        assertEq(mailbox.outboxRoot(), expectedRoot, "Outbox root should match");
+        assertEq(
+            mailbox.outboxRoot(),
+            expectedRoot,
+            "Outbox root should match"
+        );
     }
 
     /// @dev Tests writing a single message to inbox by coordinator
@@ -62,7 +80,10 @@ contract MailboxTest is Setup {
         vm.startPrank(COORDINATOR);
 
         vm.expectEmit(true, true, false, true);
-        emit IMailbox.NewInboxKey(0, mailbox.getKey(chainB, chainA, DEPLOYER, COORDINATOR, 1, "SWAP"));
+        emit IMailbox.NewInboxKey(
+            0,
+            mailbox.getKey(chainB, chainA, DEPLOYER, COORDINATOR, 1, "SWAP")
+        );
 
         mailbox.putInbox(chainB, DEPLOYER, COORDINATOR, 1, "SWAP", "salut");
         vm.stopPrank();
@@ -71,7 +92,14 @@ contract MailboxTest is Setup {
         assertEq(mailbox.inbox(key), "salut", "The message should match");
         assertTrue(mailbox.createdKeys(key), "Key should be created");
 
-        (uint256 hChainSrc, uint256 hChainDest, address hSender, address hReceiver, uint256 hSessionId, bytes memory hLabel) = mailbox.messageHeaderListInbox(0);
+        (
+            uint256 hChainSrc,
+            uint256 hChainDest,
+            address hSender,
+            address hReceiver,
+            uint256 hSessionId,
+            bytes memory hLabel
+        ) = mailbox.messageHeaderListInbox(0);
         assertEq(hChainSrc, chainB, "Source chain should match");
         assertEq(hChainDest, chainA, "Dest chain should match");
         assertEq(hSender, DEPLOYER, "Sender should match");
@@ -90,18 +118,32 @@ contract MailboxTest is Setup {
         vm.startPrank(DEPLOYER);
 
         vm.expectEmit(true, true, false, true);
-        emit IMailbox.NewOutboxKey(1, mailbox.getKey(chainA, chainB, DEPLOYER, COORDINATOR, 2, "SWAP"));
+        emit IMailbox.NewOutboxKey(
+            1,
+            mailbox.getKey(chainA, chainB, DEPLOYER, COORDINATOR, 2, "SWAP")
+        );
 
         mailbox.write(chainB, COORDINATOR, 2, "SWAP", "hello2");
         vm.stopPrank();
 
-        bytes32 key2 = mailbox.getKey(chainA, chainB, DEPLOYER, COORDINATOR, 2, "SWAP");
+        bytes32 key2 = mailbox.getKey(
+            chainA,
+            chainB,
+            DEPLOYER,
+            COORDINATOR,
+            2,
+            "SWAP"
+        );
         assertEq(mailbox.outbox(key1), "hello", "First message should remain");
         assertEq(mailbox.outbox(key2), "hello2", "Second message should match");
 
         bytes32 root1 = keccak256(abi.encode(0, key1, "hello"));
         bytes32 expectedRoot2 = keccak256(abi.encode(root1, key2, "hello2"));
-        assertEq(mailbox.outboxRoot(), expectedRoot2, "Outbox root should be chained");
+        assertEq(
+            mailbox.outboxRoot(),
+            expectedRoot2,
+            "Outbox root should be chained"
+        );
     }
 
     /// @dev Tests writing multiple messages to inbox
@@ -111,24 +153,44 @@ contract MailboxTest is Setup {
         vm.startPrank(COORDINATOR);
 
         vm.expectEmit(true, true, false, true);
-        emit IMailbox.NewInboxKey(1, mailbox.getKey(chainB, chainA, DEPLOYER, COORDINATOR, 2, "SWAP"));
+        emit IMailbox.NewInboxKey(
+            1,
+            mailbox.getKey(chainB, chainA, DEPLOYER, COORDINATOR, 2, "SWAP")
+        );
 
         mailbox.putInbox(chainB, DEPLOYER, COORDINATOR, 2, "SWAP", "salut2");
         vm.stopPrank();
 
-        bytes32 key2 = mailbox.getKey(chainB, chainA, DEPLOYER, COORDINATOR, 2, "SWAP");
+        bytes32 key2 = mailbox.getKey(
+            chainB,
+            chainA,
+            DEPLOYER,
+            COORDINATOR,
+            2,
+            "SWAP"
+        );
         assertEq(mailbox.inbox(key1), "salut", "First message should remain");
         assertEq(mailbox.inbox(key2), "salut2", "Second message should match");
 
         bytes32 root1 = keccak256(abi.encode(0, key1, "salut"));
         bytes32 expectedRoot2 = keccak256(abi.encode(root1, key2, "salut2"));
-        assertEq(mailbox.inboxRoot(), expectedRoot2, "Inbox root should be chained");
+        assertEq(
+            mailbox.inboxRoot(),
+            expectedRoot2,
+            "Inbox root should be chained"
+        );
     }
 
     /// @dev Tests reading a message from inbox
     function testRead() public {
         testWriteInboxSingle();
-        bytes memory data = mailbox.read(chainB, DEPLOYER, COORDINATOR, 1, "SWAP");
+        bytes memory data = mailbox.read(
+            chainB,
+            DEPLOYER,
+            COORDINATOR,
+            1,
+            "SWAP"
+        );
         assertEq(data, "salut", "Should match the read message");
     }
 
@@ -136,7 +198,13 @@ contract MailboxTest is Setup {
     function testReadEmptyCreated() public {
         vm.prank(COORDINATOR);
         mailbox.putInbox(chainB, DEPLOYER, COORDINATOR, 1, "SWAP", "");
-        bytes memory data = mailbox.read(chainB, DEPLOYER, COORDINATOR, 1, "SWAP");
+        bytes memory data = mailbox.read(
+            chainB,
+            DEPLOYER,
+            COORDINATOR,
+            1,
+            "SWAP"
+        );
         assertEq(data, "", "Should return empty message");
     }
 
@@ -170,7 +238,14 @@ contract MailboxTest is Setup {
     function testComputeKey() public {
         testWriteInboxSingle();
         bytes32 computed = mailbox.computeKey(0);
-        bytes32 expected = mailbox.getKey(chainB, chainA, DEPLOYER, COORDINATOR, 1, "SWAP");
+        bytes32 expected = mailbox.getKey(
+            chainB,
+            chainA,
+            DEPLOYER,
+            COORDINATOR,
+            1,
+            "SWAP"
+        );
         assertEq(computed, expected, "Computed key should match");
     }
 
@@ -182,10 +257,35 @@ contract MailboxTest is Setup {
 
     /// @dev Tests getKey is consistent
     function testGetKeyPure() public view {
-        bytes32 key1 = mailbox.getKey(1, 2, address(0xA), address(0xB), 1, "LABEL");
-        bytes32 key2 = mailbox.getKey(1, 2, address(0xA), address(0xB), 1, "LABEL");
+        bytes32 key1 = mailbox.getKey(
+            1,
+            2,
+            address(0xA),
+            address(0xB),
+            1,
+            "LABEL"
+        );
+        bytes32 key2 = mailbox.getKey(
+            1,
+            2,
+            address(0xA),
+            address(0xB),
+            1,
+            "LABEL"
+        );
         assertEq(key1, key2, "Keys should be the same");
-        bytes32 keyDiff = mailbox.getKey(1, 2, address(0xA), address(0xB), 1, "DIFF");
-        assertNotEq(key1, keyDiff, "Different labels should give different keys");
+        bytes32 keyDiff = mailbox.getKey(
+            1,
+            2,
+            address(0xA),
+            address(0xB),
+            1,
+            "DIFF"
+        );
+        assertNotEq(
+            key1,
+            keyDiff,
+            "Different labels should give different keys"
+        );
     }
 }
