@@ -67,9 +67,9 @@ contract Mailbox is IMailbox {
     /// @notice
     mapping(bytes32 key => bool used) public createdKeys;
     /// @notice
-    MessageHeader[] public keyListInbox; // TODO: name mismatched with type
+    MessageHeader[] public messageHeaderListInbox;
     /// @notice
-    MessageHeader[] public keyListOutbox; // TODO: name mismatched with type
+    MessageHeader[] public messageHeaderListOutbox;
     /// @notice Incremental digest for inbox, updated on putInbox.
     bytes32 public inboxRoot;
     /// @notice Incremental digest for outbox, updated on write.
@@ -87,19 +87,46 @@ contract Mailbox is IMailbox {
         coordinator = _coordinator;
         chainId = _chainId;
     }
-
+    // clears inbox + createdKeys + headers (complete storage wipe)
+    // will be helpful to test eth_getProof/eth_getStorageAt functionality
     function clear() public onlyCoordinator {
-        for (uint256 i = 0; i < keyListInbox.length; i++) {
-            bytes32 key = keyListInbox[i];
+        for (uint256 i = 0; i < messageHeaderListInbox.length; i++) {
+            MessageHeader storage m = messageHeaderListInbox[i];
+
+            bytes32 key = keccak256(
+                abi.encodePacked(
+                    m.chainSrc,
+                    m.chainDest,
+                    m.sender,
+                    m.receiver,
+                    m.sessionId,
+                    m.label
+                )
+            );
             delete inbox[key];
+            delete createdKeys[key];
+            delete messageHeaderListInbox[i];
         }
-        for (uint256 i = 0; i < keyListOutbox.length; i++) {
-            bytes32 key = keyListOutbox[i];
-            delete outbox[key];
+        delete messageHeaderListInbox;
+
+        for (uint256 j = 0; j < messageHeaderListOutbox.length; j++) {
+            MessageHeader storage m2 = messageHeaderListOutbox[j];
+
+            bytes32 key2 = keccak256(
+                abi.encodePacked(
+                    m2.chainSrc,
+                    m2.chainDest,
+                    m2.sender,
+                    m2.receiver,
+                    m2.sessionId,
+                    m2.label
+                )
+            );
+            delete outbox[key2];
+            delete createdKeys[key2];
+            delete messageHeaderListOutbox[j];
         }
-        // reset the keys too
-        delete keyListInbox;
-        delete keyListOutbox;
+        delete messageHeaderListOutbox;
 
         inboxRoot = 0;
         outboxRoot = 0;
@@ -122,7 +149,14 @@ contract Mailbox is IMailbox {
         bytes calldata label
     ) public pure returns (bytes32 key) {
         key = keccak256(
-            abi.encodePacked(chainSrc, chainDest, sender, receiver, sessionId, label)
+            abi.encodePacked(
+                chainSrc,
+                chainDest,
+                sender,
+                receiver,
+                sessionId,
+                label
+            )
         );
     }
 
@@ -141,7 +175,14 @@ contract Mailbox is IMailbox {
         uint256 sessionId,
         bytes calldata label
     ) external view returns (bytes memory message) {
-        bytes32 key = getKey(chainSrc, chainId, sender, receiver, sessionId, label);
+        bytes32 key = getKey(
+            chainSrc,
+            chainId,
+            sender,
+            receiver,
+            sessionId,
+            label
+        );
 
         if (inbox[key].length == 0 && !createdKeys[key]) {
             revert MessageNotFound();
@@ -164,12 +205,29 @@ contract Mailbox is IMailbox {
         bytes calldata label,
         bytes calldata data
     ) external {
-        address sender = msg.sender;
-        uint256 chainSrc = chainId;
-        bytes32 key = getKey(chainSrc, chainDest, sender, receiver, sessionId, label);
+        bytes32 key = getKey(
+            chainId,
+            chainDest,
+            msg.sender,
+            receiver,
+            sessionId,
+            label
+        );
         outbox[key] = data;
         createdKeys[key] = true;
-        keyListOutbox.push(key);
+        messageHeaderListOutbox.push(
+            MessageHeader(
+                chainId,
+                chainDest,
+                msg.sender,
+                receiver,
+                sessionId,
+                label
+            )
+        );
+
+        emit NewOutboxKey(messageHeaderListOutbox.length - 1, key);
+
         // update incremental digest
         outboxRoot = keccak256(abi.encode(outboxRoot, key, data));
     }
@@ -190,11 +248,41 @@ contract Mailbox is IMailbox {
         bytes calldata label,
         bytes calldata data
     ) external onlyCoordinator {
-        bytes32 key = getKey(chainSrc, chainId, sender, receiver, sessionId, label);
+        bytes32 key = getKey(
+            chainSrc,
+            chainId,
+            sender,
+            receiver,
+            sessionId,
+            label
+        );
         inbox[key] = data;
         createdKeys[key] = true;
-        keyListInbox.push(key);
+        messageHeaderListInbox.push(
+            MessageHeader(chainSrc, chainId, sender, receiver, sessionId, label)
+        );
+
+        emit NewInboxKey(messageHeaderListInbox.length - 1, key);
+
         // update incremental digest
         inboxRoot = keccak256(abi.encode(inboxRoot, key, data));
+    }
+
+    function computeKey(uint256 id) external view returns (bytes32) {
+        require(id < messageHeaderListInbox.length, "Invalid id");
+
+        MessageHeader storage m = messageHeaderListInbox[id];
+
+        return
+            keccak256(
+                abi.encodePacked(
+                    m.chainSrc,
+                    m.chainDest,
+                    m.sender,
+                    m.receiver,
+                    m.sessionId,
+                    m.label
+                )
+            );
     }
 }
