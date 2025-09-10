@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"time"
-
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
@@ -25,6 +25,13 @@ type coordinator struct {
 	// Track committed xTs already sent with a block to avoid duplicates
 	sentMu  sync.Mutex
 	sentMap map[string]bool
+
+	// Lifecycle management
+	started      atomic.Bool
+	stopped      atomic.Bool
+	stopCh       chan struct{}
+	wg           sync.WaitGroup
+	shutdownOnce sync.Once
 }
 
 // New creates a new coordinator instance
@@ -424,10 +431,61 @@ func (c *coordinator) handleTimeout(xtID *pb.XtID) {
 	}
 }
 
-// Shutdown gracefully shuts down the coordinator
-func (c *coordinator) Shutdown() error {
-	c.stateManager.Shutdown()
-	c.log.Info().Msg("Coordinator shutdown complete")
+// Start initializes and starts the coordinator
+func (c *coordinator) Start(ctx context.Context) error {
+	if c.started.Load() {
+		return fmt.Errorf("coordinator already started")
+	}
 
+	c.started.Store(true)
+	c.stopCh = make(chan struct{})
+
+	c.log.Info().
+		Str("node_id", c.config.NodeID).
+		Str("role", c.config.Role.String()).
+		Msg("Consensus coordinator starting")
+
+	c.log.Info().Msg("Consensus coordinator started successfully")
 	return nil
+}
+
+// Stop gracefully stops the coordinator
+func (c *coordinator) Stop(ctx context.Context) error {
+	if c.stopped.Load() {
+		return nil
+	}
+
+	c.log.Info().Msg("Consensus coordinator stopping...")
+	c.stopped.Store(true)
+
+	if c.stopCh != nil {
+		close(c.stopCh)
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		c.wg.Wait()
+		c.shutdownOnce.Do(func() {
+			c.stateManager.Shutdown()
+		})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		c.log.Info().Msg("Consensus coordinator stopped gracefully")
+		return nil
+	case <-ctx.Done():
+		c.log.Warn().Msg("Consensus coordinator stop timed out, forcing shutdown")
+		c.shutdownOnce.Do(func() {
+			c.stateManager.Shutdown()
+		})
+		return ctx.Err()
+	}
+}
+
+// Stopped returns true if the coordinator has been stopped
+func (c *coordinator) Stopped() bool {
+	return c.stopped.Load()
 }

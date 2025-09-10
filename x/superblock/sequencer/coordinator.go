@@ -114,8 +114,9 @@ func (sc *SequencerCoordinator) Start(ctx context.Context) error {
 
 	sc.log.Info().Msg("Starting sequencer coordinator")
 
-	// TODO: consensus coordinator doesn't have Start/Stop methods in current implementation
-	// The consensus is initialized and ready to use
+	if err := sc.consensusCoord.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start consensus coordinator: %w", err)
+	}
 
 	sc.running = true
 
@@ -139,9 +140,12 @@ func (sc *SequencerCoordinator) Stop(ctx context.Context) error {
 	sc.log.Info().Msg("Stopping sequencer coordinator")
 
 	close(sc.stopCh)
-	sc.running = false
 
-	// TODO: consensus coordinator doesn't have Stop method in current implementation
+	if err := sc.consensusCoord.Stop(ctx); err != nil {
+		sc.log.Warn().Err(err).Msg("Failed to stop consensus coordinator gracefully")
+	}
+
+	sc.running = false
 
 	sc.log.Info().Msg("Sequencer coordinator stopped")
 	return nil
@@ -621,11 +625,6 @@ func (sc *SequencerCoordinator) onStateChange(from, to State, slot uint64, reaso
 		if err := sc.minerNotifier.NotifyStateChange(from, to, slot); err != nil {
 			sc.log.Error().Err(err).Msg("Failed to notify miner of state change")
 		}
-	}
-
-	// Execute callback
-	if sc.callbacks.OnStateTransition != nil {
-		sc.callbacks.OnStateTransition(from, to, slot, reason)
 	}
 }
 

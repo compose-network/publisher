@@ -37,7 +37,8 @@ type Coordinator interface {
 	OnL2BlockCommitted(ctx context.Context, block *pb.L2Block) error
 
 	// Lifecycle
-	Shutdown() error
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 }
 
 // Callback function types

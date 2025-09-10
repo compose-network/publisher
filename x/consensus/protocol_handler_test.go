@@ -77,8 +77,13 @@ func (m *mockCoordinator) SetBlockCallback(fn BlockFn) {
 	m.Called(fn)
 }
 
-func (m *mockCoordinator) Shutdown() error {
-	args := m.Called()
+func (m *mockCoordinator) Start(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockCoordinator) Stop(ctx context.Context) error {
+	args := m.Called(ctx)
 	return args.Error(0)
 }
 

@@ -129,11 +129,17 @@ func TestNewCoordinator(t *testing.T) {
 
 func TestStartTransaction(t *testing.T) {
 	coord, callbacks := newTestCoordinator(t, Leader, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	t.Run("happy path", func(t *testing.T) {
 		xtReq, xtID := newTestXTRequest(t, []uint64{1, 2})
-		err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		require.NoError(t, err)
 
 		state, exists := coord.GetState(xtID)
@@ -149,18 +155,18 @@ func TestStartTransaction(t *testing.T) {
 
 	t.Run("already exists", func(t *testing.T) {
 		xtReq, _ := newTestXTRequest(t, []uint64{3})
-		err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		require.NoError(t, err)
 
 		// Try to start again
-		err = coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+		err = coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
 	})
 
 	t.Run("no chains", func(t *testing.T) {
 		xtReq, _ := newTestXTRequest(t, []uint64{})
-		err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no participating chains")
 	})
@@ -168,10 +174,16 @@ func TestStartTransaction(t *testing.T) {
 
 func TestRecordVote(t *testing.T) {
 	coord, _ := newTestCoordinator(t, Leader, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	xtReq, xtID := newTestXTRequest(t, []uint64{1, 2})
-	err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	t.Run("valid vote", func(t *testing.T) {
@@ -205,11 +217,17 @@ func TestRecordVote(t *testing.T) {
 
 func TestTwoPC_Leader_Commit(t *testing.T) {
 	coord, callbacks := newTestCoordinator(t, Leader, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	chains := []uint64{1, 2}
 	xtReq, xtID := newTestXTRequest(t, chains)
-	err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	// All participants vote true
@@ -235,11 +253,17 @@ func TestTwoPC_Leader_Commit(t *testing.T) {
 
 func TestTwoPC_Leader_Abort(t *testing.T) {
 	coord, callbacks := newTestCoordinator(t, Leader, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	chains := []uint64{1, 2}
 	xtReq, xtID := newTestXTRequest(t, chains)
-	err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	// One participant votes false
@@ -267,11 +291,17 @@ func TestTwoPC_Leader_Abort(t *testing.T) {
 
 func TestTwoPC_Leader_Timeout(t *testing.T) {
 	coord, callbacks := newTestCoordinator(t, Leader, 50*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	chains := []uint64{1, 2}
 	xtReq, xtID := newTestXTRequest(t, chains)
-	err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	// Only one participant votes
@@ -294,11 +324,17 @@ func TestTwoPC_Leader_Timeout(t *testing.T) {
 
 func TestTwoPC_Follower(t *testing.T) {
 	coord, callbacks := newTestCoordinator(t, Follower, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	chains := []uint64{1, 2}
 	xtReq, xtID := newTestXTRequest(t, chains)
-	err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	t.Run("vote does not decide", func(t *testing.T) {
@@ -345,11 +381,17 @@ func TestTwoPC_Follower(t *testing.T) {
 
 func TestCIRCMessageHandling(t *testing.T) {
 	coord, _ := newTestCoordinator(t, Leader, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	chains := []uint64{1, 2}
 	xtReq, xtID := newTestXTRequest(t, chains)
-	err := coord.StartTransaction(context.Background(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	circMsg := &pb.CIRCMessage{
@@ -398,11 +440,17 @@ func TestCIRCMessageHandling(t *testing.T) {
 
 func TestOnBlockCommitted(t *testing.T) {
 	coord, callbacks := newTestCoordinator(t, Leader, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	// Committed
 	xtReq1, xtID1 := newTestXTRequest(t, []uint64{1, 2})
-	err := coord.StartTransaction(context.Background(), "s1", xtReq1)
+	err := coord.StartTransaction(t.Context(), "s1", xtReq1)
 	require.NoError(t, err)
 	_, err = coord.RecordVote(xtID1, ChainKeyUint64(1), true)
 	require.NoError(t, err)
@@ -411,18 +459,18 @@ func TestOnBlockCommitted(t *testing.T) {
 
 	// Aborted
 	xtReq2, xtID2 := newTestXTRequest(t, []uint64{3})
-	err = coord.StartTransaction(context.Background(), "s2", xtReq2)
+	err = coord.StartTransaction(t.Context(), "s2", xtReq2)
 	require.NoError(t, err)
 	_, err = coord.RecordVote(xtID2, ChainKeyUint64(3), false)
 	require.NoError(t, err) // now aborted
 
 	// Undecided
 	xtReq3, _ := newTestXTRequest(t, []uint64{4})
-	err = coord.StartTransaction(context.Background(), "s3", xtReq3)
+	err = coord.StartTransaction(t.Context(), "s3", xtReq3)
 	require.NoError(t, err)
 
 	block := types.NewBlock(&types.Header{Number: big.NewInt(1)}, &types.Body{}, nil, nil)
-	err = coord.OnBlockCommitted(context.Background(), block)
+	err = coord.OnBlockCommitted(t.Context(), block)
 	require.NoError(t, err)
 
 	time.Sleep(10 * time.Millisecond) // allow callback to run
@@ -435,7 +483,7 @@ func TestOnBlockCommitted(t *testing.T) {
 	require.Len(t, committedIDs, 1)
 	assert.Equal(t, xtID1.Hex(), committedIDs[0].Hex())
 
-	err = coord.OnBlockCommitted(context.Background(), block)
+	err = coord.OnBlockCommitted(t.Context(), block)
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
 	assert.Len(t, callbacks.blocks, 1) // no new block callback
@@ -443,10 +491,16 @@ func TestOnBlockCommitted(t *testing.T) {
 
 func TestOnL2BlockCommitted(t *testing.T) {
 	coord, _ := newTestCoordinator(t, Follower, 100*time.Millisecond)
-	defer coord.Shutdown()
+	defer func() {
+		if !coord.Stopped() {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			coord.Stop(ctx)
+		}
+	}()
 
 	xtReq, xtID := newTestXTRequest(t, []uint64{1})
-	err := coord.StartTransaction(context.Background(), "s1", xtReq)
+	err := coord.StartTransaction(t.Context(), "s1", xtReq)
 	require.NoError(t, err)
 	state, _ := coord.GetState(xtID)
 	state.SetDecision(StateCommit)
@@ -463,7 +517,7 @@ func TestOnL2BlockCommitted(t *testing.T) {
 	assert.False(t, sent)
 
 	// Call the function
-	err = coord.OnL2BlockCommitted(context.Background(), l2Block)
+	err = coord.OnL2BlockCommitted(t.Context(), l2Block)
 	require.NoError(t, err)
 
 	// Check that the xT is marked as sent
@@ -471,4 +525,135 @@ func TestOnL2BlockCommitted(t *testing.T) {
 	sent = coord.sentMap[xtID.Hex()]
 	coord.sentMu.Unlock()
 	assert.True(t, sent)
+}
+
+func TestCoordinatorLifecycle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		role     Role
+		testFunc func(t *testing.T, coord *coordinator)
+	}{
+		{
+			name: "start_and_stop_success",
+			role: Leader,
+			testFunc: func(t *testing.T, coord *coordinator) {
+				ctx := t.Context()
+				assert.False(t, coord.Stopped())
+
+				err := coord.Start(ctx)
+				require.NoError(t, err)
+				assert.False(t, coord.Stopped())
+
+				err = coord.Stop(ctx)
+				require.NoError(t, err)
+				assert.True(t, coord.Stopped())
+			},
+		},
+		{
+			name: "start_twice_fails",
+			role: Follower,
+			testFunc: func(t *testing.T, coord *coordinator) {
+				ctx := t.Context()
+				err := coord.Start(ctx)
+				require.NoError(t, err)
+
+				err = coord.Start(ctx)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "already started")
+			},
+		},
+		{
+			name: "stop_without_start_safe",
+			role: Leader,
+			testFunc: func(t *testing.T, coord *coordinator) {
+				ctx := t.Context()
+				err := coord.Stop(ctx)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "stop_with_timeout",
+			role: Leader,
+			testFunc: func(t *testing.T, coord *coordinator) {
+				err := coord.Start(t.Context())
+				require.NoError(t, err)
+
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+				defer cancel()
+
+				coord.wg.Add(1)
+				go func() {
+					defer coord.wg.Done()
+					time.Sleep(100 * time.Millisecond)
+				}()
+
+				err = coord.Stop(ctx)
+				assert.Error(t, err)
+				assert.Equal(t, context.DeadlineExceeded, err)
+
+				coord.wg.Wait()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			coord, _ := newTestCoordinator(t, tt.role, time.Second)
+			defer func() {
+				if !coord.Stopped() {
+					ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+					defer cancel()
+					coord.Stop(ctx)
+				}
+			}()
+
+			tt.testFunc(t, coord)
+		})
+	}
+}
+
+func TestCoordinatorConcurrentLifecycle(t *testing.T) {
+	t.Parallel()
+
+	coord, _ := newTestCoordinator(t, Leader, time.Second)
+	defer func() {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+		coord.Stop(ctx)
+	}()
+
+	ctx := t.Context()
+
+	var wg sync.WaitGroup
+	errors := make(chan error, 10)
+
+	err := coord.Start(ctx)
+	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := coord.Start(ctx); err != nil {
+				errors <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errors)
+
+	errorCount := 0
+	for err := range errors {
+		assert.Contains(t, err.Error(), "already started")
+		errorCount++
+	}
+	assert.Equal(t, 5, errorCount)
+
+	err = coord.Stop(ctx)
+	require.NoError(t, err)
 }

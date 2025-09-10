@@ -39,7 +39,8 @@ type App struct {
 	httpServer *http.Server
 
 	// Shutdown management
-	shutdownFns []func() error
+	shutdownFns           []func() error
+	coordinatorShutdownFn func(ctx context.Context) error
 
 	cancel context.CancelFunc
 }
@@ -68,7 +69,7 @@ func (a *App) initialize() error {
 		Role:     consensus.Leader,
 	}
 	coordinator := consensus.New(a.log, consensusConfig)
-	a.addShutdownFn(coordinator.Shutdown)
+	a.coordinatorShutdownFn = coordinator.Stop
 
 	transportConfig := transport.Config{}
 	transportConfig.ListenAddr = a.cfg.Server.ListenAddr
@@ -224,7 +225,14 @@ func (a *App) shutdown() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Shutdown HTTP server first
+	// Shutdown consensus coordinator first
+	if a.coordinatorShutdownFn != nil {
+		if err := a.coordinatorShutdownFn(shutdownCtx); err != nil {
+			a.log.Error().Err(err).Msg("Consensus coordinator shutdown error")
+		}
+	}
+
+	// Shutdown HTTP server
 	if a.httpServer != nil {
 		if err := a.httpServer.Shutdown(shutdownCtx); err != nil {
 			a.log.Error().Err(err).Msg("HTTP server shutdown error")
@@ -246,11 +254,6 @@ func (a *App) shutdown() error {
 
 	a.log.Info().Msg("Graceful shutdown complete")
 	return nil
-}
-
-// addShutdownFn adds a function to be called during shutdown.
-func (a *App) addShutdownFn(fn func() error) {
-	a.shutdownFns = append(a.shutdownFns, fn)
 }
 
 // handleHealth responds to health check requests.
