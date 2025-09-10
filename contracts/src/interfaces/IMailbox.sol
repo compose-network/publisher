@@ -16,7 +16,9 @@ interface IMailbox {
 
     error MessageNotFound();
 
+    event NewInboxKey(uint256 indexed index, bytes32 key);
 
+    event NewOutboxKey(uint256 indexed index, bytes32 key);
 
     function read(
         uint256 chainSrc,
