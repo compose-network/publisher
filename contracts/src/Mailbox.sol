@@ -23,6 +23,23 @@ import { console } from "forge-std/console.sol";
  * SSV Labs
  */
 contract Mailbox is IMailbox {
+
+    // Header for message
+    // TODO: check if declaration is okay
+    struct MessageHeader {
+        uint256 chainSrc;
+        uint256 chainDest;
+        address sender;
+        address receiver;
+        uint256 sessionId;
+        bytes label;
+    }
+
+    /*
+    STORAGE KEYS:
+    TODO: explain how storage keys may be computed for the get_ethProof call (w link sources if possible)
+    */
+
     /// @notice
     address public coordinator;
     /// @notice The chain ID of this rollup.
@@ -34,9 +51,9 @@ contract Mailbox is IMailbox {
     /// @notice
     mapping(bytes32 key => bool used) public createdKeys;
     /// @notice
-    bytes32[] public keyListInbox;
+    MessageHeader[] public keyListInbox; // TODO: name mismatched with type
     /// @notice
-    bytes32[] public keyListOutbox;
+    MessageHeader[] public keyListOutbox; // TODO: name mismatched with type
     /// @notice Incremental digest for inbox, updated on putInbox.
     bytes32 public inboxRoot;
     /// @notice Incremental digest for outbox, updated on write.
