@@ -11,11 +11,11 @@ contract MailboxTest is Setup {
     /// @dev Tests constructor sets values correctly
     function testConstructor() public {
         assertEq(
-            mailbox.coordinator(),
+            mailbox.COORDINATOR(),
             COORDINATOR,
             "Coordinator should be set"
         );
-        assertEq(mailbox.chainId(), chainA, "Chain ID should be set");
+        assertEq(mailbox.CHAIN_ID(), chainA, "Chain ID should be set");
         assertEq(mailbox.inboxRoot(), 0, "Initial inbox root should be 0");
         assertEq(mailbox.outboxRoot(), 0, "Initial outbox root should be 0");
     }

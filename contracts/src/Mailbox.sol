@@ -23,6 +23,11 @@ import { console } from "forge-std/console.sol";
  * SSV Labs
  */
 contract Mailbox is IMailbox {
+    /// @notice
+    address public immutable COORDINATOR;
+    /// @notice The chain ID of this rollup.
+    uint256 public immutable CHAIN_ID;
+
     /*
      * STORAGE KEYS:
      *
@@ -36,7 +41,7 @@ contract Mailbox is IMailbox {
      *   --- how to compute slots ---
      *
      *   simple vars:
-     *       sequentially assigned (coordinator = slot 0 (0x0), chainId = slot 1 (0x1), etc.)
+     *       sequentially assigned (inboxRoot = slot 0 (0x0), outboxRoot = slot 1 (0x1), etc.)
      *
      *   mapping:
      *       mapping(a => b) someMapping is declared at slot N
@@ -56,10 +61,10 @@ contract Mailbox is IMailbox {
      *   Feel free to ping me if you have any questions :)
      */
 
-    /// @notice
-    address public coordinator;
-    /// @notice The chain ID of this rollup.
-    uint256 public chainId;
+    /// @notice Incremental digest for inbox, updated on putInbox.
+    bytes32 public inboxRoot;
+    /// @notice Incremental digest for outbox, updated on write.
+    bytes32 public outboxRoot;
     /// @notice
     mapping(bytes32 key => bytes message) public inbox;
     /// @notice
@@ -70,13 +75,9 @@ contract Mailbox is IMailbox {
     MessageHeader[] public messageHeaderListInbox;
     /// @notice
     MessageHeader[] public messageHeaderListOutbox;
-    /// @notice Incremental digest for inbox, updated on putInbox.
-    bytes32 public inboxRoot;
-    /// @notice Incremental digest for outbox, updated on write.
-    bytes32 public outboxRoot;
 
     modifier onlyCoordinator() {
-        if (msg.sender != coordinator) revert InvalidCoordinator();
+        if (msg.sender != COORDINATOR) revert InvalidCoordinator();
         _;
     }
 
@@ -84,8 +85,8 @@ contract Mailbox is IMailbox {
     /// @param _coordinator the address of the coordinator
     /// @param _chainId the ID of this chain/rollup
     constructor(address _coordinator, uint256 _chainId) {
-        coordinator = _coordinator;
-        chainId = _chainId;
+        COORDINATOR = _coordinator;
+        CHAIN_ID = _chainId;
     }
     // clears inbox + createdKeys + headers (complete storage wipe)
     // will be helpful to test eth_getProof/eth_getStorageAt functionality
@@ -177,7 +178,7 @@ contract Mailbox is IMailbox {
     ) external view returns (bytes memory message) {
         bytes32 key = getKey(
             chainSrc,
-            chainId,
+            CHAIN_ID,
             sender,
             receiver,
             sessionId,
@@ -206,7 +207,7 @@ contract Mailbox is IMailbox {
         bytes calldata data
     ) external {
         bytes32 key = getKey(
-            chainId,
+            CHAIN_ID,
             chainDest,
             msg.sender,
             receiver,
@@ -217,7 +218,7 @@ contract Mailbox is IMailbox {
         createdKeys[key] = true;
         messageHeaderListOutbox.push(
             MessageHeader(
-                chainId,
+                CHAIN_ID,
                 chainDest,
                 msg.sender,
                 receiver,
@@ -250,7 +251,7 @@ contract Mailbox is IMailbox {
     ) external onlyCoordinator {
         bytes32 key = getKey(
             chainSrc,
-            chainId,
+            CHAIN_ID,
             sender,
             receiver,
             sessionId,
@@ -259,7 +260,7 @@ contract Mailbox is IMailbox {
         inbox[key] = data;
         createdKeys[key] = true;
         messageHeaderListInbox.push(
-            MessageHeader(chainSrc, chainId, sender, receiver, sessionId, label)
+            MessageHeader(chainSrc, CHAIN_ID, sender, receiver, sessionId, label)
         );
 
         emit NewInboxKey(messageHeaderListInbox.length - 1, key);
