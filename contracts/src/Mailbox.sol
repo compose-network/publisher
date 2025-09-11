@@ -88,50 +88,6 @@ contract Mailbox is IMailbox {
         COORDINATOR = _coordinator;
         CHAIN_ID = _chainId;
     }
-    // clears inbox + createdKeys + headers (complete storage wipe)
-    // will be helpful to test eth_getProof/eth_getStorageAt functionality
-    function clear() public onlyCoordinator {
-        for (uint256 i = 0; i < messageHeaderListInbox.length; i++) {
-            MessageHeader storage m = messageHeaderListInbox[i];
-
-            bytes32 key = keccak256(
-                abi.encodePacked(
-                    m.chainSrc,
-                    m.chainDest,
-                    m.sender,
-                    m.receiver,
-                    m.sessionId,
-                    m.label
-                )
-            );
-            delete inbox[key];
-            delete createdKeys[key];
-            delete messageHeaderListInbox[i];
-        }
-        delete messageHeaderListInbox;
-
-        for (uint256 j = 0; j < messageHeaderListOutbox.length; j++) {
-            MessageHeader storage m2 = messageHeaderListOutbox[j];
-
-            bytes32 key2 = keccak256(
-                abi.encodePacked(
-                    m2.chainSrc,
-                    m2.chainDest,
-                    m2.sender,
-                    m2.receiver,
-                    m2.sessionId,
-                    m2.label
-                )
-            );
-            delete outbox[key2];
-            delete createdKeys[key2];
-            delete messageHeaderListOutbox[j];
-        }
-        delete messageHeaderListOutbox;
-
-        inboxRoot = 0;
-        outboxRoot = 0;
-    }
 
     /// @notice creates the key for the inbox and outbox
     /// @param chainSrc identifier of the source chain
@@ -267,6 +223,51 @@ contract Mailbox is IMailbox {
 
         // update incremental digest
         inboxRoot = keccak256(abi.encode(inboxRoot, key, data));
+    }
+
+    // clears inbox + createdKeys + headers (complete storage wipe)
+    // will be helpful to test eth_getProof/eth_getStorageAt functionality
+    function clear() external onlyCoordinator {
+        for (uint256 i = 0; i < messageHeaderListInbox.length; i++) {
+            MessageHeader storage m = messageHeaderListInbox[i];
+
+            bytes32 key = keccak256(
+                abi.encodePacked(
+                    m.chainSrc,
+                    m.chainDest,
+                    m.sender,
+                    m.receiver,
+                    m.sessionId,
+                    m.label
+                )
+            );
+            delete inbox[key];
+            delete createdKeys[key];
+            delete messageHeaderListInbox[i];
+        }
+        delete messageHeaderListInbox;
+
+        for (uint256 j = 0; j < messageHeaderListOutbox.length; j++) {
+            MessageHeader storage m2 = messageHeaderListOutbox[j];
+
+            bytes32 key2 = keccak256(
+                abi.encodePacked(
+                    m2.chainSrc,
+                    m2.chainDest,
+                    m2.sender,
+                    m2.receiver,
+                    m2.sessionId,
+                    m2.label
+                )
+            );
+            delete outbox[key2];
+            delete createdKeys[key2];
+            delete messageHeaderListOutbox[j];
+        }
+        delete messageHeaderListOutbox;
+
+        inboxRoot = 0;
+        outboxRoot = 0;
     }
 
     function computeKey(uint256 id) external view returns (bytes32) {
