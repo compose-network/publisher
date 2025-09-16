@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"strings"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -81,7 +83,7 @@ func TestPublishSuperblock_SignsAndSends(t *testing.T) {
 	sb := &store.Superblock{
 		Number:     1,
 		Slot:       1,
-		ParentHash: make([]byte, 32),
+		ParentHash: common.HexToHash(strings.Repeat("00", 32)),
 		Timestamp:  time.Now(),
 		L2Blocks:   []*pb.L2Block{},
 	}

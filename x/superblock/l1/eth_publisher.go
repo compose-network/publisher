@@ -102,6 +102,7 @@ func NewEthPublisher(
 
 // PublishSuperblock constructs, signs, and broadcasts a transaction
 // that calls the configured Superblock contract with the encoded superblock data.
+// TODO: with proof should be there
 func (p *EthPublisher) PublishSuperblock(ctx context.Context, superblock *store.Superblock) (*tx.Transaction, error) {
 	p.log.Info().Uint64("superblock_number", superblock.Number).Msg("Building superblock publish transaction")
 
@@ -164,6 +165,87 @@ func (p *EthPublisher) PublishSuperblock(ctx context.Context, superblock *store.
 		Hash:      signed.Hash().Bytes(),
 		Nonce:     nonce,
 		GasPrice:  0, // dynamic fees
+		GasLimit:  gasLimit,
+		Data:      calldata,
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// PublishSuperblockWithProof constructs, signs, and broadcasts a transaction
+// that calls a proof-enabled contract method to publish the superblock + proof.
+func (p *EthPublisher) PublishSuperblockWithProof(
+	ctx context.Context,
+	superblock *store.Superblock,
+	proof []byte,
+) (*tx.Transaction, error) {
+	pb, ok := p.contract.(contracts.ProofBinding)
+	if !ok {
+		return nil, fmt.Errorf("contract binding does not support proofs")
+	}
+
+	p.log.Info().
+		Uint64("superblock_number", superblock.Number).
+		Msg("Building superblock publish-with-proof transaction")
+
+	calldata, err := pb.BuildPublishWithProofCalldata(ctx, superblock, proof)
+	if err != nil {
+		p.log.Error().
+			Err(err).
+			Uint64("superblock_number", superblock.Number).
+			Msg("Failed to build calldata (with proof)")
+		return nil, fmt.Errorf("build calldata: %w", err)
+	}
+
+	from := p.signer.From()
+	to := p.contract.Address()
+
+	nonce, err := p.client.PendingNonceAt(ctx, from)
+	if err != nil {
+		p.log.Error().Err(err).Str("from", from.Hex()).Msg("Failed to fetch nonce")
+		return nil, fmt.Errorf("fetch nonce: %w", err)
+	}
+
+	gasLimit := p.estimateGasLimit(ctx, from, to, calldata)
+	tipCap, feeCap := p.suggestFees(ctx)
+
+	txData := &types.DynamicFeeTx{
+		ChainID:   big.NewInt(int64(p.cfg.ChainID)),
+		Nonce:     nonce,
+		To:        &to,
+		Value:     big.NewInt(0),
+		Gas:       gasLimit,
+		GasTipCap: tipCap,
+		GasFeeCap: feeCap,
+		Data:      calldata,
+	}
+	unsigned := types.NewTx(txData)
+
+	signed, err := p.signer.SignTx(ctx, unsigned)
+	if err != nil {
+		return nil, fmt.Errorf("sign tx: %w", err)
+	}
+
+	if err := p.client.SendTransaction(ctx, signed); err != nil {
+		p.log.Error().Err(err).
+			Str("tx_hash", signed.Hash().Hex()).
+			Uint64("superblock_number", superblock.Number).
+			Msg("Failed to send transaction (with proof)")
+		return nil, fmt.Errorf("send tx: %w", err)
+	}
+
+	p.log.Info().
+		Str("tx_hash", signed.Hash().Hex()).
+		Uint64("nonce", nonce).
+		Uint64("gas_limit", gasLimit).
+		Str("gas_tip_cap", tipCap.String()).
+		Str("gas_fee_cap", feeCap.String()).
+		Uint64("superblock_number", superblock.Number).
+		Msg("Successfully submitted superblock transaction (with proof)")
+
+	return &tx.Transaction{
+		Hash:      signed.Hash().Bytes(),
+		Nonce:     nonce,
+		GasPrice:  0,
 		GasLimit:  gasLimit,
 		Data:      calldata,
 		Timestamp: time.Now(),

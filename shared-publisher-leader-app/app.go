@@ -4,16 +4,22 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	apisrv "github.com/ssvlabs/rollup-shared-publisher/server/api"
+	apimw "github.com/ssvlabs/rollup-shared-publisher/server/api/middleware"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
 	sbadapter "github.com/ssvlabs/rollup-shared-publisher/x/superblock/adapter"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
+	proofshttp "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/http"
+	proofclient "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/prover"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
 	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
@@ -35,8 +41,8 @@ type App struct {
 	publisher publisher.Publisher
 	log       zerolog.Logger
 
-	// HTTP server for metrics and health
-	httpServer *http.Server
+	// API server (HTTP)
+	apiServer *apisrv.Server
 
 	// Shutdown management
 	shutdownFns           []func() error
@@ -116,6 +122,18 @@ func (a *App) initialize() error {
 		RequestExpiration: 30 * time.Second,
 	}
 	coordinatorConfig.L1 = a.cfg.L1
+	coordinatorConfig.Proofs = a.cfg.Proofs
+
+	collectorSvc := collector.NewMemory()
+
+	var proverClient proofs.ProverClient
+	if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
+		pc, err := proofclient.NewHTTPClient(a.cfg.Proofs.Prover.BaseURL, nil, a.log)
+		if err != nil {
+			return fmt.Errorf("failed to create prover client: %w", err)
+		}
+		proverClient = pc
+	}
 
 	pub, err := publisher.New(
 		a.log,
@@ -134,41 +152,45 @@ func (a *App) initialize() error {
 		a.log,
 		coordinator,
 		tcpServer,
+		collectorSvc,
+		proverClient,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create superblock publisher: %w", err)
 	}
 	a.publisher = sbPub
 
-	if a.cfg.Metrics.Enabled {
-		a.setupHTTPServer()
+	// API server (shared HTTP surface)
+	apiCfg := apisrv.Config{
+		ListenAddr:        a.cfg.API.ListenAddr,
+		ReadHeaderTimeout: a.cfg.API.ReadHeaderTimeout,
+		ReadTimeout:       a.cfg.API.ReadTimeout,
+		WriteTimeout:      a.cfg.API.WriteTimeout,
+		IdleTimeout:       a.cfg.API.IdleTimeout,
+		MaxHeaderBytes:    a.cfg.API.MaxHeaderBytes,
 	}
+	s := apisrv.NewServer(apiCfg, a.log)
+	s.Use(apimw.Recover(a.log))
+	s.Use(apimw.Logger(a.log))
+
+	// Health/readiness/stats
+	s.Router.HandleFunc("/health", a.handleHealth).Methods(http.MethodGet)
+	s.Router.HandleFunc("/ready", a.handleReady).Methods(http.MethodGet)
+	s.Router.HandleFunc("/stats", a.handleStats).Methods(http.MethodGet)
+
+	// Metrics
+	if a.cfg.Metrics.Enabled {
+		s.Router.Handle("/metrics", promhttp.HandlerFor(metrics.GetRegistry(), promhttp.HandlerOpts{})).
+			Methods(http.MethodGet)
+	}
+
+	// Proofs API
+	proofHandler := proofshttp.NewHandler(collectorSvc, a.log)
+	proofHandler.RegisterMux(s.Router)
+
+	a.apiServer = s
 
 	return nil
-}
-
-// setupHTTPServer creates an HTTP server for metrics and health endpoints.
-func (a *App) setupHTTPServer() {
-	mux := http.NewServeMux()
-
-	// Health endpoints
-	mux.HandleFunc("/health", a.handleHealth)
-	mux.HandleFunc("/ready", a.handleReady)
-	mux.HandleFunc("/stats", a.handleStats)
-
-	// Metrics endpoint (own registry)
-	if a.cfg.Metrics.Enabled {
-		mux.Handle("/metrics", promhttp.HandlerFor(metrics.GetRegistry(), promhttp.HandlerOpts{}))
-	}
-
-	addr := fmt.Sprintf(":%d", a.cfg.Metrics.Port)
-	a.httpServer = &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
 }
 
 // Run starts the application and blocks until shutdown.
@@ -180,18 +202,16 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to start publisher: %w", err)
 	}
 
-	if a.httpServer != nil {
+	go a.metricsReporter(runCtx)
+
+	// Start API server
+	if a.apiServer != nil {
 		go func() {
-			a.log.Info().
-				Str("addr", a.httpServer.Addr).
-				Msg("Starting HTTP server")
-			if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				a.log.Error().Err(err).Msg("HTTP server error")
+			if err := a.apiServer.Start(runCtx); err != nil {
+				a.log.Error().Err(err).Msg("API server error")
 			}
 		}()
 	}
-
-	go a.metricsReporter(runCtx)
 
 	return a.runWithGracefulShutdown(runCtx)
 }
@@ -229,13 +249,6 @@ func (a *App) shutdown() error {
 	if a.coordinatorShutdownFn != nil {
 		if err := a.coordinatorShutdownFn(shutdownCtx); err != nil {
 			a.log.Error().Err(err).Msg("Consensus coordinator shutdown error")
-		}
-	}
-
-	// Shutdown HTTP server
-	if a.httpServer != nil {
-		if err := a.httpServer.Shutdown(shutdownCtx); err != nil {
-			a.log.Error().Err(err).Msg("HTTP server shutdown error")
 		}
 	}
 

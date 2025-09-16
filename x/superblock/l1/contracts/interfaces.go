@@ -15,3 +15,11 @@ type Binding interface {
 	// BuildPublishCalldata encodes the calldata to publish the given superblock.
 	BuildPublishCalldata(ctx context.Context, superblock *store.Superblock) ([]byte, error)
 }
+
+// ProofBinding extends a regular Binding with a method that encodes
+// a publish call carrying a final ZK proof.
+// TODO: merge later
+type ProofBinding interface {
+	Binding
+	BuildPublishWithProofCalldata(ctx context.Context, superblock *store.Superblock, proof []byte) ([]byte, error)
+}

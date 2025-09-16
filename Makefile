@@ -48,6 +48,9 @@ run: build ## Run the application
 	@echo "Running shared publisher..."
 	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml
 
+smoke: build ## Run smoke test against local API
+	@bash scripts/smoke.sh
+
 run-dev: build ## Run in development mode
 	@echo "Running in development mode..."
 	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml --log-pretty --log-level debug

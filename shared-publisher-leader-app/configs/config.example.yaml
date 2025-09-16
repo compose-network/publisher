@@ -61,6 +61,23 @@ metrics:
   # ENV: METRICS_PATH
   path: /metrics
 
+# HTTP API server (health, metrics, proofs API)
+api:
+  # HTTP listen address for API
+  # ENV: API_LISTEN_ADDR
+  listen_addr: ":8082"
+
+  # Timeouts
+  # ENV: API_READ_HEADER_TIMEOUT, API_READ_TIMEOUT, API_WRITE_TIMEOUT, API_IDLE_TIMEOUT
+  read_header_timeout: 5s
+  read_timeout: 15s
+  write_timeout: 30s
+  idle_timeout: 120s
+
+  # Max header bytes (default 1MB)
+  # ENV: API_MAX_HEADER_BYTES
+  max_header_bytes: 1048576
+
 # Logging configuration
 log:
   # Log level: trace, debug, info, warn, error, fatal, panic
@@ -117,3 +134,49 @@ l1:
   # Optional from address hint
   # ENV: L1_FROM_ADDRESS
   from_address: "0xYourPublisherEOA"
+
+# Proofs pipeline configuration
+# This section configures the generation and verification of cryptographic proofs
+# for the superblocks before they are published on-chain.
+proofs:
+  # Enable or disable the entire proofs pipeline. If false, no proofs will be
+  # generated or required for superblock submission.
+  # ENV: PROOFS_ENABLED
+  enabled: false
+
+  # Configuration for the proof collector, which gathers proofs from different rollups.
+  collector:
+    # If true, the collector will wait for proofs from all registered chains
+    # before considering the collection complete.
+    # ENV: PROOFS_COLLECTOR_REQUIRE_ALL_CHAINS
+    require_all_chains: true
+
+    # The maximum time to wait for all required proofs to be collected.
+    # If the timeout is reached, the collection attempt fails.
+    # ENV: PROOFS_COLLECTOR_WAIT_TIMEOUT
+    wait_timeout: 300s
+
+    # A list of chain IDs that are required to submit proofs. If empty, and
+    # require_all_chains is true, it will expect proofs from all trusted sequencers.
+    # ENV: PROOFS_COLLECTOR_REQUIRED_CHAIN_IDS (comma-separated string)
+    required_chain_ids: []
+
+  # Configuration for the prover client, which interacts with the external
+  # superblock prover service.
+  prover:
+    # The base URL of the superblock prover service.
+    # ENV: PROOFS_PROVER_BASE_URL
+    base_url: "http://superblock-prover:8080"
+
+    # The interval at which to poll the prover service for proof generation status.
+    # ENV: PROOFS_PROVER_POLL_INTERVAL
+    poll_interval: 10s
+
+    # The type of proof to request from the prover (e.g., "groth16", "risczero").
+    # ENV: PROOFS_PROVER_PROOF_TYPE
+    proof_type: "groth16"
+
+  # If true, a valid proof must be successfully generated and verified before
+  # the superblock is submitted to the L1 contract.
+  # ENV: PROOFS_REQUIRE_PROOF
+  require_proof: true

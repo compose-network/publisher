@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -17,6 +18,8 @@ import (
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
 	l1events "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/events"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/tx"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	apicollector "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/registry"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
@@ -45,6 +48,8 @@ type Coordinator struct {
 	consensusCoord consensus.Coordinator
 	transport      transport.Server
 
+	proofs *proofPipeline
+
 	running  bool
 	stopCh   chan struct{}
 	workerWg sync.WaitGroup
@@ -68,6 +73,8 @@ func NewCoordinator(
 	walManager wal.Manager,
 	consensusCoord consensus.Coordinator,
 	transport transport.Server,
+	collector apicollector.Service,
+	prover proofs.ProverClient,
 ) *Coordinator {
 	slotManagerImpl := slot.NewManager(
 		config.Slot.GenesisTime,
@@ -98,6 +105,17 @@ func NewCoordinator(
 
 	c.setupStateCallbacks()
 	c.setupConsensusCallbacks()
+
+	if config.Proofs.Enabled && collector != nil && prover != nil {
+		c.proofs = newProofPipeline(
+			config.Proofs,
+			collector,
+			prover,
+			superblockStore,
+			c.publishWithProof,
+			c.log,
+		)
+	}
 	return c
 }
 
@@ -125,6 +143,9 @@ func (c *Coordinator) Start(ctx context.Context) error {
 	go c.metricsUpdater(ctx)
 	go c.l1EventWatcher(ctx)
 	go c.l1ReceiptPoller(ctx)
+	if c.proofs != nil {
+		c.proofs.Start(ctx)
+	}
 
 	return nil
 }
@@ -145,6 +166,10 @@ func (c *Coordinator) Stop(ctx context.Context) error {
 
 	if c.walManager != nil {
 		return c.walManager.Close()
+	}
+
+	if c.proofs != nil {
+		c.proofs.Stop()
 	}
 
 	return nil
@@ -300,7 +325,7 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 
 	if err == nil && lastSuperblock != nil {
 		nextNumber = lastSuperblock.Number + 1
-		lastHash = lastSuperblock.Hash
+		lastHash = lastSuperblock.Hash.Bytes()
 	}
 
 	// Seed state machine with last known L2 heads from store so that
@@ -459,48 +484,57 @@ func (c *Coordinator) buildSuperblock(ctx context.Context, slotNumber uint64) er
 	}
 
 	superblock := &store.Superblock{
-		Number:      c.currentExecution.NextSuperblockNumber,
-		Slot:        slotNumber,
-		ParentHash:  c.currentExecution.LastSuperblockHash,
-		Timestamp:   time.Now(),
-		L2Blocks:    make([]*pb.L2Block, 0, len(l2Blocks)),
-		IncludedXTs: includedXTs,
-		Status:      store.SuperblockStatusPending,
+		Number:     c.currentExecution.NextSuperblockNumber,
+		Slot:       slotNumber,
+		ParentHash: common.BytesToHash(c.currentExecution.LastSuperblockHash),
+		Timestamp:  time.Now(),
+		L2Blocks:   make([]*pb.L2Block, 0, len(l2Blocks)),
+		Status:     store.SuperblockStatusPending,
 	}
 
 	for _, block := range l2Blocks {
 		superblock.L2Blocks = append(superblock.L2Blocks, block)
 	}
 
-	superblock.MerkleRoot = c.calculateMerkleRoot(superblock.L2Blocks)
-	superblock.Hash = c.calculateSuperblockHash(superblock)
+	superblock.MerkleRoot = common.BytesToHash(c.calculateMerkleRoot(superblock.L2Blocks))
+	if len(includedXTs) > 0 {
+		sbIDs := make([]common.Hash, 0, len(includedXTs))
+		for _, id := range includedXTs {
+			sbIDs = append(sbIDs, common.BytesToHash(id))
+		}
+		superblock.IncludedXTs = sbIDs
+	}
+	superblock.Hash = common.BytesToHash(c.calculateSuperblockHash(superblock))
 
 	if err := c.superblockStore.StoreSuperblock(ctx, superblock); err != nil {
 		return fmt.Errorf("failed to store superblock: %w", err)
 	}
 
-	if tx, err := c.l1Publisher.PublishSuperblock(ctx, superblock); err != nil {
-		c.log.Error().Err(err).Msg("Failed to publish superblock")
-		superblock.Status = store.SuperblockStatusPending
-	} else {
-		superblock.Status = store.SuperblockStatusSubmitted
-		superblock.L1TransactionHash = tx.Hash
-		// persist updated fields (tx hash + status)
-		if err := c.superblockStore.StoreSuperblock(ctx, superblock); err != nil {
-			c.log.Warn().Err(err).Uint64("number", superblock.Number).Msg("Failed to update stored superblock post-publish")
+	if c.proofs != nil {
+		if err := c.proofs.HandleSuperblock(ctx, superblock); err != nil {
+			c.log.Warn().Err(err).Uint64("number", superblock.Number).Msg("Failed to enqueue superblock for proving")
 		}
-		// Track for receipt polling
-		c.l1TrackMu.Lock()
-		c.l1Tracked[superblock.Number] = append([]byte{}, tx.Hash...)
-		c.l1TrackMu.Unlock()
+		if c.config.Proofs.RequireProof {
+			c.log.Info().
+				Uint64("number", superblock.Number).
+				Uint64("slot", slotNumber).
+				Int("l2_blocks", len(superblock.L2Blocks)).
+				Int("included_xts", len(includedXTs)).
+				Msg("Proof required; deferring L1 publish until proof ready")
+			return c.stateMachine.TransitionTo(slot.StateStarting, "proof requested")
+		}
 	}
 
-	c.log.Info().
-		Uint64("number", superblock.Number).
-		Uint64("slot", slotNumber).
-		Int("l2_blocks", len(superblock.L2Blocks)).
-		Int("included_xts", len(includedXTs)).
-		Msg("Built superblock")
+	if err := c.publishSuperblockTx(ctx, superblock, nil); err != nil {
+		c.log.Error().Err(err).Uint64("number", superblock.Number).Msg("Failed to publish superblock")
+	} else {
+		c.log.Info().
+			Uint64("number", superblock.Number).
+			Uint64("slot", slotNumber).
+			Int("l2_blocks", len(superblock.L2Blocks)).
+			Int("included_xts", len(includedXTs)).
+			Msg("Built superblock")
+	}
 
 	return c.stateMachine.TransitionTo(slot.StateStarting, "superblock built")
 }
@@ -950,6 +984,41 @@ func (c *Coordinator) calculateXtID(request *pb.XTRequest) []byte {
 	return xtID.Hash
 }
 
+func (c *Coordinator) publishSuperblockTx(
+	ctx context.Context,
+	sb *store.Superblock,
+	proof []byte,
+) error {
+	var (
+		recorded *tx.Transaction
+		err      error
+	)
+	if len(proof) > 0 {
+		recorded, err = c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof)
+	} else {
+		recorded, err = c.l1Publisher.PublishSuperblock(ctx, sb)
+	}
+	if err != nil {
+		return err
+	}
+
+	sb.Status = store.SuperblockStatusSubmitted
+	sb.L1TransactionHash = common.BytesToHash(recorded.Hash)
+	if err := c.superblockStore.StoreSuperblock(ctx, sb); err != nil {
+		c.log.Warn().Err(err).Uint64("number", sb.Number).Msg("Failed to persist superblock post-publish")
+	}
+
+	c.l1TrackMu.Lock()
+	c.l1Tracked[sb.Number] = append([]byte(nil), recorded.Hash...)
+	c.l1TrackMu.Unlock()
+
+	return nil
+}
+
+func (c *Coordinator) publishWithProof(ctx context.Context, sb *store.Superblock, proof []byte) error {
+	return c.publishSuperblockTx(ctx, sb, proof)
+}
+
 func (c *Coordinator) calculateMerkleRoot(blocks []*pb.L2Block) []byte {
 	if len(blocks) == 0 {
 		return make([]byte, 32)
@@ -990,15 +1059,15 @@ func (c *Coordinator) calculateMerkleRoot(blocks []*pb.L2Block) []byte {
 
 func (c *Coordinator) calculateSuperblockHash(superblock *store.Superblock) []byte {
 	// Header fields: Number || Slot || ParentHash || MerkleRoot
-	header := make([]byte, 0, 8+8+len(superblock.ParentHash)+len(superblock.MerkleRoot))
+	header := make([]byte, 0, 8+8+common.HashLength+common.HashLength)
 	nb := make([]byte, 8)
 	sb := make([]byte, 8)
 	binary.BigEndian.PutUint64(nb, superblock.Number)
 	binary.BigEndian.PutUint64(sb, superblock.Slot)
 	header = append(header, nb...)
 	header = append(header, sb...)
-	header = append(header, superblock.ParentHash...)
-	header = append(header, superblock.MerkleRoot...)
+	header = append(header, superblock.ParentHash.Bytes()...)
+	header = append(header, superblock.MerkleRoot.Bytes()...)
 	return crypto.Keccak256(header)
 }
 

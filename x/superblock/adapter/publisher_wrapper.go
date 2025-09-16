@@ -14,6 +14,8 @@ import (
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
 	l1contracts "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/contracts"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/registry"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
@@ -49,6 +51,8 @@ func WrapPublisher(
 	log zerolog.Logger,
 	consensusCoord consensus.Coordinator,
 	transport transport.Server,
+	collector collector.Service,
+	prover proofs.ProverClient,
 ) (*SuperblockPublisher, error) {
 	registryService := registry.NewMemoryService(log, [][]byte{mockID1, mockID2})
 	l2BlockStore := store.NewMemoryL2BlockStore()
@@ -80,6 +84,8 @@ func WrapPublisher(
 		nil, // wal
 		consensusCoord,
 		transport,
+		collector,
+		prover,
 	)
 
 	wrapper := &SuperblockPublisher{
