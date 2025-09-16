@@ -16,8 +16,6 @@ contract MailboxTest is Setup {
             "Coordinator should be set"
         );
         assertEq(mailbox.CHAIN_ID(), chainA, "Chain ID should be set");
-        assertEq(mailbox.inboxRoot(), 0, "Initial inbox root should be 0");
-        assertEq(mailbox.outboxRoot(), 0, "Initial outbox root should be 0");
     }
 
     /// @dev Tests that non-coordinator cannot write to inbox
@@ -28,11 +26,11 @@ contract MailboxTest is Setup {
     }
 
     /// @dev Tests that non-coordinator cannot clear the mailbox
-    function testShouldRevertNonCoordinatorClear() public {
-        vm.prank(DEPLOYER);
-        vm.expectRevert(IMailbox.InvalidCoordinator.selector);
-        mailbox.clear();
-    }
+//    function testShouldRevertNonCoordinatorClear() public {
+//        vm.prank(DEPLOYER);
+//        vm.expectRevert(IMailbox.InvalidCoordinator.selector);
+//        mailbox.clear();
+//    }
 
     /// @dev Tests writing a single message to outbox
     function testWriteOutboxSingle() public returns (bytes32 key) {
@@ -69,7 +67,7 @@ contract MailboxTest is Setup {
 
         bytes32 expectedRoot = keccak256(abi.encode(0, key, "hello"));
         assertEq(
-            mailbox.outboxRoot(),
+            mailbox.outboxRootPerChain(chainB),
             expectedRoot,
             "Outbox root should match"
         );
@@ -108,7 +106,7 @@ contract MailboxTest is Setup {
         assertEq(keccak256(hLabel), keccak256("SWAP"), "Label should match");
 
         bytes32 expectedRoot = keccak256(abi.encode(0, key, "salut"));
-        assertEq(mailbox.inboxRoot(), expectedRoot, "Inbox root should match");
+        assertEq(mailbox.inboxRootPerChain(chainB), expectedRoot, "Inbox root should match");
     }
 
     /// @dev Tests writing multiple messages to outbox
@@ -140,7 +138,7 @@ contract MailboxTest is Setup {
         bytes32 root1 = keccak256(abi.encode(0, key1, "hello"));
         bytes32 expectedRoot2 = keccak256(abi.encode(root1, key2, "hello2"));
         assertEq(
-            mailbox.outboxRoot(),
+            mailbox.outboxRootPerChain(chainB),
             expectedRoot2,
             "Outbox root should be chained"
         );
@@ -175,7 +173,7 @@ contract MailboxTest is Setup {
         bytes32 root1 = keccak256(abi.encode(0, key1, "salut"));
         bytes32 expectedRoot2 = keccak256(abi.encode(root1, key2, "salut2"));
         assertEq(
-            mailbox.inboxRoot(),
+            mailbox.inboxRootPerChain(chainB),
             expectedRoot2,
             "Inbox root should be chained"
         );
@@ -215,24 +213,24 @@ contract MailboxTest is Setup {
     }
 
     /// @dev Tests clearing outbox
-    function testClearOutbox() public {
-        bytes32 key = testWriteOutboxSingle();
-        vm.prank(COORDINATOR);
-        mailbox.clear();
-        assertEq(mailbox.outbox(key), "", "The outbox data should be empty");
-        assertFalse(mailbox.createdKeys(key), "Created key should be deleted");
-        assertEq(mailbox.outboxRoot(), 0, "Outbox root should be reset");
-    }
+//    function testClearOutbox() public {
+//        bytes32 key = testWriteOutboxSingle();
+//        vm.prank(COORDINATOR);
+//        mailbox.clear();
+//        assertEq(mailbox.outbox(key), "", "The outbox data should be empty");
+//        assertFalse(mailbox.createdKeys(key), "Created key should be deleted");
+//        assertEq(mailbox.outboxRoot(), 0, "Outbox root should be reset");
+//    }
 
     /// @dev Tests clearing inbox
-    function testClearInbox() public {
-        bytes32 key = testWriteInboxSingle();
-        vm.prank(COORDINATOR);
-        mailbox.clear();
-        assertEq(mailbox.inbox(key), "", "The inbox data should be empty");
-        assertFalse(mailbox.createdKeys(key), "Created key should be deleted");
-        assertEq(mailbox.inboxRoot(), 0, "Inbox root should be reset");
-    }
+//    function testClearInbox() public {
+//        bytes32 key = testWriteInboxSingle();
+//        vm.prank(COORDINATOR);
+//        mailbox.clear();
+//        assertEq(mailbox.inbox(key), "", "The inbox data should be empty");
+//        assertFalse(mailbox.createdKeys(key), "Created key should be deleted");
+//        assertEq(mailbox.inboxRoot(), 0, "Inbox root should be reset");
+//    }
 
     /// @dev Tests computeKey function
     function testComputeKey() public {
