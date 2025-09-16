@@ -15,41 +15,37 @@ contract DeployAll is Script {
     function _deployAll() internal returns (string memory) {
         vm.startBroadcast();
 
-        address coordinator = vm.envOr("DEPLOYER_ADDRESS", address(this));
+        address coordinator = vm.envAddress("DEPLOYER_ADDRESS");
 
-        Mailbox mailboxC = new Mailbox(coordinator, block.chainid);
-
-        // mailbox a = 0x33C061304de440B89BC829bD4dC4eF688E5d1Cef
-        // mailbox b = 0xbB6A1eCF93641122E5c76b6978bb4B7304879Dd5
-        // is it the same for rollupA and rollupB?
-        address mailbox = 0xbB6A1eCF93641122E5c76b6978bb4B7304879Dd5;
-        // address mailbox = address(mailboxC);
-        // PingPong pingPong = new PingPong(mailbox);
-        Bridge bridge = new Bridge(mailbox);
-        // MyToken myToken = new MyToken(); // MyToken = 0x6d19CB7639DeB366c334BD69f030A38e226BA6d2
+        Mailbox mailbox = new Mailbox(coordinator, block.chainid);
+        PingPong pingPong = new PingPong(address(mailbox));
+        Bridge bridge = new Bridge(address(mailbox));
+        MyToken myToken = new MyToken();
 
         vm.stopBroadcast();
 
         console.log("Mailbox:  ", address(mailbox));
-        // console.log("PingPong:  ", address(pingPong));
+        console.log("PingPong:  ", address(pingPong));
         console.log("Coordinator:  ", coordinator);
-        // console.log("MyToken:  ", address(myToken));
+        console.log("MyToken:  ", address(myToken));
         console.log("Bridge:  ", address(bridge));
 
-        // return saveToJson(mailbox, pingPong, coordinator, myToken, bridge);
-        return saveToJson(coordinator, bridge);
+        return saveToJson(coordinator, bridge, pingPong, mailbox, myToken);
     }
 
     function saveToJson(
         address coordinator,
-        Bridge bridge
+        Bridge bridge,
+        PingPong pingPong,
+        Mailbox mailbox,
+        MyToken myToken
     ) internal returns (string memory) {
         string memory parent = "parent";
 
         string memory deployed_addresses = "addresses";
-        // vm.serializeAddress(deployed_addresses, "Mailbox", address(mailbox));
-        // vm.serializeAddress(deployed_addresses, "PingPong", address(pingPong));
-        // vm.serializeAddress(deployed_addresses, "MyToken", address(myToken));
+        vm.serializeAddress(deployed_addresses, "Mailbox", address(mailbox));
+        vm.serializeAddress(deployed_addresses, "PingPong", address(pingPong));
+        vm.serializeAddress(deployed_addresses, "MyToken", address(myToken));
         vm.serializeAddress(deployed_addresses, "Bridge", address(bridge));
 
         string memory deployed_addresses_output = vm.serializeAddress(
