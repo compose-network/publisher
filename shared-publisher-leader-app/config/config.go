@@ -167,7 +167,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("l1.from_address", "")
 
 	// Proofs defaults
-	v.SetDefault("proofs.enabled", false)
+	v.SetDefault("proofs.enabled", true)
 	v.SetDefault("proofs.collector.require_all_chains", true)
 	v.SetDefault("proofs.collector.wait_timeout", "300s")
 	v.SetDefault("proofs.collector.required_chain_ids", []uint32{})

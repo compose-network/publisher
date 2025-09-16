@@ -62,7 +62,7 @@ type ProofsConfig struct {
 // DefaultProofsConfig returns sensible defaults.
 func DefaultProofsConfig() ProofsConfig {
 	return ProofsConfig{
-		Enabled: false,
+		Enabled: true,
 		Collector: struct {
 			RequireAllChains bool          `mapstructure:"require_all_chains" yaml:"require_all_chains"`
 			WaitTimeout      time.Duration `mapstructure:"wait_timeout" yaml:"wait_timeout"`
