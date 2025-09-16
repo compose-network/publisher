@@ -48,6 +48,9 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            - name: http2
+              containerPort: {{ .Values.service.port2 }}
+              protocol: TCP
             - name: metrics
               containerPort: {{ .Values.service.metricPort }}
               protocol: TCP
