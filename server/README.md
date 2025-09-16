@@ -45,7 +45,7 @@ Server configuration options:
 
 ```yaml
 api:
-  listen_addr: ":8082"
+  listen_addr: ":8081"
   read_header_timeout: 5s
   read_timeout: 15s
   write_timeout: 30s

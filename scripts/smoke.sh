@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT_DIR/bin/rollup-shared-publisher"
 CFG_DEFAULT="$ROOT_DIR/shared-publisher-leader-app/configs/config.yaml"
 CFG="${1:-$CFG_DEFAULT}"
-API="http://127.0.0.1:8082"
+API="http://127.0.0.1:8081"
 
 echo "[smoke] building binary…"
 make -C "$ROOT_DIR" build >/dev/null

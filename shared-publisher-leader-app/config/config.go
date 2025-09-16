@@ -130,7 +130,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.max_connections", 1000)
 
 	// API defaults (separate HTTP API server)
-	v.SetDefault("api.listen_addr", ":8082")
+	v.SetDefault("api.listen_addr", ":8081")
 	v.SetDefault("api.read_header_timeout", "5s")
 	v.SetDefault("api.read_timeout", "15s")
 	v.SetDefault("api.write_timeout", "30s")
@@ -269,7 +269,7 @@ func Default() *Config {
 			MaxConnections: 1000,
 		},
 		API: APIServerConfig{
-			ListenAddr:        ":8082",
+			ListenAddr:        ":8081",
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       15 * time.Second,
 			WriteTimeout:      30 * time.Second,

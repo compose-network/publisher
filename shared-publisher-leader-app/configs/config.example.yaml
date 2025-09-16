@@ -65,7 +65,7 @@ metrics:
 api:
   # HTTP listen address for API
   # ENV: API_LISTEN_ADDR
-  listen_addr: ":8082"
+  listen_addr: ":8081"
 
   # Timeouts
   # ENV: API_READ_HEADER_TIMEOUT, API_READ_TIMEOUT, API_WRITE_TIMEOUT, API_IDLE_TIMEOUT

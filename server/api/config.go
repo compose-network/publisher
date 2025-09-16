@@ -14,7 +14,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		ListenAddr:        ":8082",
+		ListenAddr:        ":8081",
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
