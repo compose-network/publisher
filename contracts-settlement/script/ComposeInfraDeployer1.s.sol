@@ -41,11 +41,11 @@ contract ComposeInfraDeployer is Script {
         }
 
         address admin = vm.envOr("ADMIN_ADDR", msg.sender);
-        address systemConfig = vm.envAddress("SYSTEM_CONFIG_ADDR"); // TODO: used by optimism, change it
-        uint256 asrFinalityDelay = vm.envOr(
-            "ASR_FINALITY_DELAY_SECONDS",
-            uint256(1 days)
-        );
+        // address systemConfig = vm.envAddress("SYSTEM_CONFIG_ADDR"); // TODO: used by optimism, change it
+        // uint256 asrFinalityDelay = vm.envOr(
+        //     "ASR_FINALITY_DELAY_SECONDS",
+        //     uint256(1 days)
+        // );
 
         // 1) Deploy ProxyAdmin controlled by `admin`.
         ProxyAdmin proxyAdmin = new ProxyAdmin(admin);

@@ -1,0 +1,235 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_l2OutputOracle",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [],
+        "name": "AlreadyInitialized",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "GameNotInProgress",
+        "type": "error"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "enum GameStatus",
+                "name": "status",
+                "type": "uint8"
+            }
+        ],
+        "name": "Resolved",
+        "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "COMPOSE_GAME_TYPE",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "createdAt",
+        "outputs": [
+            {
+                "internalType": "Timestamp",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "extraData",
+        "outputs": [
+            {
+                "internalType": "bytes",
+                "name": "extraData_",
+                "type": "bytes"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "gameCreator",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "gameData",
+        "outputs": [
+            {
+                "internalType": "GameType",
+                "name": "gameType_",
+                "type": "uint32"
+            },
+            {
+                "internalType": "Claim",
+                "name": "rootClaim_",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "bytes",
+                "name": "extraData_",
+                "type": "bytes"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "gameType",
+        "outputs": [
+            {
+                "internalType": "GameType",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "initialize",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "l1Head",
+        "outputs": [
+            {
+                "internalType": "Hash",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "l2SequenceNumber",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "l2SequenceNumber_",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "resolve",
+        "outputs": [
+            {
+                "internalType": "enum GameStatus",
+                "name": "status_",
+                "type": "uint8"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "resolvedAt",
+        "outputs": [
+            {
+                "internalType": "Timestamp",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "rootClaim",
+        "outputs": [
+            {
+                "internalType": "Claim",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "status",
+        "outputs": [
+            {
+                "internalType": "enum GameStatus",
+                "name": "",
+                "type": "uint8"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "version",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "wasRespectedGameTypeWhenCreated",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]

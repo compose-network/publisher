@@ -1,0 +1,13 @@
+{
+  "addresses": {
+    "DisputeGameFactory": "0x6758133e70cd2D6B747a3F5327d07D0618d7E8c1",
+    "ComposeDisputeGame": "0x2b135B61F84b657496D97b12EC96c3275e6C4B2a",
+    "ComposeL2OutputOracle": "0x4F89c496253a0CeFF80620BB1014426bDaf439Ec",
+    "AnchorStateRegistry": "0xD5A3f2A37e14741069760f06fAA334279c7fA73C",
+    "SP1MockVerifier": "0xd2203cf4bBb72AF3cCA64c1fCC56E1d70a0451B9",
+    "ProxyAdmin": "0xC6D1BbA3282F4246Ba4DD3b97885F7f01184702D"
+  },
+  "chainInfo": {
+    "chainId": 560048
+  }
+}
