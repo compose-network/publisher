@@ -1,0 +1,8 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "constructor-syntax": "off"
+  },
+  "plugins": [],
+  "ignorePatterns": ["lib/**"]
+}
