@@ -4,17 +4,22 @@ out = "out"
 libs = ["lib"]
 
 remappings = [
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts",
+    "@optimism/=lib/optimism/packages/contracts-bedrock/",
     "@forge-std/=lib/forge-std/src/",
-    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
-    "@sp1-contracts/=lib/sp1-contracts/contracts",
-    # Optimism Bedrock contracts live in packages/contracts-bedrock
+    "@solady/=lib/solady/src",
+    "@sp1-contracts/=lib/sp1-contracts/contracts/",
+    "@rari-capital/=lib/optimism/packages/contracts-bedrock/lib/",
     "src/libraries/=lib/optimism/packages/contracts-bedrock/src/libraries/",
     "src/L1/=lib/optimism/packages/contracts-bedrock/src/L1/",
     "src/L2/=lib/optimism/packages/contracts-bedrock/src/L2/",
     "src/dispute/=lib/optimism/packages/contracts-bedrock/src/dispute/",
     "src/cannon/=lib/optimism/packages/contracts-bedrock/src/cannon/",
+    "src/universal/=lib/optimism/packages/contracts-bedrock/src/universal/",
     "interfaces/=lib/optimism/packages/contracts-bedrock/interfaces/",
-    "@optimism/=lib/optimism/packages/contracts-bedrock/",
+    "@lib-keccak/=lib/lib-keccak/contracts/lib",
+
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
