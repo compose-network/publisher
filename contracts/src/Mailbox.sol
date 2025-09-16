@@ -23,11 +23,6 @@ import { console } from "forge-std/console.sol";
  * SSV Labs
  */
 contract Mailbox is IMailbox {
-    /// @notice
-    address public immutable COORDINATOR;
-    /// @notice The chain ID of this rollup.
-    uint256 public immutable CHAIN_ID;
-
     /*
      * STORAGE KEYS:
      *
@@ -41,7 +36,7 @@ contract Mailbox is IMailbox {
      *   --- how to compute slots ---
      *
      *   simple vars:
-     *       sequentially assigned (inboxRoot = slot 0 (0x0), outboxRoot = slot 1 (0x1), etc.)
+     *       sequentially assigned (variable1 = slot 0 (0x0), variable2 = slot 1 (0x1), etc.)
      *
      *   mapping:
      *       mapping(a => b) someMapping is declared at slot N
@@ -61,10 +56,19 @@ contract Mailbox is IMailbox {
      *   Feel free to ping me if you have any questions :)
      */
 
-    /// @notice Incremental digest for inbox, updated on putInbox.
-    bytes32 public inboxRoot;
-    /// @notice Incremental digest for outbox, updated on write.
-    bytes32 public outboxRoot;
+    /// @notice
+    address public immutable COORDINATOR;
+    /// @notice The chain ID of this rollup.
+    uint256 public immutable CHAIN_ID;
+    /// Chain-specific inbox and outbox roots
+    /// @notice List of chain IDs with messages in the inbox
+    uint256[] public chainIDsInbox;
+    /// @notice List of chain IDs with messages in the outbox
+    uint256[] public chainIDsOutbox;
+    /// @notice Mapping of chain ID to inbox root
+    mapping(uint256 chainId => bytes32 inboxRoot) public inboxRootPerChain;
+    /// @notice Mapping of chain ID to outbox root
+    mapping(uint256 chainId => bytes32 outboxRoot) public outboxRootPerChain;
     /// @notice
     mapping(bytes32 key => bytes message) public inbox;
     /// @notice
@@ -185,8 +189,13 @@ contract Mailbox is IMailbox {
 
         emit NewOutboxKey(messageHeaderListOutbox.length - 1, key);
 
-        // update incremental digest
-        outboxRoot = keccak256(abi.encode(outboxRoot, key, data));
+        // Update chain-specific outbox root
+        if (outboxRootPerChain[chainDest] == bytes32(0)) {
+            chainIDsOutbox.push(chainDest);
+        }
+        outboxRootPerChain[chainDest] = keccak256(
+            abi.encode(outboxRootPerChain[chainDest], key, data)
+        );
     }
 
     /// @notice write messages to the inbox - onlyCoordinator
@@ -221,13 +230,35 @@ contract Mailbox is IMailbox {
 
         emit NewInboxKey(messageHeaderListInbox.length - 1, key);
 
-        // update incremental digest
-        inboxRoot = keccak256(abi.encode(inboxRoot, key, data));
+        // Update chain-specific inbox root
+        if (inboxRootPerChain[chainSrc] == bytes32(0)) {
+            chainIDsInbox.push(chainSrc);
+        }
+        inboxRootPerChain[chainSrc] = keccak256(
+            abi.encode(inboxRootPerChain[chainSrc], key, data)
+        );
     }
 
-    // clears inbox + createdKeys + headers (complete storage wipe)
-    // will be helpful to test eth_getProof/eth_getStorageAt functionality
-    function clear() external onlyCoordinator {
+    function computeKey(uint256 id) external view returns (bytes32) {
+        require(id < messageHeaderListInbox.length, "Invalid id");
+
+        MessageHeader storage m = messageHeaderListInbox[id];
+
+        return keccak256(
+                abi.encodePacked(
+                    m.chainSrc,
+                    m.chainDest,
+                    m.sender,
+                    m.receiver,
+                    m.sessionId,
+                    m.label
+                )
+            );
+    }
+
+    // @dev only for testing - uncomment and use to clear the storage
+    /**
+    function clear() public onlyCoordinator {
         for (uint256 i = 0; i < messageHeaderListInbox.length; i++) {
             MessageHeader storage m = messageHeaderListInbox[i];
 
@@ -266,25 +297,16 @@ contract Mailbox is IMailbox {
         }
         delete messageHeaderListOutbox;
 
-        inboxRoot = 0;
-        outboxRoot = 0;
+        // Clear chain-specific roots and arrays
+        for (uint256 i = 0; i < chainIDsInbox.length; i++) {
+            delete inboxRootPerChain[chainIDsInbox[i]];
+        }
+        delete chainIDsInbox;
+
+        for (uint256 j = 0; j < chainIDsOutbox.length; j++) {
+            delete outboxRootPerChain[chainIDsOutbox[j]];
+        }
+        delete chainIDsOutbox;
     }
-
-    function computeKey(uint256 id) external view returns (bytes32) {
-        require(id < messageHeaderListInbox.length, "Invalid id");
-
-        MessageHeader storage m = messageHeaderListInbox[id];
-
-        return
-            keccak256(
-                abi.encodePacked(
-                    m.chainSrc,
-                    m.chainDest,
-                    m.sender,
-                    m.receiver,
-                    m.sessionId,
-                    m.label
-                )
-            );
-    }
+    */
 }
