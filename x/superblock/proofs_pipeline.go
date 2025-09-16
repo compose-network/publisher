@@ -226,6 +226,7 @@ func (p *proofPipeline) collectSuperblocks(
 			result = append([]proofs.ProverSuperblock{convertSuperblock(prev)}, result...)
 		}
 	}
+
 	return result
 }
 
@@ -238,6 +239,7 @@ func convertSuperblock(sb *store.Superblock) proofs.ProverSuperblock {
 		MerkleRoot: sb.MerkleRoot.Bytes(),
 		Timestamp:  uint64(sb.Timestamp.Unix()),
 	}
+
 	for _, blk := range sb.L2Blocks {
 		psb.L2Blocks = append(psb.L2Blocks, proofs.ProverL2Block{
 			Slot:            blk.GetSlot(),
@@ -249,12 +251,15 @@ func convertSuperblock(sb *store.Superblock) proofs.ProverSuperblock {
 			Block:           append([]byte(nil), blk.GetBlock()...),
 		})
 	}
+
 	for _, xt := range sb.IncludedXTs {
 		psb.IncludedXTs = append(psb.IncludedXTs, xt.Bytes())
 	}
+
 	if sb.L1TransactionHash != (common.Hash{}) {
 		psb.L1TransactionHash = sb.L1TransactionHash.Bytes()
 	}
+
 	return psb
 }
 
@@ -263,6 +268,7 @@ func cloneSlices(src [][]byte) [][]byte {
 	for i, b := range src {
 		out[i] = append([]byte(nil), b...)
 	}
+
 	return out
 }
 
@@ -270,10 +276,12 @@ func deriveVKeyString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
+
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
 		return s
 	}
+
 	return hexutil.Encode(raw)
 }
 
@@ -281,8 +289,10 @@ func (p *proofPipeline) pollLoop(ctx context.Context) {
 	if p == nil {
 		return
 	}
+
 	ticker := time.NewTicker(p.pollEvery)
 	defer ticker.Stop()
+
 	statsTicker := time.NewTicker(5 * p.pollEvery)
 	defer statsTicker.Stop()
 
