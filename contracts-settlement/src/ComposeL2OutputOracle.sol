@@ -3,30 +3,26 @@ pragma solidity 0.8.30;
 
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {ISemver} from "interfaces/universal/ISemver.sol";
-import {Types} from "@optimism/src/libraries/Types.sol";
-import {Constants} from "@optimism/src/libraries/Constants.sol";
 import {ISP1Verifier} from "@sp1-contracts/src/ISP1Verifier.sol";
-import {GameType, GameTypes, Claim} from "@optimism/src/dispute/lib/Types.sol";
-import {IDisputeGame} from "interfaces/dispute/IDisputeGame.sol";
-import {IDisputeGameFactory} from "interfaces/dispute/IDisputeGameFactory.sol";
 
 contract ComposeL2OutputOracle is Initializable, ISemver {
     uint32 public constant COMPOSE_GAME_TYPE = 5555;
+
     struct InitParams {
         address proposer;
         address owner;
-        uint256 finalizationPeriodSeconds;
-        uint256 l2BlockTime;
+        // uint256 finalizationPeriodSeconds;
+        // uint256 l2BlockTime;
         bytes32 aggregationVkey;
-        bytes32 rangeVkeyCommitment;
-        bytes32 rollupConfigHash;
-        bytes32 startingOutputRoot;
-        uint256 startingBlockNumber;
-        uint256 startingTimestamp;
-        uint256 submissionInterval;
+        // bytes32 rangeVkeyCommitment;
+        //bytes32 rollupConfigHash;
+        // bytes32 startingOutputRoot;
+        uint256 startingSuperBlockNumber;
+        // uint256 startingTimestamp;
+        // uint256 submissionInterval;
         address verifier;
-        address disputeGameFactory;
-        uint256 fallbackTimeout;
+        // address disputeGameFactory;
+        // uint256 fallbackTimeout;
     }
 
     struct SuperblockAggregationOutputs {
@@ -44,28 +40,13 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     }
 
     /// @notice The version of the initializer on the contract. Used for managing upgrades.
-    uint8 public constant initializerVersion = 1;
+    uint8 public constant INITIALIZER_VERSION = 1;
 
-    /// @notice The number of the first L2 block recorded in this contract.
-    uint256 public startingBlockNumber;
-
-    /// @notice The timestamp of the first L2 block recorded in this contract.
-    uint256 public startingTimestamp;
-
-    /// @notice The interval in L2 blocks at which checkpoints must be submitted.
-    uint256 public submissionInterval;
-
-    /// @notice The time between L2 blocks in seconds.
-    uint256 public l2BlockTime;
+    /// @notice The number of the first superblock recorded in this contract.
+    uint256 public superBlockNumber;
 
     /// @notice The verification key of the aggregation SP1 program.
-    bytes32 public aggregationVkey;
-
-    /// @notice The verification key commitment for the range SP1 program.
-    bytes32 public rangeVkeyCommitment;
-
-    /// @notice The rollup config hash.
-    bytes32 public rollupConfigHash;
+    bytes32 aggregationVkey;
 
     /// @notice The deployed SP1Verifier contract to verify proofs.
     address public verifier;
@@ -73,17 +54,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     /// @notice The owner of the contract, who has admin permissions.
     address public owner;
 
-    mapping(address => bool) public approvedProposers;
-
-    Types.OutputProposal[] public l2Outputs;
-
-    address public challenger;
-
-    uint256 public finalizationPeriodSeconds;
-
-    address public disputeGameFactory;
-
-    uint256 public fallbackTimeout;
+    address public approvedProposer;
 
     event L2OutputProposed(
         uint256 indexed superBlockNumber,
@@ -107,58 +78,31 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     /// @param _initParams The initialization parameters for the contract.
     function initialize(
         InitParams memory _initParams
-    ) public reinitializer(initializerVersion) {
-        require(
-            _initParams.startingTimestamp <= block.timestamp,
-            "L2OutputOracle: starting L2 timestamp must be less than current time"
-        );
-
-        if (l2Outputs.length == 0) {
-            l2Outputs.push(
-                Types.OutputProposal({
-                    outputRoot: _initParams.startingOutputRoot,
-                    timestamp: uint128(_initParams.startingTimestamp),
-                    l2BlockNumber: uint128(_initParams.startingBlockNumber)
-                })
-            );
-
-            startingBlockNumber = _initParams.startingBlockNumber;
-            startingTimestamp = _initParams.startingTimestamp;
-        }
-
-        submissionInterval = _initParams.submissionInterval;
-        l2BlockTime = _initParams.l2BlockTime;
-        challenger = address(0);
-        finalizationPeriodSeconds = _initParams.finalizationPeriodSeconds;
-
-        approvedProposers[_initParams.proposer] = true;
+    ) public reinitializer(INITIALIZER_VERSION) {
+        superBlockNumber = _initParams.startingSuperBlockNumber;
 
         aggregationVkey = _initParams.aggregationVkey;
-        rangeVkeyCommitment = _initParams.rangeVkeyCommitment;
-        rollupConfigHash = _initParams.rollupConfigHash;
 
         verifier = _initParams.verifier;
 
         owner = _initParams.owner;
 
-        disputeGameFactory = _initParams.disputeGameFactory;
-        fallbackTimeout = _initParams.fallbackTimeout;
+        approvedProposer = _initParams.proposer;
     }
 
     /// @notice Accepts an outputRoot and the timestamp of the corresponding L2 block.
     ///         The timestamp must be equal to the current value returned by `nextTimestamp()` in
     ///         order to be accepted. This function may only be called by the Proposer.
     /// @param _outputRoot    The L2 output of the checkpoint block.
-    /// @param _l2BlockNumber The L2 block number of the outputRoot.
-    /// @param _l1BlockHash   The hash of the L1 block where this proposal was first made.
-    /// @param _l1BlockNumber The block number with the specified block hash.
-    /// @param extraData      Extra data for the proposal, including proof and preimage.
+    /// @param _extraData The public values to veryfy the proof (SuperblockAggregationOutputs) and the SuperBlock proof.
+    /// @dev Modified the function signature to exclude the `_l1BlockHash` parameter, as it's redundant
+    ///      for OP Succinct given the `_l1BlockNumber` parameter.
     /// @dev Security Note: This contract uses `tx.origin` for proposer permission control due to usage of this contract
     ///      in the OPSuccinctDisputeGame, created via DisputeGameFactory using the Clone With Immutable Arguments (CWIA) pattern.
     ///
     ///      In this setup:
     ///      - `msg.sender` is the newly created game contract, not an approved proposer.
-    ///      - `tx.origin` is the actual user initiating the transaction.
+    ///      - `tx.origin` identifies the actual user initiating the transaction.
     ///
     ///      While `tx.origin` can be vulnerable in general, it is safe here because:
     ///      - Only trusted proposers/relayers call this contract.
@@ -167,63 +111,62 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     ///      As long as proposers avoid untrusted contracts, `tx.origin` is as secure as `msg.sender` in this context.
     function proposeL2Output(
         bytes32 _outputRoot,
-        uint256 _l2BlockNumber,
-        bytes32 _l1BlockHash,
-        uint256 _l1BlockNumber,
-        bytes memory extraData
+        bytes32, // _l1Hash,
+        bytes memory _extraData
     ) external {
-        bytes32 currentL1BlockHash = blockhash(_l1BlockNumber);
-        require(currentL1BlockHash == _l1BlockHash, "L2OutputOracle: provided L1 block hash does not match actual L1 block hash");
-
+        // The proposer must be explicitly approved
+        // or the fallback timeout has been exceeded allowing anyone to propose.
         require(
-            _l2BlockNumber == nextBlockNumber(),
-            "L2OutputOracle: block number must be equal to next expected block number"
+            approvedProposer == tx.origin, 
+            // || (block.timestamp - lastProposalTimestamp() > fallbackTimeout), TODO fallback implementation for permissionless proposing?
+            "L2OutputOracle: only approved proposers can propose new outputs"
         );
+
+        // TODO check
+        /** 
+        require(
+            _l2BlockNumber >= nextBlockNumber(),
+            "L2OutputOracle: block number must be greater than or equal to next expected block number"
+        );
+        
 
         require(
             computeL2Timestamp(_l2BlockNumber) < block.timestamp,
             "L2OutputOracle: cannot propose L2 output in the future"
         );
+        */
 
         require(
             _outputRoot != bytes32(0),
-            "L2OutputOracle: L2 output proposal cannot be the zero hash"
+            "ComposeL2OutputOracle: L2 output proposal cannot be the zero hash"
         );
 
-        if (disputeGameFactory != address(0)) {
-            GameType gt = GameType.wrap(COMPOSE_GAME_TYPE);
-            Claim rc = Claim.wrap(_outputRoot);
-            (IDisputeGame game,) = IDisputeGameFactory(disputeGameFactory).games(gt, rc, extraData);
-            require(address(game) == msg.sender, "L2OutputOracle: caller must be the dispute game contract");
-        } else {
-            bool isFallback = (block.timestamp - l2Outputs[l2Outputs.length - 1].timestamp > fallbackTimeout);
-            require(approvedProposers[tx.origin] || isFallback, "L2OutputOracle: only approved proposers or fallback mode can propose new outputs");
+        /** TODO I think its safe to remove it
+        OpSuccinctConfig memory config = opSuccinctConfigs;
+        require(isValidOpSuccinctConfig(config), "L2OutputOracle: invalid OP Succinct configuration");
+        **/
 
-            bytes memory superRootPreimage;
-            bytes memory aggregatedProof;
-            bool asr;
-            address sp1Verifier;
-            bytes32 aggregationVkeyLocal;
-            bytes32 cohortCommitment;
-
-            (superRootPreimage, aggregatedProof, asr, sp1Verifier, aggregationVkeyLocal, cohortCommitment) = abi.decode(extraData, (bytes, bytes, bool, address, bytes32, bytes32));
-
-            ISP1Verifier(sp1Verifier).verifyProof(
-                aggregationVkeyLocal,
-                abi.encode(_outputRoot, cohortCommitment, _l1BlockHash),
-                aggregatedProof
-            );
+        /** TODO Check if its safe to remove it
+        bytes32 l1BlockHash = historicBlockHashes[_l1BlockNumber];
+        if (l1BlockHash == bytes32(0)) {
+            revert L1BlockHashNotCheckpointed();
         }
+        **/
 
-        // Decode the preimage to get the outputs
-        SuperblockAggregationOutputs memory superBlockAggOutputs = abi.decode(abi.decode(extraData, (bytes)), (SuperblockAggregationOutputs));
+        // Decode the struct and save to storage for getter
+        (
+            SuperblockAggregationOutputs memory superBlockAggOutputs,
+            bytes memory proof
+        ) = abi.decode(_extraData, (SuperblockAggregationOutputs, bytes));
 
-        l2Outputs.push(
-            Types.OutputProposal({
-                outputRoot: _outputRoot,
-                timestamp: uint128(block.timestamp),
-                l2BlockNumber: uint128(_l2BlockNumber)
-            })
+        require(superBlockAggOutputs.superblockNumber == superBlockNumber + 1, "ComposeL2OutputOracle: superblock number not increased");
+        superBlockNumber++;
+
+
+        ISP1Verifier(verifier).verifyProof(
+            aggregationVkey,
+            abi.encode(superBlockAggOutputs),
+            proof
         );
 
         BootInfoStruct memory bootInfo;
@@ -231,6 +174,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
         for (uint256 i = 0; i < superBlockAggOutputs.bootInfo.length; i++) {
             bootInfo = superBlockAggOutputs.bootInfo[i];
 
+            // TODO I think we need a way to identify the rollup chain, maybe we can use the rollupConfigHash?
             emit L2OutputProposed(
                 superBlockAggOutputs.superblockNumber,
                 bootInfo.l2BlockNumber,
@@ -241,21 +185,10 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
         emit SuperblockOutputProposed(
             superBlockAggOutputs.superblockNumber,
-            _l1BlockNumber,
-            _outputRoot,
+            block.number,
+            superBlockAggOutputs.parentSuperblockBatchHash,
             block.timestamp
         );
-    }
-
-    /// @notice Returns the block number of the next L2 block that needs to be checkpointed.
-    function nextBlockNumber() public view returns (uint256) {
-        return startingBlockNumber + l2Outputs.length * submissionInterval;
-    }
-
-    /// @notice Computes the timestamp of the L2 block number.
-    function computeL2Timestamp(uint256 _l2BlockNumber) public view returns (uint256) {
-        require(_l2BlockNumber >= startingBlockNumber, "L2OutputOracle: block number must be greater than or equal to starting block number");
-        return startingTimestamp + (_l2BlockNumber - startingBlockNumber) * l2BlockTime / submissionInterval;
     }
 
     function version() external pure returns (string memory) {

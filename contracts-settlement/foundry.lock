@@ -1,19 +1,4 @@
 {
-  "../contracts/lib/forge-std": {
-    "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
-  },
-  "../contracts/lib/openzeppelin-contracts": {
-    "rev": "c64a1edb67b6e3f4a15cca8909c9482ad33a02b0"
-  },
-  "../contracts/lib/optimism": {
-    "rev": "475801690f7a451469ee4da87b5fe3c54c92f372"
-  },
-  "../contracts/lib/solady": {
-    "rev": "208e4f31cfae26e4983eb95c3488a14fdc497ad7"
-  },
-  "../contracts/lib/sp1-contracts": {
-    "rev": "fd53e397786eb270cddc6ac4737720c324e900dc"
-  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.10.0",
@@ -27,7 +12,10 @@
     }
   },
   "lib/optimism": {
-    "rev": "475801690f7a451469ee4da87b5fe3c54c92f372"
+    "tag": {
+      "name": "op-contracts/v4.1.0-rc.2",
+      "rev": "475801690f7a451469ee4da87b5fe3c54c92f372"
+    }
   },
   "lib/sp1-contracts": {
     "rev": "dd93a9932dd6a627dd5b8f91e668a61fdc6618f5"
