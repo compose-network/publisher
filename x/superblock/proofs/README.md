@@ -114,7 +114,8 @@ type SuperblockProverInput struct {
 }
 ```
 
-The concrete HTTP implementation lives in `prover/http_client.go` and satisfies the `ProverClient` interface. It accepts jobs via `POST /proof` and polls `GET /proof/{request_id}` following the contract exposed by the Rust service.
+The concrete HTTP implementation lives in `prover/http_client.go` and satisfies the `ProverClient` interface.
+It accepts jobs via `POST /proof` and polls `GET /proof/{request_id}` following the contract exposed by the Rust service.
 
 ### Public Outputs
 
