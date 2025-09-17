@@ -7,6 +7,7 @@ import (
 )
 
 // AggregationOutputs mirrors op-succinct AggregationOutputs serialization.
+// Supports both camelCase (op-succinct) and snake_case (internal) JSON formats.
 type AggregationOutputs struct {
 	L1Head           common.Hash    `json:"l1_head"`
 	L2PreRoot        common.Hash    `json:"l2_pre_root"`
@@ -15,6 +16,42 @@ type AggregationOutputs struct {
 	RollupConfigHash common.Hash    `json:"rollup_config_hash"`
 	MultiBlockVKey   common.Hash    `json:"multi_block_vkey"`
 	ProverAddress    common.Address `json:"prover_address"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling to support both camelCase and snake_case field names.
+func (a *AggregationOutputs) UnmarshalJSON(data []byte) error {
+	// First try snake_case (current format)
+	type snakeCase AggregationOutputs
+	if err := json.Unmarshal(data, (*snakeCase)(a)); err == nil {
+		return nil
+	}
+
+	// If that fails, try camelCase (op-succinct format)
+	type camelCase struct {
+		L1Head           common.Hash    `json:"l1Head"`
+		L2PreRoot        common.Hash    `json:"l2PreRoot"`
+		L2PostRoot       common.Hash    `json:"l2PostRoot"`
+		L2BlockNumber    uint64         `json:"l2BlockNumber"`
+		RollupConfigHash common.Hash    `json:"rollupConfigHash"`
+		MultiBlockVKey   common.Hash    `json:"multiBlockVKey"`
+		ProverAddress    common.Address `json:"proverAddress"`
+	}
+
+	var cc camelCase
+	if err := json.Unmarshal(data, &cc); err != nil {
+		return err
+	}
+
+	// Convert from camelCase to our struct
+	a.L1Head = cc.L1Head
+	a.L2PreRoot = cc.L2PreRoot
+	a.L2PostRoot = cc.L2PostRoot
+	a.L2BlockNumber = cc.L2BlockNumber
+	a.RollupConfigHash = cc.RollupConfigHash
+	a.MultiBlockVKey = cc.MultiBlockVKey
+	a.ProverAddress = cc.ProverAddress
+
+	return nil
 }
 
 // ABIEncode encodes AggregationOutputs into the 7*32 byte form expected by the prover.
