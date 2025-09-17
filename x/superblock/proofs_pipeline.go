@@ -296,7 +296,9 @@ func (p *proofPipeline) buildProofJobInput(
 	// Create aggregation proofs
 	aggProofs := make([]proofs.AggregationProofData, 0, len(subs))
 	for _, s := range subs {
-		raw := s.Aggregation.ABIEncode()
+		// TODO: revert, now mocking
+		//raw := s.Aggregation.ABIEncode()
+		raw := rawPublicValues
 		proofBytes := make([]byte, len(s.Proof))
 		copy(proofBytes, s.Proof)
 
