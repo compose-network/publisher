@@ -56,9 +56,19 @@ func NewHTTPClient(rawURL string, httpClient *http.Client, log zerolog.Logger) (
 func (c *HTTPClient) RequestProof(ctx context.Context, job proofs.ProofJobInput) (string, error) {
 	endpoint := c.buildURL("proof")
 
+	// Calculate aggregation proof sizes for logging
+	aggProofSizes := make([]int, len(job.Input.AggregationProofs))
+	for i, aggProof := range job.Input.AggregationProofs {
+		aggProofSizes[i] = len(aggProof.CompressedProof)
+	}
+
 	c.log.Info().
 		Str("endpoint", endpoint).
-		Interface("job", job).
+		Str("proof_type", job.ProofType).
+		Int("num_aggregation_proofs", len(job.Input.AggregationProofs)).
+		Interface("compressed_proof_sizes", aggProofSizes).
+		Interface("previous_batch", job.Input.PreviousBatch).
+		Interface("new_batch", job.Input.NewBatch).
 		Msg("requesting proof generation")
 
 	body, err := json.Marshal(job)
