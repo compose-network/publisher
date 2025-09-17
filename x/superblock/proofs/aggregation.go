@@ -74,8 +74,8 @@ type AggregationOutputsWithChainID struct {
 type AggregationProofData struct {
 	AggregationOutputs AggregationOutputs `json:"aggregation_outputs"`
 	RawPublicValues    PublicValueBytes   `json:"raw_public_values"`
-	CompressedProof    []byte             `json:"compressed_proof"`
-	ChainID            []byte             `json:"chain_id"`
+	CompressedProof    PublicValueBytes   `json:"compressed_proof"`
+	ChainID            PublicValueBytes   `json:"chain_id"`
 	SuperblockNumber   uint64             `json:"superblock_number"`
 	VKey               string             `json:"vkey"`
 }
