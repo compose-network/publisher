@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -118,7 +119,7 @@ func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(sb *store.Sup
 	}
 
 	return superblockAggregationOutputs{
-		SuperblockNumber:          sb.Number,
+		SuperblockNumber:          big.NewInt(int64(sb.Number)),
 		ParentSuperblockBatchHash: sb.ParentHash,
 		BootInfo:                  bootInfo,
 	}
