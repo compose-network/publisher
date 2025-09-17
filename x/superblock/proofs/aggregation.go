@@ -8,13 +8,13 @@ import (
 
 // AggregationOutputs mirrors op-succinct AggregationOutputs serialization.
 type AggregationOutputs struct {
-	L1Head           common.Hash    `json:"l1Head"`
-	L2PreRoot        common.Hash    `json:"l2PreRoot"`
-	L2PostRoot       common.Hash    `json:"l2PostRoot"`
-	L2BlockNumber    uint64         `json:"l2BlockNumber"`
-	RollupConfigHash common.Hash    `json:"rollupConfigHash"`
-	MultiBlockVKey   common.Hash    `json:"multiBlockVKey"`
-	ProverAddress    common.Address `json:"proverAddress"`
+	L1Head           common.Hash    `json:"l1_head"`
+	L2PreRoot        common.Hash    `json:"l2_pre_root"`
+	L2PostRoot       common.Hash    `json:"l2_post_root"`
+	L2BlockNumber    uint64         `json:"l2_block_number"`
+	RollupConfigHash common.Hash    `json:"rollup_config_hash"`
+	MultiBlockVKey   common.Hash    `json:"multi_block_vkey"`
+	ProverAddress    common.Address `json:"prover_address"`
 }
 
 // ABIEncode encodes AggregationOutputs into the 7*32 byte form expected by the prover.
@@ -41,8 +41,8 @@ func (a AggregationOutputs) ABIEncode() []byte {
 
 // AggregationOutputsWithChainID associates per-rollup outputs with a chain identifier.
 type AggregationOutputsWithChainID struct {
-	ChainID            uint32          `json:"chainID"`
-	AggregationOutputs json.RawMessage `json:"AggregationOutputs"`
+	ChainID            uint32          `json:"chain_id"`
+	AggregationOutputs json.RawMessage `json:"aggregation_outputs"`
 }
 
 // AggregationProofData packages per-rollup proof inputs.
