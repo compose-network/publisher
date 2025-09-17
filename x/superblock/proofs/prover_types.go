@@ -24,10 +24,10 @@ type ProofJobStatus struct {
 
 // RollupStateTransition represents state transition information for a single rollup.
 type RollupStateTransition struct {
-	RollupConfigHash []byte `json:"rollup_config_hash"` // bytes32 - Uniquely identifies a rollup
-	L2PreRoot        []byte `json:"l2_pre_root"`        // bytes32 - Pre-execution state root
-	L2PostRoot       []byte `json:"l2_post_root"`       // bytes32 - Post-execution state root
-	L2BlockNumber    []byte `json:"l2_block_number"`    // bytes32 - New L2 block number
+	RollupConfigHash []int `json:"rollup_config_hash"` // bytes32 - Uniquely identifies a rollup
+	L2PreRoot        []int `json:"l2_pre_root"`        // bytes32 - Pre-execution state root
+	L2PostRoot       []int `json:"l2_post_root"`       // bytes32 - Post-execution state root
+	L2BlockNumber    []int `json:"l2_block_number"`    // bytes32 - New L2 block number
 }
 
 // SuperblockBatch represents a superblock batch structure.

@@ -121,10 +121,10 @@ type SuperblockBatch struct {
 }
 
 type RollupStateTransition struct {
-    RollupConfigHash []byte  // bytes32 - Uniquely identifies a rollup
-    L2PreRoot        []byte  // bytes32 - Pre-execution state root
-    L2PostRoot       []byte  // bytes32 - Post-execution state root
-    L2BlockNumber    []byte  // bytes32 - New L2 block number
+    RollupConfigHash []int  // bytes32 - Uniquely identifies a rollup
+    L2PreRoot        []int  // bytes32 - Pre-execution state root
+    L2PostRoot       []int  // bytes32 - Post-execution state root
+    L2BlockNumber    []int  // bytes32 - New L2 block number
 }
 ```
 
