@@ -2,15 +2,12 @@ package superblock
 
 import (
 	"context"
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/rs/zerolog"
 
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
@@ -263,16 +260,28 @@ func (p *proofPipeline) buildProofJobInput(
 		proofBytes := make([]byte, len(s.Proof))
 		copy(proofBytes, s.Proof)
 
-		chainID := make([]byte, 4)
-		binary.BigEndian.PutUint32(chainID, s.ChainID)
+		// Create mailbox info from chain ID
+		mailboxInfo := []proofs.MailboxInfo{
+			{
+				ChainID:    s.ChainID,
+				InboxRoot:  make([]byte, 32), // TODO: Get actual inbox root
+				OutboxRoot: make([]byte, 32), // TODO: Get actual outbox root
+			},
+		}
+
+		// Convert vkey to [8]uint32 format expected by Rust
+		// TODO: Parse actual vkey data instead of using defaults
+		aggVKey := [8]uint32{
+			1267174729, 1284041170, 746450416, 924179179,
+			1558739647, 1619913785, 1738485538, 449972493,
+		}
 
 		aggProofs = append(aggProofs, proofs.AggregationProofData{
 			AggregationOutputs: s.Aggregation,
 			RawPublicValues:    raw,
 			CompressedProof:    proofBytes,
-			ChainID:            chainID,
-			SuperblockNumber:   s.SuperblockNumber,
-			VKey:               deriveVKeyString(s.AggVerifyingKey),
+			AggVKey:            aggVKey,
+			MailboxInfo:        mailboxInfo,
 		})
 	}
 
@@ -340,19 +349,6 @@ func cloneSlices(src [][]byte) [][]byte {
 	}
 
 	return out
-}
-
-func deriveVKeyString(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
-	}
-
-	return hexutil.Encode(raw)
 }
 
 func (p *proofPipeline) pollLoop(ctx context.Context) {

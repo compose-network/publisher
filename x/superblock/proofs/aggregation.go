@@ -70,12 +70,19 @@ type AggregationOutputsWithChainID struct {
 	AggregationOutputs json.RawMessage `json:"aggregation_outputs"`
 }
 
+// MailboxInfo represents mailbox state for a rollup chain.
+type MailboxInfo struct {
+	ChainID    uint32           `json:"chain_id"`
+	InboxRoot  PublicValueBytes `json:"inbox_root"`  // bytes32
+	OutboxRoot PublicValueBytes `json:"outbox_root"` // bytes32
+}
+
 // AggregationProofData packages per-rollup proof inputs.
+// Must match the Rust AggregationProofData struct in superblock-prover.
 type AggregationProofData struct {
 	AggregationOutputs AggregationOutputs `json:"aggregation_outputs"`
 	RawPublicValues    PublicValueBytes   `json:"raw_public_values"`
 	CompressedProof    PublicValueBytes   `json:"compressed_proof"`
-	ChainID            PublicValueBytes   `json:"chain_id"`
-	SuperblockNumber   uint64             `json:"superblock_number"`
-	VKey               string             `json:"vkey"`
+	AggVKey            [8]uint32          `json:"agg_vkey"`     // [u32; 8] in Rust
+	MailboxInfo        []MailboxInfo      `json:"mailbox_info"` // Vec<MailboxInfo> in Rust
 }
