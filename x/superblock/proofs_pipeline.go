@@ -275,12 +275,13 @@ func (p *proofPipeline) buildProofJobInput(
 		prev, err := p.sbStore.GetSuperblock(ctx, sb.Number-1)
 		if err == nil {
 			// TODO: Get actual parent superblock batch hash
-			parentHash := make([]byte, 32)
-			copy(parentHash, prev.Hash.Bytes())
+			parentHashBytes := make([]byte, 32)
+			copy(parentHashBytes, prev.Hash.Bytes())
+			parentHashInts := bytesToInts(parentHashBytes)
 
 			previousBatch = proofs.SuperblockBatch{
 				SuperblockNumber:          prev.Number,
-				ParentSuperblockBatchHash: parentHash,
+				ParentSuperblockBatchHash: parentHashInts,
 				RollupSt:                  []proofs.RollupStateTransition{}, // TODO: Get actual rollup state transitions for previous batch
 			}
 		}
@@ -288,7 +289,7 @@ func (p *proofPipeline) buildProofJobInput(
 
 	newBatch := proofs.SuperblockBatch{
 		SuperblockNumber:          sb.Number,
-		ParentSuperblockBatchHash: sb.ParentHash.Bytes(),
+		ParentSuperblockBatchHash: bytesToInts(sb.ParentHash.Bytes()),
 		RollupSt:                  rollupStateTransitions,
 	}
 
@@ -388,6 +389,15 @@ func cloneSlices(src [][]byte) [][]byte {
 		out[i] = append([]byte(nil), b...)
 	}
 
+	return out
+}
+
+// bytesToInts converts a byte slice to an int slice
+func bytesToInts(src []byte) []int {
+	out := make([]int, len(src))
+	for i, b := range src {
+		out[i] = int(b)
+	}
 	return out
 }
 

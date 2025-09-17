@@ -116,7 +116,7 @@ type SuperblockProverInput struct {
 
 type SuperblockBatch struct {
     SuperblockNumber            uint64
-    ParentSuperblockBatchHash   []byte
+    ParentSuperblockBatchHash   []int
     RollupSt                    []RollupStateTransition
 }
 
