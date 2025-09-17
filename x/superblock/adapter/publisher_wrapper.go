@@ -59,10 +59,10 @@ func WrapPublisher(
 	superblockStore := store.NewMemorySuperblockStore()
 	xtQueue := queue.NewMemoryXTRequestQueue(queue.DefaultConfig())
 	// Build L1 publisher from config; required for production
-	if config.L1.RPCEndpoint == "" || config.L1.SuperblockContract == "" {
-		return nil, fmt.Errorf("missing L1 config: rpc_endpoint and superblock_contract are required")
+	if config.L1.RPCEndpoint == "" || config.L1.DisputeGameFactory == "" {
+		return nil, fmt.Errorf("missing L1 config: rpc_endpoint and dispute_game_factory are required")
 	}
-	binding, err := l1contracts.NewL2OutputOracleBinding(config.L1.SuperblockContract)
+	binding, err := l1contracts.NewDisputeGameFactoryBinding(config.L1.DisputeGameFactory)
 	if err != nil {
 		return nil, fmt.Errorf("create L1 binding: %w", err)
 	}

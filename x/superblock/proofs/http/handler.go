@@ -174,7 +174,14 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	hashStr := strings.TrimSpace(vars["sbHash"])
 	if hashStr == "" {
-		apicommon.WriteError(w, r, http.StatusBadRequest, "missing_path_param", "provide /v1/proofs/status/{sbHash}", nil)
+		apicommon.WriteError(
+			w,
+			r,
+			http.StatusBadRequest,
+			"missing_path_param",
+			"provide /v1/proofs/status/{sbHash}",
+			nil,
+		)
 		return
 	}
 

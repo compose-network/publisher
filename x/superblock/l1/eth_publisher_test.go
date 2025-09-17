@@ -61,7 +61,12 @@ func (m *mockEthClient) SubscribeFilterLogs(
 type mockBinding struct{ addr common.Address }
 
 func (b *mockBinding) Address() common.Address { return b.addr }
-func (b *mockBinding) BuildPublishCalldata(ctx context.Context, sb *store.Superblock) ([]byte, error) {
+
+func (b *mockBinding) BuildPublishWithProofCalldata(
+	ctx context.Context,
+	sb *store.Superblock,
+	proof []byte,
+) ([]byte, error) {
 	return []byte{0xde, 0xad, 0xbe, 0xef}, nil
 }
 
@@ -87,9 +92,9 @@ func TestPublishSuperblock_SignsAndSends(t *testing.T) {
 		Timestamp:  time.Now(),
 		L2Blocks:   []*pb.L2Block{},
 	}
-	tx, err := pub.PublishSuperblock(ctx, sb)
+	tx, err := pub.PublishSuperblockWithProof(ctx, sb, []byte{0x01, 0x02, 0x03})
 	if err != nil {
-		t.Fatalf("PublishSuperblock error: %v", err)
+		t.Fatalf("PublishSuperblockWithProof error: %v", err)
 	}
 	if tx == nil || len(tx.Hash) == 0 {
 		t.Fatalf("expected tx hash")

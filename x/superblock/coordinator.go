@@ -989,15 +989,11 @@ func (c *Coordinator) publishSuperblockTx(
 	sb *store.Superblock,
 	proof []byte,
 ) error {
-	var (
-		recorded *tx.Transaction
-		err      error
-	)
-	if len(proof) > 0 {
-		recorded, err = c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof)
-	} else {
-		recorded, err = c.l1Publisher.PublishSuperblock(ctx, sb)
+	if len(proof) == 0 {
+		return fmt.Errorf("proof is required for superblock submission")
 	}
+
+	recorded, err := c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof)
 	if err != nil {
 		return err
 	}

@@ -6,8 +6,10 @@ type Config struct {
 	RPCEndpoint string `mapstructure:"rpc_endpoint" yaml:"rpc_endpoint"`
 
 	// Addresses (hex) for on-chain contracts used by the SP.
-	RegistryContract   string `mapstructure:"registry_contract"   yaml:"registry_contract"`
-	SuperblockContract string `mapstructure:"superblock_contract" yaml:"superblock_contract"`
+	RegistryContract string `mapstructure:"registry_contract" yaml:"registry_contract"`
+
+	// DisputeGameFactory for proof-enabled superblock submission
+	DisputeGameFactory string `mapstructure:"dispute_game_factory" yaml:"dispute_game_factory"`
 
 	// Chain configuration
 	ChainID       uint64 `mapstructure:"chain_id"       yaml:"chain_id"`

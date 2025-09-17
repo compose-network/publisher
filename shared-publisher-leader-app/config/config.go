@@ -103,9 +103,9 @@ func Load(configPath string) (*Config, error) {
 			cfg.L1.RPCEndpoint = v
 		}
 	}
-	if strings.TrimSpace(cfg.L1.SuperblockContract) == "" {
-		if v := strings.TrimSpace(os.Getenv("L1_SUPERBLOCK_CONTRACT")); v != "" {
-			cfg.L1.SuperblockContract = v
+	if strings.TrimSpace(cfg.L1.DisputeGameFactory) == "" {
+		if v := strings.TrimSpace(os.Getenv("L1_DISPUTE_GAME_FACTORY")); v != "" {
+			cfg.L1.DisputeGameFactory = v
 		}
 	}
 	if strings.TrimSpace(cfg.L1.SharedPublisherPkHex) == "" {
@@ -155,7 +155,7 @@ func setDefaults(v *viper.Viper) {
 
 	// L1 defaults
 	v.SetDefault("l1.rpc_endpoint", "")
-	v.SetDefault("l1.superblock_contract", "")
+	v.SetDefault("l1.dispute_game_factory", "")
 	v.SetDefault("l1.chain_id", 0)
 	v.SetDefault("l1.confirmations", 2)
 	v.SetDefault("l1.finality_depth", 64)
@@ -246,14 +246,14 @@ func (c *Config) validateAuth() error {
 }
 
 func (c *Config) validateL1() error {
-	if strings.TrimSpace(c.L1.RPCEndpoint) == "" && strings.TrimSpace(c.L1.SuperblockContract) == "" {
+	if strings.TrimSpace(c.L1.RPCEndpoint) == "" && strings.TrimSpace(c.L1.DisputeGameFactory) == "" {
 		return nil // L1 not configured
 	}
 	if strings.TrimSpace(c.L1.RPCEndpoint) == "" {
 		return fmt.Errorf("l1.rpc_endpoint is required when L1 is configured")
 	}
-	if strings.TrimSpace(c.L1.SuperblockContract) == "" {
-		return fmt.Errorf("l1.superblock_contract is required when L1 is configured")
+	if strings.TrimSpace(c.L1.DisputeGameFactory) == "" {
+		return fmt.Errorf("l1.dispute_game_factory is required when L1 is configured")
 	}
 	return nil
 }

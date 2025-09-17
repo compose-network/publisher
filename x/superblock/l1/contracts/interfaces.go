@@ -8,18 +8,11 @@ import (
 )
 
 // Binding defines how to encode a publish-superblock call to a specific contract.
+// All modern superblock submissions require proof verification.
 type Binding interface {
 	// Address returns the L1 contract address for publishing.
 	Address() common.Address
 
-	// BuildPublishCalldata encodes the calldata to publish the given superblock.
-	BuildPublishCalldata(ctx context.Context, superblock *store.Superblock) ([]byte, error)
-}
-
-// ProofBinding extends a regular Binding with a method that encodes
-// a publish call carrying a final ZK proof.
-// TODO: merge later
-type ProofBinding interface {
-	Binding
+	// BuildPublishWithProofCalldata encodes the calldata to publish the given superblock with proof.
 	BuildPublishWithProofCalldata(ctx context.Context, superblock *store.Superblock, proof []byte) ([]byte, error)
 }
