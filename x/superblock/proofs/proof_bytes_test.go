@@ -95,4 +95,10 @@ func TestPublicValueBytes_MarshalAsArray(t *testing.T) {
 	var pvb2 PublicValueBytes
 	require.NoError(t, json.Unmarshal(marshaled, &pvb2))
 	require.Equal(t, pvb.Bytes(), pvb2.Bytes())
+
+	// Test empty slice marshals as empty array, not null
+	var emptyPvb PublicValueBytes
+	emptyMarshaled, err := json.Marshal(emptyPvb)
+	require.NoError(t, err)
+	require.JSONEq(t, `[]`, string(emptyMarshaled))
 }

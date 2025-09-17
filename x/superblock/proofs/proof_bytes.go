@@ -146,7 +146,7 @@ func (p *PublicValueBytes) UnmarshalJSON(data []byte) error {
 // MarshalJSON emits an array of integers for the superblock-prover.
 func (p PublicValueBytes) MarshalJSON() ([]byte, error) {
 	if len(p) == 0 {
-		return []byte("null"), nil
+		return []byte("[]"), nil
 	}
 	ints := make([]int, len(p))
 	for i, b := range p {
