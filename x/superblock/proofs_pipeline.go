@@ -629,6 +629,5 @@ func (p *proofPipeline) logStats() {
 
 	p.log.Info().
 		Int("outstanding_jobs", queued).
-		Strs("job_ids", jobIDs).
 		Msg("Active proof jobs awaiting completion")
 }
