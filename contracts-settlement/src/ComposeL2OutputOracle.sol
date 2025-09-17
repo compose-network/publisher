@@ -46,7 +46,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     uint256 public superBlockNumber;
 
     /// @notice The verification key of the aggregation SP1 program.
-    bytes32 aggregationVkey;
+    bytes32 public aggregationVkey;
 
     /// @notice The deployed SP1Verifier contract to verify proofs.
     address public verifier;
