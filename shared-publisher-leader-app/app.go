@@ -124,7 +124,7 @@ func (a *App) initialize() error {
 	coordinatorConfig.L1 = a.cfg.L1
 	coordinatorConfig.Proofs = a.cfg.Proofs
 
-	collectorSvc := collector.NewMemory()
+	collectorSvc := collector.NewMemory(a.log)
 
 	var proverClient proofs.ProverClient
 	if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {

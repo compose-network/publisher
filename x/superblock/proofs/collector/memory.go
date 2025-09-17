@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/rs/zerolog"
 
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 )
@@ -18,14 +19,21 @@ type Memory struct {
 	mu       sync.RWMutex
 	bySB     map[string]map[uint32]proofs.Submission
 	statuses map[string]proofs.Status
+	log      zerolog.Logger
 }
 
 // NewMemory returns a configured Memory collector.
-func NewMemory() *Memory {
-	return &Memory{
+func NewMemory(log zerolog.Logger) *Memory {
+	logger := log.With().Str("component", "proof-collector").Logger()
+
+	m := &Memory{
 		bySB:     make(map[string]map[uint32]proofs.Submission),
 		statuses: make(map[string]proofs.Status),
+		log:      logger,
 	}
+
+	logger.Info().Msg("Memory proof collector initialized")
+	return m
 }
 
 func (m *Memory) SubmitOpSuccinct(_ context.Context, s proofs.Submission) error {
@@ -33,6 +41,7 @@ func (m *Memory) SubmitOpSuccinct(_ context.Context, s proofs.Submission) error 
 	defer m.mu.Unlock()
 
 	if s.SuperblockHash == (common.Hash{}) {
+		m.log.Error().Msg("submission rejected: superblock hash is required")
 		return fmt.Errorf("superblock hash is required")
 	}
 	if s.ReceivedAt.IsZero() {
@@ -40,9 +49,16 @@ func (m *Memory) SubmitOpSuccinct(_ context.Context, s proofs.Submission) error 
 	}
 
 	key := s.SuperblockHash.Hex()
-	if m.bySB[key] == nil {
+	isNewSuperblock := m.bySB[key] == nil
+
+	if isNewSuperblock {
 		m.bySB[key] = make(map[uint32]proofs.Submission)
+		m.log.Info().
+			Str("superblock_hash", key).
+			Uint64("superblock_number", s.SuperblockNumber).
+			Msg("new superblock started collecting proofs")
 	}
+
 	m.bySB[key][s.ChainID] = s
 
 	st := m.statuses[key]
@@ -56,6 +72,14 @@ func (m *Memory) SubmitOpSuccinct(_ context.Context, s proofs.Submission) error 
 	}
 	st.Received[s.ChainID] = s.ReceivedAt
 	m.statuses[key] = st
+
+	m.log.Info().
+		Str("superblock_hash", key).
+		Uint64("superblock_number", s.SuperblockNumber).
+		Uint32("chain_id", s.ChainID).
+		Str("prover_address", s.ProverAddress.Hex()).
+		Int("total_submissions", len(m.bySB[key])).
+		Msg("proof submission collected")
 
 	return nil
 }

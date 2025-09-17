@@ -1,18 +1,20 @@
 package collector
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 )
 
 func TestMemory_SubmitAndGetStatus(t *testing.T) {
-	c := NewMemory()
+	c := NewMemory(zerolog.New(io.Discard))
 	sbHash := common.HexToHash("0x" + strings.Repeat("11", 32))
 	sub := proofs.Submission{
 		SuperblockNumber: 42,
