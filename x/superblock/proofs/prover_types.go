@@ -2,7 +2,6 @@ package proofs
 
 import "context"
 
-// ProverClient defines the interface for interacting with the external superblock-prover.
 type ProverClient interface {
 	RequestProof(ctx context.Context, job ProofJobInput) (jobID string, err error)
 	GetStatus(ctx context.Context, jobID string) (ProofJobStatus, error)
@@ -14,17 +13,53 @@ type ProofJobInput struct {
 	Input     SuperblockProverInput `json:"input"`
 }
 
+// BootInfo represents boot information for a rollup (mirrors Rust BootInfo).
+type BootInfo struct {
+	L1Head           string `json:"l1_head"`      // hex string
+	L2PreRoot        string `json:"l2_pre_root"`  // hex string
+	L2PostRoot       string `json:"l2_post_root"` // hex string
+	L2BlockNumber    uint64 `json:"l2_block_number"`
+	RollupConfigHash string `json:"rollup_config_hash"` // hex string
+}
+
+// SuperblockAggOutputs represents serializable superblock aggregation outputs (mirrors Rust SuperblockAggOutputs).
+type SuperblockAggOutputs struct {
+	SuperblockNumber          string     `json:"superblock_number"`            // U256 as hex string
+	ParentSuperblockBatchHash string     `json:"parent_superblock_batch_hash"` // hex string
+	BootInfo                  []BootInfo `json:"boot_info"`
+}
+
 // ProofJobStatus represents the prover's reported state.
 type ProofJobStatus struct {
-	Status        string `json:"status"`
-	Proof         []byte `json:"proof,omitempty"`
-	ProvingTimeMS *uint64
-	Cycles        *uint64
+	Status               string `json:"status"`
+	Proof                []byte `json:"proof,omitempty"`
+	ProvingTimeMS        *uint64
+	Cycles               *uint64
+	SuperblockAggOutputs *SuperblockAggOutputs `json:"superblock_agg_outputs,omitempty"`
+	Commitment           *string               `json:"commitment"`
+}
+
+// RollupStateTransition represents state transition information for a single rollup.
+type RollupStateTransition struct {
+	RollupConfigHash []int `json:"rollup_config_hash"` // bytes32 - Uniquely identifies a rollup
+	L2PreRoot        []int `json:"l2_pre_root"`        // bytes32 - Pre-execution state root
+	L2PostRoot       []int `json:"l2_post_root"`       // bytes32 - Post-execution state root
+	L2BlockNumber    []int `json:"l2_block_number"`    // bytes32 - New L2 block number
+}
+
+// SuperblockBatch represents a superblock batch structure.
+//
+//nolint:lll // ok
+type SuperblockBatch struct {
+	SuperblockNumber          uint64                  `json:"superblock_number"`            // uint256 - Sequential superblock number
+	ParentSuperblockBatchHash []int                   `json:"parent_superblock_batch_hash"` // bytes32 - Hash of the previous superblock
+	RollupSt                  []RollupStateTransition `json:"rollup_st"`                    // RollupStateTransition[] - State transition information about each rollup
 }
 
 // SuperblockProverInput mirrors the Rust prover input schema.
 type SuperblockProverInput struct {
-	Superblocks       []ProverSuperblock     `json:"superblocks"`
+	PreviousBatch     SuperblockBatch        `json:"previous_batch"`
+	NewBatch          SuperblockBatch        `json:"new_batch"`
 	AggregationProofs []AggregationProofData `json:"aggregation_proofs"`
 }
 

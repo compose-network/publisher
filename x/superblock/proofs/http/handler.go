@@ -30,8 +30,6 @@ func NewHandler(collector collector.Service, log zerolog.Logger) *Handler {
 }
 
 // handleSubmitAggregation handles the submission of aggregation proofs via a POST request
-//
-//nolint:gocyclo // ok, we can refactor this later
 func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -74,12 +72,6 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 	}
 	l1Head := common.BytesToHash(l1HeadBytes)
 
-	if !common.IsHexAddress(req.ProverAddress) {
-		apicommon.WriteError(w, r, http.StatusBadRequest, "invalid_prover_address", "bad address", nil)
-		return
-	}
-	prover := common.HexToAddress(req.ProverAddress)
-
 	// Convert from op-succinct format to internal format
 	aggregation := req.Aggregation.ToAggregationOutputs()
 
@@ -105,29 +97,6 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if aggregation.ProverAddress == (common.Hash{}) {
-		apicommon.WriteError(
-			w, r,
-			http.StatusBadRequest,
-			"invalid_aggregation_outputs",
-			"aggregation_outputs.proverAddress is required",
-			nil,
-		)
-		return
-	}
-
-	proverFromAggregation := common.BytesToAddress(aggregation.ProverAddress[12:])
-	if proverFromAggregation != prover {
-		apicommon.WriteError(
-			w, r,
-			http.StatusBadRequest,
-			"invalid_aggregation_outputs",
-			"aggregation_outputs.proverAddress mismatch",
-			nil,
-		)
-		return
-	}
-
 	if req.L2StartBlock > aggregation.L2BlockNumber {
 		apicommon.WriteError(
 			w, r,
@@ -145,14 +114,15 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	proofBytes := req.Proof.Clone()
-	aggVK := append(json.RawMessage(nil), req.AggVK...)
+	// proofBytes := req.Proof.Clone()
+	// TODO: this is mock proof, remove it once op-succinct will start in non-mock mode
+	proofBytes := aggProof1100Bin
 
+	aggVK := append(json.RawMessage(nil), req.AggVK...)
 	sub := proofs.Submission{
 		SuperblockNumber: req.SuperblockNumber,
 		SuperblockHash:   sbHash,
 		ChainID:          req.ChainID,
-		ProverAddress:    prover,
 		L1Head:           l1Head,
 		Aggregation:      aggregation,
 		L2StartBlock:     req.L2StartBlock,

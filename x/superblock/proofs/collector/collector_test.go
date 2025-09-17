@@ -21,7 +21,6 @@ func TestProofCollector_SubmitAndGetStatus(t *testing.T) {
 		SuperblockNumber: 42,
 		SuperblockHash:   sbHash,
 		ChainID:          11155111,
-		ProverAddress:    common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
 		L1Head:           common.HexToHash("0x" + strings.Repeat("22", 32)),
 		Aggregation: proofs.AggregationOutputs{
 			L1Head:           common.HexToHash("0x" + strings.Repeat("22", 32)),
@@ -29,8 +28,6 @@ func TestProofCollector_SubmitAndGetStatus(t *testing.T) {
 			L2PostRoot:       common.HexToHash("0x" + strings.Repeat("44", 32)),
 			L2BlockNumber:    1024,
 			RollupConfigHash: common.HexToHash("0x" + strings.Repeat("55", 32)),
-			MultiBlockVKey:   common.HexToHash("0x" + strings.Repeat("66", 32)),
-			ProverAddress:    common.HexToHash("0x0123456789abcdef0123456789abcdef01234567"),
 		},
 		L2StartBlock:    1000,
 		AggVerifyingKey: []byte("vk"),
@@ -78,7 +75,6 @@ func TestProofCollector_GetStats(t *testing.T) {
 		SuperblockNumber: 42,
 		SuperblockHash:   sbHash1,
 		ChainID:          11155111,
-		ProverAddress:    common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
 		L1Head:           common.HexToHash("0x" + strings.Repeat("33", 32)),
 	}
 
@@ -86,7 +82,6 @@ func TestProofCollector_GetStats(t *testing.T) {
 		SuperblockNumber: 43,
 		SuperblockHash:   sbHash2,
 		ChainID:          11155111,
-		ProverAddress:    common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
 		L1Head:           common.HexToHash("0x" + strings.Repeat("44", 32)),
 	}
 
@@ -94,7 +89,6 @@ func TestProofCollector_GetStats(t *testing.T) {
 		SuperblockNumber: 42,
 		SuperblockHash:   sbHash1,
 		ChainID:          84532,
-		ProverAddress:    common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
 		L1Head:           common.HexToHash("0x" + strings.Repeat("55", 32)),
 	}
 

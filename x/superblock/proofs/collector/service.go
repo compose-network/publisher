@@ -15,4 +15,6 @@ type Service interface {
 	ListSubmissions(ctx context.Context, sbHash common.Hash) ([]proofs.Submission, error)
 	UpdateStatus(ctx context.Context, sbHash common.Hash, mutate func(*proofs.Status)) error
 	GetStats() map[string]interface{}
+	CountProvingJobs(ctx context.Context) (int, error)
+	ListQueuedJobs(ctx context.Context) ([]proofs.Status, error)
 }

@@ -3,6 +3,8 @@ package contracts
 import (
 	"context"
 
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
@@ -14,5 +16,10 @@ type Binding interface {
 	Address() common.Address
 
 	// BuildPublishWithProofCalldata encodes the calldata to publish the given superblock with proof.
-	BuildPublishWithProofCalldata(ctx context.Context, superblock *store.Superblock, proof []byte) ([]byte, error)
+	BuildPublishWithProofCalldata(
+		ctx context.Context,
+		superblock *store.Superblock,
+		proof []byte,
+		outputs *proofs.SuperblockAggOutputs,
+	) ([]byte, error)
 }

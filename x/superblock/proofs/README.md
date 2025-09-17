@@ -48,7 +48,6 @@ type Submission struct {
     SuperblockNumber uint64
     SuperblockHash   common.Hash
     ChainID          uint32
-    ProverAddress    common.Address
     L1Head           common.Hash
     Aggregation      AggregationOutputs
     L2StartBlock     uint64
@@ -109,8 +108,22 @@ type ProofJobStatus struct {
 }
 
 type SuperblockProverInput struct {
-    Superblocks       []ProverSuperblock
+    PreviousBatch     SuperblockBatch
+    NewBatch          SuperblockBatch
     AggregationProofs []AggregationProofData
+}
+
+type SuperblockBatch struct {
+    SuperblockNumber            uint64
+    ParentSuperblockBatchHash   []int
+    RollupSt                    []RollupStateTransition
+}
+
+type RollupStateTransition struct {
+    RollupConfigHash []int  // bytes32 - Uniquely identifies a rollup
+    L2PreRoot        []int  // bytes32 - Pre-execution state root
+    L2PostRoot       []int  // bytes32 - Post-execution state root
+    L2BlockNumber    []int  // bytes32 - New L2 block number
 }
 ```
 
@@ -126,7 +139,6 @@ type SuperblockAggregationOutputs struct {
     L1Head           common.Hash
     SuperblockHash   common.Hash
     SuperblockNumber uint64
-    ProverAddress    []common.Address
     RollupOutput     []AggregationOutputsWithChainID
 }
 
@@ -138,4 +150,6 @@ type AggregationOutputsWithChainID struct {
 
 `AggregationOutputsWithChainID` embeds each chain’s encoded outputs (`json.RawMessage`) for later ABI packing.
 
-**State Flow**: `collecting` → `dispatched` → `proving` → `complete` | `failed`
+**State Flow**: `collecting` → `queued` → `dispatched` → `proving` → `complete` | `failed`
+
+**Rate Limiting**: Only one proof can be in `proving` state at a time. Additional ready proofs will be queued in `queued` state until the current proof completes or fails.

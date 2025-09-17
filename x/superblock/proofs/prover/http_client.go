@@ -56,9 +56,19 @@ func NewHTTPClient(rawURL string, httpClient *http.Client, log zerolog.Logger) (
 func (c *HTTPClient) RequestProof(ctx context.Context, job proofs.ProofJobInput) (string, error) {
 	endpoint := c.buildURL("proof")
 
+	// Calculate aggregation proof sizes for logging
+	aggProofSizes := make([]int, len(job.Input.AggregationProofs))
+	for i, aggProof := range job.Input.AggregationProofs {
+		aggProofSizes[i] = len(aggProof.CompressedProof)
+	}
+
 	c.log.Info().
 		Str("endpoint", endpoint).
-		Interface("job", job).
+		Str("proof_type", job.ProofType).
+		Int("num_aggregation_proofs", len(job.Input.AggregationProofs)).
+		Interface("compressed_proof_sizes", aggProofSizes).
+		Interface("previous_batch", job.Input.PreviousBatch).
+		Interface("new_batch", job.Input.NewBatch).
 		Msg("requesting proof generation")
 
 	body, err := json.Marshal(job)
@@ -119,49 +129,39 @@ func (c *HTTPClient) RequestProof(ctx context.Context, job proofs.ProofJobInput)
 // GetStatus fetches the status of a previously submitted job.
 func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJobStatus, error) {
 	if jobID == "" {
-		c.log.Error().Msg("job ID is required for status check")
 		return proofs.ProofJobStatus{}, errors.New("jobID is required")
 	}
 
 	endpoint := c.buildURL(path.Join("proof", jobID))
 
-	c.log.Info().
+	c.log.Debug().
 		Str("job_id", jobID).
 		Str("endpoint", endpoint).
 		Msg("checking proof job status")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		c.log.Error().Err(err).Str("job_id", jobID).Msg("failed to prepare status request")
 		return proofs.ProofJobStatus{}, fmt.Errorf("prepare status request: %w", err)
 	}
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
-		c.log.Error().Err(err).Str("job_id", jobID).Str("endpoint", endpoint).Msg("status request failed")
 		return proofs.ProofJobStatus{}, fmt.Errorf("get proof status: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode >= 400 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		c.log.Error().
-			Str("job_id", jobID).
-			Int("status_code", res.StatusCode).
-			Str("response", string(msg)).
-			Msg("prover returned error for status check")
 		return proofs.ProofJobStatus{}, fmt.Errorf("prover returned %s: %s", res.Status, string(msg))
 	}
 
 	var status statusResponse
 	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
-		c.log.Error().Err(err).Str("job_id", jobID).Msg("failed to decode status response")
 		return proofs.ProofJobStatus{}, fmt.Errorf("decode status response: %w", err)
 	}
 
 	if !status.Success {
 		errMsg := status.errorMessage()
-		c.log.Error().Str("job_id", jobID).Str("error", errMsg).Msg("prover reported job failure")
 		if errMsg == "" {
 			return proofs.ProofJobStatus{}, errors.New("prover returned unsuccessful status")
 		}
@@ -175,13 +175,15 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 		}
 		result.ProvingTimeMS = status.Result.ProvingTimeMs
 		result.Cycles = status.Result.Cycles
+		result.SuperblockAggOutputs = status.Result.SuperblockAggOutputs
 	}
 
-	c.log.Info().
+	c.log.Debug().
 		Str("job_id", jobID).
 		Str("status", result.Status).
 		Interface("proving_time_ms", result.ProvingTimeMS).
 		Interface("cycles", result.Cycles).
+		Interface("commitment", result.Commitment).
 		Bool("has_proof", len(result.Proof) > 0).
 		Msg("retrieved proof job status")
 
@@ -223,9 +225,10 @@ func (r statusResponse) errorMessage() string {
 }
 
 type statusResult struct {
-	Proof         proofs.ProofBytes `json:"proof"`
-	ProvingTimeMs *uint64           `json:"proving_time_ms"`
-	Cycles        *uint64           `json:"cycles"`
+	Proof                proofs.ProofBytes            `json:"proof"`
+	ProvingTimeMs        *uint64                      `json:"proving_time_ms"`
+	Cycles               *uint64                      `json:"cycles"`
+	SuperblockAggOutputs *proofs.SuperblockAggOutputs `json:"superblock_agg_outputs,omitempty"`
 }
 
 // Ensure HTTPClient satisfies proofs.ProverClient at compile time.
