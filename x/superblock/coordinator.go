@@ -525,7 +525,7 @@ func (c *Coordinator) buildSuperblock(ctx context.Context, slotNumber uint64) er
 		}
 	}
 
-	if err := c.publishSuperblockTx(ctx, superblock, nil); err != nil {
+	if err := c.publishSuperblockTx(ctx, superblock, nil, nil); err != nil {
 		c.log.Error().Err(err).Uint64("number", superblock.Number).Msg("Failed to publish superblock")
 	} else {
 		c.log.Info().
@@ -988,12 +988,13 @@ func (c *Coordinator) publishSuperblockTx(
 	ctx context.Context,
 	sb *store.Superblock,
 	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
 ) error {
 	if len(proof) == 0 {
 		return fmt.Errorf("proof is required for superblock submission")
 	}
 
-	recorded, err := c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof)
+	recorded, err := c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof, outputs)
 	if err != nil {
 		return err
 	}
@@ -1011,8 +1012,13 @@ func (c *Coordinator) publishSuperblockTx(
 	return nil
 }
 
-func (c *Coordinator) publishWithProof(ctx context.Context, sb *store.Superblock, proof []byte) error {
-	return c.publishSuperblockTx(ctx, sb, proof)
+func (c *Coordinator) publishWithProof(
+	ctx context.Context,
+	sb *store.Superblock,
+	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
+) error {
+	return c.publishSuperblockTx(ctx, sb, proof, outputs)
 }
 
 func (c *Coordinator) calculateMerkleRoot(blocks []*pb.L2Block) []byte {

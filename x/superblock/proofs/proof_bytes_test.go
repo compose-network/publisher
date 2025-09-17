@@ -69,13 +69,9 @@ func TestAggregationOutputsABIEncode(t *testing.T) {
 		L2PostRoot:       common.HexToHash("0x" + strings.Repeat("33", 32)),
 		L2BlockNumber:    0x1234,
 		RollupConfigHash: common.HexToHash("0x" + strings.Repeat("44", 32)),
-		MultiBlockVKey:   common.HexToHash("0x" + strings.Repeat("55", 32)),
-		ProverAddress:    proverAddress,
 	}
 	encoded := outputs.ABIEncode()
-	require.Len(t, encoded, 224)
-	// last 32 bytes should be the full prover address (left-padded)
-	require.Equal(t, outputs.ProverAddress.Bytes(), encoded[6*32:7*32])
+	require.Len(t, encoded, 160)
 	// l2 block number encoded big-endian in final 8 bytes of 4th field
 	require.Equal(t, byte(0x12), encoded[3*32+30])
 	require.Equal(t, byte(0x34), encoded[3*32+31])

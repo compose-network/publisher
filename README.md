@@ -360,11 +360,11 @@ See [Superblock Construction Protocol](./docs/superblock_construction_protocol.m
 - **Network**: TLS support (recommended for production)
 - **Timeouts**: Configurable timeouts prevent indefinite blocking
 
-## Contributing
+### Contributing
 
 Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull
 requests.
 
-## License
+### License
 
 TODO

@@ -23,7 +23,7 @@ type proofPipeline struct {
 	log       zerolog.Logger
 	pollEvery time.Duration
 
-	publishFn func(context.Context, *store.Superblock, []byte) error
+	publishFn func(context.Context, *store.Superblock, []byte, *proofs.SuperblockAggOutputs) error
 
 	mu   sync.Mutex
 	jobs map[string]proofJob
@@ -42,7 +42,7 @@ func newProofPipeline(
 	collector apicollector.Service,
 	prover proofs.ProverClient,
 	sbStore store.SuperblockStore,
-	publishFn func(context.Context, *store.Superblock, []byte) error,
+	publishFn func(context.Context, *store.Superblock, []byte, *proofs.SuperblockAggOutputs) error,
 	log zerolog.Logger,
 ) *proofPipeline {
 	if !cfg.Enabled || collector == nil || prover == nil {
@@ -88,6 +88,8 @@ func (p *proofPipeline) Stop() {
 
 // HandleSuperblock processes a given superblock by checking and handling proof submissions required for its processing.
 // TODO: fix block numbers
+//
+//nolint:gocyclo // ok
 func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblock) error {
 	if p == nil {
 		return nil
@@ -97,6 +99,8 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 		Uint64("superblock_number", sb.Number).
 		Str("superblock_hash", sb.Hash.Hex()).
 		Msg("HandleSuperblock called - checking for proofs")
+
+	// Initialize superblock status if it doesn't exist (collector now handles this automatically)
 
 	// TODO: For testing, can bypass missing proofs by creating dummy submissions
 	subs, err := p.collector.ListSubmissions(ctx, sb.Hash)
@@ -187,6 +191,26 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 		return nil
 	}
 
+	// Rate limiter: Check if there's already a proof in StateProving
+	provingCount, err := p.collector.CountProvingJobs(ctx)
+	if err != nil {
+		p.log.Error().Err(err).Msg("Failed to check proving job count")
+		return fmt.Errorf("check proving jobs: %w", err)
+	}
+
+	if provingCount > 0 {
+		p.log.Info().
+			Uint64("superblock", sb.Number).
+			Int("proving_count", provingCount).
+			Msg("Rate limited: another proof is currently proving, queuing this one")
+		_ = p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
+			st.Required = required
+			st.State = proofs.StateQueued
+			st.Error = ""
+		})
+		return nil
+	}
+
 	job := p.buildProofJobInput(ctx, sb, subs)
 
 	jobID, err := p.prover.RequestProof(ctx, job)
@@ -252,11 +276,58 @@ func (p *proofPipeline) buildProofJobInput(
 	sb *store.Superblock,
 	subs []proofs.Submission,
 ) proofs.ProofJobInput {
-	superblocks := p.collectSuperblocks(ctx, sb)
+	// Create rollup state transitions from submissions
+	rollupStateTransitions := make([]proofs.RollupStateTransition, 0, len(subs))
+	for _, s := range subs {
+		l2BlockNumberBytes := make([]byte, 32)
+		blockNumber := s.Aggregation.L2BlockNumber
+		for i := 0; i < 8; i++ {
+			l2BlockNumberBytes[31-i] = byte(blockNumber)
+			blockNumber >>= 8
+		}
 
+		rollupStateTransitions = append(rollupStateTransitions, proofs.RollupStateTransition{
+			RollupConfigHash: bytesToInts(s.Aggregation.RollupConfigHash.Bytes()),
+			L2PreRoot:        bytesToInts(s.Aggregation.L2PreRoot.Bytes()),
+			L2PostRoot:       bytesToInts(s.Aggregation.L2PostRoot.Bytes()),
+			L2BlockNumber:    bytesToInts(l2BlockNumberBytes),
+		})
+	}
+
+	var previousBatch proofs.SuperblockBatch
+	if sb.Number > 0 {
+		prev, err := p.sbStore.GetSuperblock(ctx, sb.Number-1)
+		if err == nil {
+			// TODO: Get actual parent superblock batch hash
+			parentHashBytes := make([]byte, 32)
+			copy(parentHashBytes, prev.Hash.Bytes())
+			parentHashInts := bytesToInts(parentHashBytes)
+
+			if len(parentHashInts) == 0 {
+				parentHashInts = make([]int, 32)
+			}
+
+			previousBatch = proofs.SuperblockBatch{
+				SuperblockNumber:          prev.Number,
+				ParentSuperblockBatchHash: parentHashInts,
+				// TODO: Get actual rollup state transitions for previous batch
+				RollupSt: []proofs.RollupStateTransition{},
+			}
+		}
+	}
+
+	newBatch := proofs.SuperblockBatch{
+		SuperblockNumber:          sb.Number,
+		ParentSuperblockBatchHash: bytesToInts(sb.ParentHash.Bytes()),
+		RollupSt:                  rollupStateTransitions,
+	}
+
+	// Create aggregation proofs
 	aggProofs := make([]proofs.AggregationProofData, 0, len(subs))
 	for _, s := range subs {
-		raw := s.Aggregation.ABIEncode()
+		// TODO: revert, now mocking
+		// raw := s.Aggregation.ABIEncode()
+		raw := rawPublicValues
 		proofBytes := make([]byte, len(s.Proof))
 		copy(proofBytes, s.Proof)
 
@@ -288,66 +359,140 @@ func (p *proofPipeline) buildProofJobInput(
 	return proofs.ProofJobInput{
 		ProofType: p.cfg.Prover.ProofType,
 		Input: proofs.SuperblockProverInput{
-			Superblocks:       superblocks,
+			PreviousBatch:     previousBatch,
+			NewBatch:          newBatch,
 			AggregationProofs: aggProofs,
 		},
 	}
 }
 
-func (p *proofPipeline) collectSuperblocks(
-	ctx context.Context,
-	current *store.Superblock,
-) []proofs.ProverSuperblock {
-	result := []proofs.ProverSuperblock{convertSuperblock(current)}
-	if current.Number > 0 {
-		prev, err := p.sbStore.GetSuperblock(ctx, current.Number-1)
-		if err == nil {
-			result = append([]proofs.ProverSuperblock{convertSuperblock(prev)}, result...)
+// func (p *proofPipeline) collectSuperblocks(
+//	ctx context.Context,
+//	current *store.Superblock,
+// ) []proofs.ProverSuperblock {
+//	result := []proofs.ProverSuperblock{convertSuperblock(current)}
+//	if current.Number > 0 {
+//		prev, err := p.sbStore.GetSuperblock(ctx, current.Number-1)
+//		if err == nil {
+//			result = append([]proofs.ProverSuperblock{convertSuperblock(prev)}, result...)
+//		}
+//	}
+//
+//	return result
+// }
+//
+// func convertSuperblock(sb *store.Superblock) proofs.ProverSuperblock {
+//	psb := proofs.ProverSuperblock{
+//		Number:     sb.Number,
+//		Slot:       sb.Slot,
+//		ParentHash: sb.ParentHash.Bytes(),
+//		Hash:       sb.Hash.Bytes(),
+//		MerkleRoot: sb.MerkleRoot.Bytes(),
+//		Timestamp:  uint64(sb.Timestamp.Unix()),
+//	}
+//
+//	for _, blk := range sb.L2Blocks {
+//		psb.L2Blocks = append(psb.L2Blocks, proofs.ProverL2Block{
+//			Slot:            blk.GetSlot(),
+//			ChainID:         append([]byte(nil), blk.GetChainId()...),
+//			BlockNumber:     blk.GetBlockNumber(),
+//			BlockHash:       append([]byte(nil), blk.GetBlockHash()...),
+//			ParentBlockHash: append([]byte(nil), blk.GetParentBlockHash()...),
+//			IncludedXTs:     cloneSlices(blk.GetIncludedXts()),
+//			Block:           append([]byte(nil), blk.GetBlock()...),
+//		})
+//	}
+//
+//	for _, xt := range sb.IncludedXTs {
+//		psb.IncludedXTs = append(psb.IncludedXTs, xt.Bytes())
+//	}
+//
+//	if sb.L1TransactionHash != (common.Hash{}) {
+//		psb.L1TransactionHash = sb.L1TransactionHash.Bytes()
+//	}
+//
+//	return psb
+// }
+//
+// func cloneSlices(src [][]byte) [][]byte {
+//	out := make([][]byte, len(src))
+//	for i, b := range src {
+//		out[i] = append([]byte(nil), b...)
+//	}
+//
+//	return out
+// }
+
+// processQueuedJobs attempts to process jobs that are in StateQueued
+func (p *proofPipeline) processQueuedJobs(ctx context.Context) {
+	if p == nil {
+		return
+	}
+
+	// Check if we can process more jobs (should be 0 proving jobs now)
+	provingCount, err := p.collector.CountProvingJobs(ctx)
+	if err != nil {
+		p.log.Error().Err(err).Msg("Failed to check proving job count while processing queue")
+		return
+	}
+
+	if provingCount > 0 {
+		p.log.Debug().Int("proving_count", provingCount).Msg("Still have proving jobs, not processing queue")
+		return
+	}
+
+	// Get queued jobs
+	queuedJobs, err := p.collector.ListQueuedJobs(ctx)
+	if err != nil {
+		p.log.Error().Err(err).Msg("Failed to list queued jobs")
+		return
+	}
+
+	if len(queuedJobs) == 0 {
+		p.log.Debug().Msg("No queued jobs to process")
+		return
+	}
+
+	// Sort by superblock number to process in order (oldest first)
+	// TODO: Add proper sorting if needed, for now just process the first one
+	jobToProcess := queuedJobs[0]
+	for _, job := range queuedJobs {
+		if job.SuperblockNumber < jobToProcess.SuperblockNumber {
+			jobToProcess = job
 		}
 	}
 
-	return result
+	p.log.Info().
+		Uint64("superblock", jobToProcess.SuperblockNumber).
+		Str("superblock_hash", jobToProcess.SuperblockHash.Hex()).
+		Int("total_queued", len(queuedJobs)).
+		Msg("Processing queued proof job")
+
+	// Get the superblock for this job
+	sb, err := p.sbStore.GetSuperblock(ctx, jobToProcess.SuperblockNumber)
+	if err != nil {
+		p.log.Error().
+			Err(err).
+			Uint64("superblock", jobToProcess.SuperblockNumber).
+			Msg("Failed to load superblock for queued job")
+		return
+	}
+
+	// Process this superblock (this will go through the normal flow but should now pass the rate limiter)
+	if err := p.HandleSuperblock(ctx, sb); err != nil {
+		p.log.Error().
+			Err(err).
+			Uint64("superblock", jobToProcess.SuperblockNumber).
+			Msg("Failed to process queued superblock")
+	}
 }
 
-func convertSuperblock(sb *store.Superblock) proofs.ProverSuperblock {
-	psb := proofs.ProverSuperblock{
-		Number:     sb.Number,
-		Slot:       sb.Slot,
-		ParentHash: sb.ParentHash.Bytes(),
-		Hash:       sb.Hash.Bytes(),
-		MerkleRoot: sb.MerkleRoot.Bytes(),
-		Timestamp:  uint64(sb.Timestamp.Unix()),
-	}
-
-	for _, blk := range sb.L2Blocks {
-		psb.L2Blocks = append(psb.L2Blocks, proofs.ProverL2Block{
-			Slot:            blk.GetSlot(),
-			ChainID:         append([]byte(nil), blk.GetChainId()...),
-			BlockNumber:     blk.GetBlockNumber(),
-			BlockHash:       append([]byte(nil), blk.GetBlockHash()...),
-			ParentBlockHash: append([]byte(nil), blk.GetParentBlockHash()...),
-			IncludedXTs:     cloneSlices(blk.GetIncludedXts()),
-			Block:           append([]byte(nil), blk.GetBlock()...),
-		})
-	}
-
-	for _, xt := range sb.IncludedXTs {
-		psb.IncludedXTs = append(psb.IncludedXTs, xt.Bytes())
-	}
-
-	if sb.L1TransactionHash != (common.Hash{}) {
-		psb.L1TransactionHash = sb.L1TransactionHash.Bytes()
-	}
-
-	return psb
-}
-
-func cloneSlices(src [][]byte) [][]byte {
-	out := make([][]byte, len(src))
+// bytesToInts converts a byte slice to an int slice
+func bytesToInts(src []byte) []int {
+	out := make([]int, len(src))
 	for i, b := range src {
-		out[i] = append([]byte(nil), b...)
+		out[i] = int(b)
 	}
-
 	return out
 }
 
@@ -399,6 +544,8 @@ func (p *proofPipeline) pollOnce(ctx context.Context) {
 				st.Error = "prover reported failure"
 			})
 			p.removeJob(id)
+
+			go p.processQueuedJobs(ctx)
 		case "completed":
 			p.handleCompleted(ctx, id, job, status)
 		default:
@@ -408,6 +555,18 @@ func (p *proofPipeline) pollOnce(ctx context.Context) {
 }
 
 func (p *proofPipeline) handleCompleted(ctx context.Context, jobID string, job proofJob, status proofs.ProofJobStatus) {
+	p.log.Info().
+		Str("job_id", jobID).
+		Uint64("superblock", job.number).
+		Str("proof_type", job.proofType).
+		Int("proof_size_bytes", len(status.Proof)).
+		Interface("proving_time_ms", status.ProvingTimeMS).
+		Interface("cycles", status.Cycles).
+		Interface("commitment", status.Commitment).
+		Interface("superblock_agg_outputs", status.SuperblockAggOutputs).
+		Msg("Proof job finished successfully")
+
+	outputs := status.SuperblockAggOutputs
 	proofBytes := status.Proof
 	if len(proofBytes) == 0 {
 		p.log.Warn().Str("job_id", jobID).Msg("Completed proof job returned empty proof")
@@ -432,7 +591,7 @@ func (p *proofPipeline) handleCompleted(ctx context.Context, jobID string, job p
 	}
 
 	if p.publishFn != nil {
-		if err := p.publishFn(ctx, sb, proofBytes); err != nil {
+		if err := p.publishFn(ctx, sb, proofBytes, outputs); err != nil {
 			p.log.Error().Err(err).Uint64("superblock", job.number).Msg("Failed to publish superblock with proof")
 			_ = p.collector.UpdateStatus(ctx, job.hash, func(st *proofs.Status) {
 				st.State = proofs.StateFailed
@@ -448,6 +607,8 @@ func (p *proofPipeline) handleCompleted(ctx context.Context, jobID string, job p
 	})
 	p.removeJob(jobID)
 	p.log.Info().Str("job_id", jobID).Uint64("superblock", job.number).Msg("Proof job completed and published")
+
+	go p.processQueuedJobs(ctx)
 }
 
 func (p *proofPipeline) removeJob(jobID string) {
@@ -473,10 +634,6 @@ func (p *proofPipeline) missingChains(required []uint32, subs []proofs.Submissio
 func (p *proofPipeline) logStats() {
 	p.mu.Lock()
 	queued := len(p.jobs)
-	jobIDs := make([]string, 0, queued)
-	for id := range p.jobs {
-		jobIDs = append(jobIDs, id)
-	}
 	p.mu.Unlock()
 
 	if queued == 0 {
@@ -486,6 +643,5 @@ func (p *proofPipeline) logStats() {
 
 	p.log.Info().
 		Int("outstanding_jobs", queued).
-		Strs("job_ids", jobIDs).
 		Msg("Active proof jobs awaiting completion")
 }

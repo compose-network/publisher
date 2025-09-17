@@ -8,13 +8,11 @@ import (
 
 // OpSuccinctAggregationOutputs represents op-succinct's camelCase format
 type OpSuccinctAggregationOutputs struct {
-	L1Head           common.Hash    `json:"l1Head"`
-	L2PreRoot        common.Hash    `json:"l2PreRoot"`
-	L2PostRoot       common.Hash    `json:"l2PostRoot"`
-	L2BlockNumber    uint64         `json:"l2BlockNumber"`
-	RollupConfigHash common.Hash    `json:"rollupConfigHash"`
-	MultiBlockVKey   common.Hash    `json:"multiBlockVKey"`
-	ProverAddress    common.Address `json:"proverAddress"`
+	L1Head           common.Hash `json:"l1Head"`
+	L2PreRoot        common.Hash `json:"l2PreRoot"`
+	L2PostRoot       common.Hash `json:"l2PostRoot"`
+	L2BlockNumber    uint64      `json:"l2BlockNumber"`
+	RollupConfigHash common.Hash `json:"rollupConfigHash"`
 }
 
 // AggregationOutputs represents internal snake_case format for prover
@@ -24,25 +22,11 @@ type AggregationOutputs struct {
 	L2PostRoot       common.Hash `json:"l2_post_root"`
 	L2BlockNumber    uint64      `json:"l2_block_number"`
 	RollupConfigHash common.Hash `json:"rollup_config_hash"`
-	MultiBlockVKey   common.Hash `json:"multi_block_vkey"`
-	ProverAddress    common.Hash `json:"prover_address"` // 32-byte padded address for prover
 }
 
 // ToAggregationOutputs converts op-succinct format to internal format
 func (o OpSuccinctAggregationOutputs) ToAggregationOutputs() AggregationOutputs {
-	// Pad the 20-byte address to 32 bytes for the prover
-	var paddedAddress common.Hash
-	copy(paddedAddress[12:], o.ProverAddress[:]) // Put address in last 20 bytes
-
-	return AggregationOutputs{
-		L1Head:           o.L1Head,
-		L2PreRoot:        o.L2PreRoot,
-		L2PostRoot:       o.L2PostRoot,
-		L2BlockNumber:    o.L2BlockNumber,
-		RollupConfigHash: o.RollupConfigHash,
-		MultiBlockVKey:   o.MultiBlockVKey,
-		ProverAddress:    paddedAddress,
-	}
+	return AggregationOutputs(o)
 }
 
 // ABIEncode encodes AggregationOutputs into the 7*32 byte form expected by the prover.
@@ -59,8 +43,6 @@ func (a AggregationOutputs) ABIEncode() []byte {
 	}
 	buf = append(buf, number[:]...)
 	buf = append(buf, a.RollupConfigHash.Bytes()...)
-	buf = append(buf, a.MultiBlockVKey.Bytes()...)
-	buf = append(buf, a.ProverAddress.Bytes()...) // ProverAddress is already 32 bytes
 	return buf
 }
 

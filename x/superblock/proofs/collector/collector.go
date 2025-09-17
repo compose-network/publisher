@@ -82,7 +82,6 @@ func (m *ProofCollector) SubmitOpSuccinct(_ context.Context, s proofs.Submission
 		Str("superblock_hash", key).
 		Uint64("superblock_number", s.SuperblockNumber).
 		Uint32("chain_id", s.ChainID).
-		Str("prover_address", s.ProverAddress.Hex()).
 		Int("total_submissions", len(m.bySB[key])).
 		Msg("proof submission collected")
 
@@ -124,7 +123,15 @@ func (m *ProofCollector) UpdateStatus(_ context.Context, sbHash common.Hash, mut
 	key := sbHash.Hex()
 	st, ok := m.statuses[key]
 	if !ok {
-		return fmt.Errorf("unknown superblock")
+		// Initialize a new status entry if it doesn't exist
+		st = proofs.Status{
+			SuperblockHash: sbHash,
+			State:          proofs.StateCollecting,
+			Received:       make(map[uint32]time.Time),
+		}
+		m.log.Info().
+			Str("superblock_hash", key).
+			Msg("Initializing new superblock status")
 	}
 	mutate(&st)
 	m.statuses[key] = st
@@ -155,6 +162,34 @@ func (m *ProofCollector) GetStats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// CountProvingJobs returns the number of jobs currently in StateProving
+func (m *ProofCollector) CountProvingJobs(_ context.Context) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	count := 0
+	for _, status := range m.statuses {
+		if status.State == proofs.StateProving {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// ListQueuedJobs returns all jobs currently in StateQueued
+func (m *ProofCollector) ListQueuedJobs(_ context.Context) ([]proofs.Status, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var queuedJobs []proofs.Status
+	for _, status := range m.statuses {
+		if status.State == proofs.StateQueued {
+			queuedJobs = append(queuedJobs, status)
+		}
+	}
+	return queuedJobs, nil
 }
 
 // statsLogger periodically logs collector statistics

@@ -2,12 +2,13 @@ package l1
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strings"
 	"time"
+
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -22,6 +23,14 @@ import (
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/tx"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
+
+type abiProvider interface {
+	ABI() abi.ABI
+}
+
+type gameTypeProvider interface {
+	GameType() uint32
+}
 
 // EthPublisher publishes superblocks to Ethereum L1 using go-ethereum.
 // It implements the Publisher interface and uses EIP-1559 by default.
@@ -79,7 +88,7 @@ func NewEthPublisher(
 		if err != nil {
 			return nil, fmt.Errorf("invalid private key hex: %w", err)
 		}
-		privKey, err := cryptoToECDSA(keyBytes)
+		privKey, err := crypto.ToECDSA(keyBytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse private key: %w", err)
 		}
@@ -106,12 +115,26 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 	ctx context.Context,
 	superblock *store.Superblock,
 	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
 ) (*tx.Transaction, error) {
 	p.log.Info().
 		Uint64("superblock_number", superblock.Number).
+		Int("l2_block_count", len(superblock.L2Blocks)).
 		Msg("Building superblock publish-with-proof transaction")
+	for i, block := range superblock.L2Blocks {
+		if block != nil {
+			p.log.Info().
+				Uint64("superblock_number", superblock.Number).
+				Int("entry_index", i).
+				Uint64("l2_block_number", block.BlockNumber).
+				Str("parent_block_hash", fmt.Sprintf("%x", block.ParentBlockHash)).
+				Str("block_hash", fmt.Sprintf("%x", block.BlockHash)).
+				Str("chain_id", fmt.Sprintf("%x", block.ChainId)).
+				Msg("Superblock entry to be published")
+		}
+	}
 
-	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof)
+	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof, outputs)
 	if err != nil {
 		p.log.Error().
 			Err(err).
@@ -120,8 +143,33 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 		return nil, fmt.Errorf("build calldata: %w", err)
 	}
 
+	if ap, ok := p.contract.(abiProvider); ok {
+		if method, exists := ap.ABI().Methods["create"]; exists {
+			if decoded, decErr := method.Inputs.Unpack(calldata[4:]); decErr == nil {
+				if len(decoded) >= 3 {
+					if rc, ok := decoded[1].([32]byte); ok {
+						root := common.BytesToHash(rc[:]).Hex()
+						var extraLen int
+						if extra, ok := decoded[2].([]byte); ok {
+							extraLen = len(extra)
+						}
+						// TODO: drop once on-chain data is validated in staging.
+						p.log.Info().
+							Str("root_claim", root).
+							Int("extra_data_len", extraLen).
+							Msg("Decoded dispute game create call")
+					}
+				}
+			} else {
+				// TODO: remove once calldata validation is stable.
+				p.log.Info().Err(decErr).Msg("Failed to decode create calldata")
+			}
+		}
+	}
+
 	from := p.signer.From()
 	to := p.contract.Address()
+	callValue := p.resolveCallValue(ctx, from, to)
 
 	nonce, err := p.client.PendingNonceAt(ctx, from)
 	if err != nil {
@@ -129,14 +177,14 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 		return nil, fmt.Errorf("fetch nonce: %w", err)
 	}
 
-	gasLimit := p.estimateGasLimit(ctx, from, to, calldata)
+	gasLimit := p.estimateGasLimit(ctx, from, to, callValue, calldata)
 	tipCap, feeCap := p.suggestFees(ctx)
 
 	txData := &types.DynamicFeeTx{
 		ChainID:   big.NewInt(int64(p.cfg.ChainID)),
 		Nonce:     nonce,
 		To:        &to,
-		Value:     big.NewInt(0),
+		Value:     callValue,
 		Gas:       gasLimit,
 		GasTipCap: tipCap,
 		GasFeeCap: feeCap,
@@ -163,6 +211,7 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 		Uint64("gas_limit", gasLimit).
 		Str("gas_tip_cap", tipCap.String()).
 		Str("gas_fee_cap", feeCap.String()).
+		Str("call_value", callValue.String()).
 		Uint64("superblock_number", superblock.Number).
 		Msg("Successfully submitted superblock transaction (with proof)")
 
@@ -177,15 +226,70 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 }
 
 // estimateGasLimit estimates gas and applies safety buffer
-func (p *EthPublisher) estimateGasLimit(ctx context.Context, from, to common.Address, calldata []byte) uint64 {
-	gasMsg := ethereum.CallMsg{From: from, To: &to, Value: big.NewInt(0), Data: calldata}
-	if est, err := p.client.EstimateGas(ctx, gasMsg); err == nil {
+func (p *EthPublisher) estimateGasLimit(
+	ctx context.Context,
+	from, to common.Address,
+	value *big.Int,
+	calldata []byte,
+) uint64 {
+	msgValue := value
+	if msgValue == nil {
+		msgValue = big.NewInt(0)
+	}
+	gasMsg := ethereum.CallMsg{From: from, To: &to, Value: msgValue, Data: calldata}
+	est, err := p.client.EstimateGas(ctx, gasMsg)
+	if err == nil {
 		buffer := est * p.cfg.GasLimitBufferPct / 100
-		p.log.Debug().Uint64("estimated_gas", est).Uint64("gas_limit", est+buffer).Msg("Gas estimated")
+		p.log.Debug().
+			Uint64("estimated_gas", est).
+			Uint64("gas_limit", est+buffer).
+			Msg("Gas estimated")
 		return est + buffer
 	}
-	p.log.Warn().Uint64("fallback_gas_limit", 1_500_000).Msg("Gas estimation failed, using fallback")
+	p.log.Warn().
+		Err(err).
+		Uint64("fallback_gas_limit", 1_500_000).
+		Msg("Gas estimation failed, using fallback")
 	return 1_500_000
+}
+
+func (p *EthPublisher) resolveCallValue(ctx context.Context, from, to common.Address) *big.Int {
+	bond, err := p.fetchInitBond(ctx, from, to)
+	if err != nil {
+		p.log.Warn().Err(err).Msg("Failed to resolve init bond; using zero call value")
+		return big.NewInt(0)
+	}
+	if bond == nil {
+		return big.NewInt(0)
+	}
+	if bond.Sign() > 0 {
+		p.log.Debug().Str("init_bond_wei", bond.String()).Msg("Resolved init bond")
+	}
+	return bond
+}
+
+func (p *EthPublisher) fetchInitBond(ctx context.Context, from, to common.Address) (*big.Int, error) {
+	ap, ok := p.contract.(abiProvider)
+	if !ok {
+		return nil, nil
+	}
+	gp, ok := p.contract.(gameTypeProvider)
+	if !ok {
+		return nil, nil
+	}
+	data, err := ap.ABI().Pack("initBonds", gp.GameType())
+	if err != nil {
+		return nil, fmt.Errorf("pack initBonds call: %w", err)
+	}
+	msg := ethereum.CallMsg{From: from, To: &to, Data: data}
+	res, err := p.client.CallContract(ctx, msg, nil)
+	if err != nil {
+		return nil, fmt.Errorf("call initBonds: %w", err)
+	}
+	if len(res) == 0 {
+		return big.NewInt(0), nil
+	}
+	return new(big.Int).SetBytes(res), nil
 }
 
 // suggestFees returns EIP-1559 tip and fee caps with config overrides
@@ -290,7 +394,6 @@ func (p *EthPublisher) GetPublishStatus(ctx context.Context, txHash []byte) (*tx
 // Without the ABI and concrete event signatures, this returns a closed channel for now.
 func (p *EthPublisher) WatchSuperblocks(ctx context.Context) (<-chan *events.SuperblockEvent, error) {
 	// Require contract to expose ABI for event decoding (L2OutputOracleBinding)
-	type abiProvider interface{ ABI() abi.ABI }
 	ap, ok := p.contract.(abiProvider)
 	if !ok {
 		p.log.Error().Msg("Contract binding does not expose ABI for events")
@@ -352,10 +455,4 @@ func (p *EthPublisher) GetLatestL1Block(ctx context.Context) (*BlockInfo, error)
 		GasUsed:    head.GasUsed,
 	}
 	return bi, nil
-}
-
-// cryptoToECDSA parses a raw 32-byte private key into ecdsa.PrivateKey.
-// Defined here to avoid importing crypto directly in tests.
-func cryptoToECDSA(priv []byte) (*ecdsa.PrivateKey, error) {
-	return crypto.ToECDSA(priv)
 }

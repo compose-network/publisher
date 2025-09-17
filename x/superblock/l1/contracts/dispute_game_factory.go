@@ -4,10 +4,12 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
@@ -19,6 +21,8 @@ var disputeGameFactoryABIJSON string
 var (
 	_ Binding = (*DisputeGameFactoryBinding)(nil)
 )
+
+const composeGameType uint32 = 5555
 
 // DisputeGameFactoryBinding provides functionality to interact with DisputeGameFactory
 // smart contracts for creating dispute games with superblock proofs.
@@ -40,6 +44,7 @@ func NewDisputeGameFactoryBinding(contractAddr string) (*DisputeGameFactoryBindi
 		return nil, fmt.Errorf("failed to parse DisputeGameFactory ABI: %w", err)
 	}
 
+	contractAddr = "0xf3f81abf097d7cc92f8dc5e4f136691485111de1"
 	return &DisputeGameFactoryBinding{
 		address: common.HexToAddress(contractAddr),
 		abi:     parsedABI,
@@ -56,13 +61,14 @@ func (b *DisputeGameFactoryBinding) ABI() abi.ABI {
 	return b.abi
 }
 
+// GameType returns the compose dispute game type identifier used when creating games.
+func (b *DisputeGameFactoryBinding) GameType() uint32 {
+	return composeGameType
+}
+
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
-func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
-	_ context.Context,
-	sb *store.Superblock,
-	proof []byte,
-) ([]byte, error) {
+func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs) ([]byte, error) {
 	if sb == nil {
 		return nil, fmt.Errorf("superblock cannot be nil")
 	}
@@ -70,26 +76,15 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 		return nil, fmt.Errorf("proof cannot be empty")
 	}
 
-	// Create SuperblockAggregationOutputs structure
-	superblockAggOutputs := b.toSuperblockAggregationOutputs(sb)
-
-	// Encode the extraData as (SuperblockAggregationOutputs, bytes proof)
-	extraData, err := abi.Arguments{
-		{Type: mustParseType("tuple", buildSuperblockAggregationOutputsType())},
-		{Type: mustParseType("bytes", nil)},
-	}.Pack(superblockAggOutputs, proof)
+	// Encode the extraData as (bytes outputs, bytes proof)
+	extraData, err := encodeExtraData(b.toSuperblockAggregationOutputs(outputs), proof)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode extraData: %w", err)
+		return nil, fmt.Errorf("failed to encode extradata: %v", err)
 	}
 
-	// COMPOSE_GAME_TYPE from ComposeDisputeGame.sol
-	gameType := uint32(5555)
-
-	// rootClaim is the parent superblock batch hash
+	// rootClaim - parent superblock batch hash.
 	rootClaim := sb.ParentHash
-
-	// Pack the create() function call
-	data, err := b.abi.Pack("create", gameType, rootClaim, extraData)
+	data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DisputeGameFactory.create calldata: %w", err)
 	}
@@ -97,29 +92,62 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 	return data, nil
 }
 
-// toSuperblockAggregationOutputs converts a store.Superblock to SuperblockAggregationOutputs
-// format expected by the settlement layer.
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(sb *store.Superblock) superblockAggregationOutputs {
-	// Convert L2 blocks to BootInfoStruct array
-	bootInfo := make([]bootInfoStruct, 0, len(sb.L2Blocks))
-	for _, block := range sb.L2Blocks {
-		if block == nil {
-			continue
+func encodeExtraData(superBlockAggOutputs superblockAggregationOutputs, proof []byte) ([]byte, error) {
+	superblockType, _ := abi.NewType("tuple", "SuperblockAggregationOutputs", []abi.ArgumentMarshaling{
+		{Name: "superblockNumber", Type: "uint256"},
+		{Name: "parentSuperblockBatchHash", Type: "bytes32"},
+		{Name: "bootInfo", Type: "tuple[]", Components: []abi.ArgumentMarshaling{
+			{Name: "l1Head", Type: "bytes32"},
+			{Name: "l2PreRoot", Type: "bytes32"},
+			{Name: "l2PostRoot", Type: "bytes32"},
+			{Name: "l2BlockNumber", Type: "uint64"},
+			{Name: "rollupConfigHash", Type: "bytes32"},
+		}},
+	})
+
+	bytesType, _ := abi.NewType("bytes", "", nil)
+
+	arguments := abi.Arguments{
+		{Type: superblockType},
+		{Type: bytesType},
+	}
+
+	packed, err := arguments.Pack(superBlockAggOutputs, proof)
+	if err != nil {
+		return nil, err
+	}
+
+	return packed, nil
+}
+
+// toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs) superblockAggregationOutputs {
+	var bootInfo []bootInfoStruct
+	superblockNumber := new(big.Int)
+	var parentSuperblockBatchHash common.Hash
+
+	if outputs != nil {
+		bootInfo = make([]bootInfoStruct, 0, len(outputs.BootInfo))
+		for _, proverBootInfo := range outputs.BootInfo {
+			bootInfo = append(bootInfo, bootInfoStruct{
+				L1Head:           common.HexToHash(proverBootInfo.L1Head),
+				L2PreRoot:        common.HexToHash(proverBootInfo.L2PreRoot),
+				L2PostRoot:       common.HexToHash(proverBootInfo.L2PostRoot),
+				L2BlockNumber:    proverBootInfo.L2BlockNumber,
+				RollupConfigHash: common.HexToHash(proverBootInfo.RollupConfigHash),
+			})
 		}
 
-		// Extract required fields for BootInfoStruct
-		bootInfo = append(bootInfo, bootInfoStruct{
-			L1Head:           sb.ParentHash,                             // L1 head from superblock context
-			L2PreRoot:        common.BytesToHash(block.ParentBlockHash), // Previous state root
-			L2PostRoot:       common.BytesToHash(block.BlockHash),       // Post-execution state root
-			L2BlockNumber:    block.BlockNumber,                         // L2 block number
-			RollupConfigHash: common.BytesToHash(block.ChainId),         // Chain ID as config hash
-		})
+		if outputs.SuperblockNumber != "" {
+			superblockNumber.SetString(outputs.SuperblockNumber, 0)
+		}
+
+		parentSuperblockBatchHash = common.HexToHash(outputs.ParentSuperblockBatchHash)
 	}
 
 	return superblockAggregationOutputs{
-		SuperblockNumber:          sb.Number,
-		ParentSuperblockBatchHash: sb.ParentHash,
+		SuperblockNumber:          superblockNumber,
+		ParentSuperblockBatchHash: parentSuperblockBatchHash,
 		BootInfo:                  bootInfo,
 	}
 }
