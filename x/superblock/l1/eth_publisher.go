@@ -109,7 +109,20 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 ) (*tx.Transaction, error) {
 	p.log.Info().
 		Uint64("superblock_number", superblock.Number).
+		Int("l2_block_count", len(superblock.L2Blocks)).
 		Msg("Building superblock publish-with-proof transaction")
+	for i, block := range superblock.L2Blocks {
+		if block != nil {
+			p.log.Info().
+				Uint64("superblock_number", superblock.Number).
+				Int("entry_index", i).
+				Uint64("l2_block_number", block.BlockNumber).
+				Str("parent_block_hash", fmt.Sprintf("%x", block.ParentBlockHash)).
+				Str("block_hash", fmt.Sprintf("%x", block.BlockHash)).
+				Str("chain_id", fmt.Sprintf("%x", block.ChainId)).
+				Msg("Superblock entry to be published")
+		}
+	}
 
 	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof)
 	if err != nil {
