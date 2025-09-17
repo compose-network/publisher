@@ -46,6 +46,8 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// TODO: For testing, can skip hash validation by using a computed hash
+	// sbHash := crypto.Keccak256Hash([]byte(fmt.Sprintf("superblock-%d", req.SuperblockNumber)))
 	sbHashBytes, err := hexutil.Decode(req.SuperblockHash)
 	if err != nil || len(sbHashBytes) != common.HashLength {
 		apicommon.WriteError(

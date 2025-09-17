@@ -125,7 +125,7 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 
 	endpoint := c.buildURL(path.Join("proof", jobID))
 
-	c.log.Debug().
+	c.log.Info().
 		Str("job_id", jobID).
 		Str("endpoint", endpoint).
 		Msg("checking proof job status")
