@@ -109,8 +109,22 @@ type ProofJobStatus struct {
 }
 
 type SuperblockProverInput struct {
-    Superblocks       []ProverSuperblock
+    PreviousBatch     SuperblockBatch
+    NewBatch          SuperblockBatch
     AggregationProofs []AggregationProofData
+}
+
+type SuperblockBatch struct {
+    SuperblockNumber            uint64
+    ParentSuperblockBatchHash   []byte
+    RollupSt                    []RollupStateTransition
+}
+
+type RollupStateTransition struct {
+    RollupConfigHash []byte  // bytes32 - Uniquely identifies a rollup
+    L2PreRoot        []byte  // bytes32 - Pre-execution state root
+    L2PostRoot       []byte  // bytes32 - Post-execution state root
+    L2BlockNumber    []byte  // bytes32 - New L2 block number
 }
 ```
 

@@ -252,8 +252,47 @@ func (p *proofPipeline) buildProofJobInput(
 	sb *store.Superblock,
 	subs []proofs.Submission,
 ) proofs.ProofJobInput {
-	superblocks := p.collectSuperblocks(ctx, sb)
+	// Create rollup state transitions from submissions
+	rollupStateTransitions := make([]proofs.RollupStateTransition, 0, len(subs))
+	for _, s := range subs {
+		l2BlockNumberBytes := make([]byte, 32)
+		blockNumber := s.Aggregation.L2BlockNumber
+		for i := 0; i < 8; i++ {
+			l2BlockNumberBytes[31-i] = byte(blockNumber)
+			blockNumber >>= 8
+		}
 
+		rollupStateTransitions = append(rollupStateTransitions, proofs.RollupStateTransition{
+			RollupConfigHash: s.Aggregation.RollupConfigHash.Bytes(),
+			L2PreRoot:        s.Aggregation.L2PreRoot.Bytes(),
+			L2PostRoot:       s.Aggregation.L2PostRoot.Bytes(),
+			L2BlockNumber:    l2BlockNumberBytes,
+		})
+	}
+
+	var previousBatch proofs.SuperblockBatch
+	if sb.Number > 0 {
+		prev, err := p.sbStore.GetSuperblock(ctx, sb.Number-1)
+		if err == nil {
+			// TODO: Get actual parent superblock batch hash
+			parentHash := make([]byte, 32)
+			copy(parentHash, prev.Hash.Bytes())
+
+			previousBatch = proofs.SuperblockBatch{
+				SuperblockNumber:          prev.Number,
+				ParentSuperblockBatchHash: parentHash,
+				RollupSt:                  []proofs.RollupStateTransition{}, // TODO: Get actual rollup state transitions for previous batch
+			}
+		}
+	}
+
+	newBatch := proofs.SuperblockBatch{
+		SuperblockNumber:          sb.Number,
+		ParentSuperblockBatchHash: sb.ParentHash.Bytes(),
+		RollupSt:                  rollupStateTransitions,
+	}
+
+	// Create aggregation proofs
 	aggProofs := make([]proofs.AggregationProofData, 0, len(subs))
 	for _, s := range subs {
 		raw := s.Aggregation.ABIEncode()
@@ -288,7 +327,8 @@ func (p *proofPipeline) buildProofJobInput(
 	return proofs.ProofJobInput{
 		ProofType: p.cfg.Prover.ProofType,
 		Input: proofs.SuperblockProverInput{
-			Superblocks:       superblocks,
+			PreviousBatch:     previousBatch,
+			NewBatch:          newBatch,
 			AggregationProofs: aggProofs,
 		},
 	}
