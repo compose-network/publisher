@@ -80,29 +80,32 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 	}
 	prover := common.HexToAddress(req.ProverAddress)
 
-	if req.Aggregation.L1Head == (common.Hash{}) {
+	// Convert from op-succinct format to internal format
+	aggregation := req.Aggregation.ToAggregationOutputs()
+
+	if aggregation.L1Head == (common.Hash{}) {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
 			"invalid_aggregation_outputs",
-			"aggregation_outputs.l1Head is required",
+			"aggregation_outputs.l1_head (or l1Head) is required",
 			nil,
 		)
 		return
 	}
 
-	if req.Aggregation.L1Head != l1Head {
+	if aggregation.L1Head != l1Head {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
 			"invalid_aggregation_outputs",
-			"aggregation_outputs.l1Head mismatch",
+			"aggregation_outputs.l1_head (or l1Head) mismatch",
 			nil,
 		)
 		return
 	}
 
-	if req.Aggregation.ProverAddress == (common.Address{}) {
+	if aggregation.ProverAddress == (common.Address{}) {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
@@ -113,7 +116,7 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Aggregation.ProverAddress != prover {
+	if aggregation.ProverAddress != prover {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
@@ -124,7 +127,7 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.L2StartBlock > req.Aggregation.L2BlockNumber {
+	if req.L2StartBlock > aggregation.L2BlockNumber {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
@@ -150,7 +153,7 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		ChainID:          req.ChainID,
 		ProverAddress:    prover,
 		L1Head:           l1Head,
-		Aggregation:      req.Aggregation,
+		Aggregation:      aggregation,
 		L2StartBlock:     req.L2StartBlock,
 		AggVerifyingKey:  aggVK,
 		Proof:            proofBytes,

@@ -24,13 +24,13 @@ func TestHandler_SubmitAndStatus_OK(t *testing.T) {
 	proverAddr := "0x0123456789abcdef0123456789abcdef01234567"
 	l1Head := "0x" + strings.Repeat("bb", 32)
 	aggOutputs := map[string]any{
-		"l1_head":            l1Head,
-		"l2_pre_root":        "0x" + strings.Repeat("cc", 32),
-		"l2_post_root":       "0x" + strings.Repeat("dd", 32),
-		"l2_block_number":    1005,
-		"rollup_config_hash": "0x" + strings.Repeat("ee", 32),
-		"multi_block_vkey":   "0x" + strings.Repeat("ff", 32),
-		"prover_address":     proverAddr,
+		"l1Head":           l1Head,
+		"l2PreRoot":        "0x" + strings.Repeat("cc", 32),
+		"l2PostRoot":       "0x" + strings.Repeat("dd", 32),
+		"l2BlockNumber":    1005,
+		"rollupConfigHash": "0x" + strings.Repeat("ee", 32),
+		"multiBlockVKey":   "0x" + strings.Repeat("ff", 32),
+		"proverAddress":    proverAddr,
 	}
 	body := map[string]any{
 		"superblock_number":   1,
