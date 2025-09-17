@@ -30,7 +30,7 @@ func TestProofCollector_SubmitAndGetStatus(t *testing.T) {
 			L2BlockNumber:    1024,
 			RollupConfigHash: common.HexToHash("0x" + strings.Repeat("55", 32)),
 			MultiBlockVKey:   common.HexToHash("0x" + strings.Repeat("66", 32)),
-			ProverAddress:    common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567"),
+			ProverAddress:    common.HexToHash("0x0123456789abcdef0123456789abcdef01234567"),
 		},
 		L2StartBlock:    1000,
 		AggVerifyingKey: []byte("vk"),

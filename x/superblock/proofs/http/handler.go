@@ -105,7 +105,7 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if aggregation.ProverAddress == (common.Address{}) {
+	if aggregation.ProverAddress == (common.Hash{}) {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
@@ -116,7 +116,8 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if aggregation.ProverAddress != prover {
+	proverFromAggregation := common.BytesToAddress(aggregation.ProverAddress[12:])
+	if proverFromAggregation != prover {
 		apicommon.WriteError(
 			w, r,
 			http.StatusBadRequest,
