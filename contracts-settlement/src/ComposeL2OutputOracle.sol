@@ -70,6 +70,9 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
         uint256 l1Timestamp
     );
 
+    event AggregationVkeyUpdated(bytes32 indexed aggregationVkey);
+    event VerifierUpdated(address indexed verifier);
+    
     constructor() {
         _disableInitializers();
     }
@@ -189,6 +192,18 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
             superBlockAggOutputs.parentSuperblockBatchHash,
             block.timestamp
         );
+    }
+
+    function setAggregationVkey(bytes32 _aggregationVkey) external {
+        require(msg.sender == owner, "ComposeL2OutputOracle: only owner can update aggregation vkey");
+        aggregationVkey = _aggregationVkey;
+        emit AggregationVkeyUpdated(_aggregationVkey);
+    }
+
+    function setVerifier(address _verifier) external {
+        require(msg.sender == owner, "ComposeL2OutputOracle: only owner can update verifier");
+        verifier = _verifier;
+        emit VerifierUpdated(_verifier);
     }
 
     function version() external pure returns (string memory) {
