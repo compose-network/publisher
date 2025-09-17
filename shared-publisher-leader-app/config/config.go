@@ -168,11 +168,11 @@ func setDefaults(v *viper.Viper) {
 
 	// Proofs defaults
 	v.SetDefault("proofs.enabled", true)
-	v.SetDefault("proofs.collector.require_all_chains", true)
+	v.SetDefault("proofs.collector.require_all_chains", false) // TODO: testing
 	v.SetDefault("proofs.collector.wait_timeout", "300s")
 	v.SetDefault("proofs.collector.required_chain_ids", []uint32{})
 	v.SetDefault("proofs.prover.base_url", "")
-	v.SetDefault("proofs.prover.poll_interval", "10s")
+	v.SetDefault("proofs.prover.poll_interval", "5s") // TODO: testing
 	v.SetDefault("proofs.prover.proof_type", "groth16")
 	v.SetDefault("proofs.require_proof", true)
 }
