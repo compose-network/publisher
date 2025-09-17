@@ -14,4 +14,5 @@ type Service interface {
 	GetStatus(ctx context.Context, sbHash common.Hash) (proofs.Status, error)
 	ListSubmissions(ctx context.Context, sbHash common.Hash) ([]proofs.Submission, error)
 	UpdateStatus(ctx context.Context, sbHash common.Hash, mutate func(*proofs.Status)) error
+	GetStats() map[string]interface{}
 }

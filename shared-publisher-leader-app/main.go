@@ -118,7 +118,7 @@ func runApp(cmd *cobra.Command, _ []string) error {
 		Str("log_level", cfg.Log.Level).
 		Msg("Configuration loaded")
 
-	application, err := NewApp(cfg, log.Logger)
+	application, err := NewApp(cmd.Context(), cfg, log.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to create application: %w", err)
 	}

@@ -16,7 +16,7 @@ import (
 )
 
 func TestHandler_SubmitAndStatus_OK(t *testing.T) {
-	h := NewHandler(collector.NewMemory(zerolog.New(io.Discard)), zerolog.New(io.Discard))
+	h := NewHandler(collector.New(t.Context(), zerolog.New(io.Discard)), zerolog.New(io.Discard))
 	r := mux.NewRouter()
 	h.RegisterMux(r)
 

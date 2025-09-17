@@ -52,14 +52,14 @@ type App struct {
 }
 
 // NewApp creates a new application instance
-func NewApp(cfg *config.Config, log zerolog.Logger) (*App, error) {
+func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, error) {
 	app := &App{
 		cfg:         cfg,
 		log:         log.With().Str("component", "app").Logger(),
 		shutdownFns: make([]func() error, 0),
 	}
 
-	if err := app.initialize(); err != nil {
+	if err := app.initialize(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize app: %w", err)
 	}
 
@@ -67,7 +67,7 @@ func NewApp(cfg *config.Config, log zerolog.Logger) (*App, error) {
 }
 
 // initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
-func (a *App) initialize() error {
+func (a *App) initialize(ctx context.Context) error {
 	consensusConfig := consensus.Config{
 		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
 		IsLeader: true,
@@ -124,7 +124,7 @@ func (a *App) initialize() error {
 	coordinatorConfig.L1 = a.cfg.L1
 	coordinatorConfig.Proofs = a.cfg.Proofs
 
-	collectorSvc := collector.NewMemory(a.log)
+	collectorSvc := collector.New(ctx, a.log)
 
 	var proverClient proofs.ProverClient
 	if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
