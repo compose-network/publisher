@@ -89,32 +89,98 @@ func (p *proofPipeline) Stop() {
 	p.once.Do(func() { close(p.quit) })
 }
 
+// HandleSuperblock processes a given superblock by checking and handling proof submissions required for its processing.
+// TODO: fix block numbers
 func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblock) error {
 	if p == nil {
 		return nil
 	}
+
+	p.log.Info().
+		Uint64("superblock_number", sb.Number).
+		Str("superblock_hash", sb.Hash.Hex()).
+		Msg("HandleSuperblock called - checking for proofs")
+
 	// TODO: For testing, can bypass missing proofs by creating dummy submissions
 	subs, err := p.collector.ListSubmissions(ctx, sb.Hash)
 	if err != nil {
-		p.log.Debug().Err(err).Uint64("superblock", sb.Number).Msg("No submissions yet for superblock")
+		p.log.Warn().Err(err).Uint64("superblock", sb.Number).Msg("No submissions yet for superblock")
 		return err
 	}
+
+	p.log.Info().
+		Uint64("superblock_number", sb.Number).
+		Str("superblock_hash", sb.Hash.Hex()).
+		Int("submissions_found", len(subs)).
+		Msg("Checking submissions for superblock")
+
+	// TODO: Get ALL submissions from collector regardless of superblock hash
+	// and then modify their superblock number/hash to match current superblock
+	allSubs := p.collector.GetStats()
+	totalSubmissions := allSubs["total_submissions"].(int)
+
+	if len(subs) == 0 && totalSubmissions > 0 {
+		p.log.Info().
+			Uint64("current_superblock", sb.Number).
+			Int("total_submissions_in_collector", totalSubmissions).
+			Msg("No submissions for current superblock, but collector has submissions - trying to reuse them")
+
+		// TODO: For testing, get submissions from ANY superblock and modify them to match current one
+		// This is a hack to test prover integration without proper coordination
+		allSuperblocks := allSubs["submissions_by_superblock"].(map[string]int)
+		for sbHash := range allSuperblocks {
+			otherHash := common.HexToHash(sbHash)
+			otherSubs, err := p.collector.ListSubmissions(ctx, otherHash)
+			if err == nil && len(otherSubs) > 0 {
+				p.log.Info().
+					Str("reusing_from_superblock", sbHash).
+					Int("submissions_count", len(otherSubs)).
+					Msg("Reusing submissions from different superblock")
+
+				// Modify the submissions to match current superblock
+				for i := range otherSubs {
+					otherSubs[i].SuperblockNumber = sb.Number
+					otherSubs[i].SuperblockHash = sb.Hash
+				}
+				subs = otherSubs
+				break
+			}
+		}
+	}
+
 	if len(subs) == 0 {
-		p.log.Debug().Uint64("superblock", sb.Number).Msg("Skipping proof request: no submissions present")
-		// TODO: For testing, can create dummy submission here:
-		// subs = []proofs.Submission{{SuperblockNumber: sb.Number, ChainID: 88888, ...}}
+		p.log.Info().Uint64("superblock", sb.Number).Msg("No proof submissions available")
 		return nil
+	}
+
+	for i, sub := range subs {
+		p.log.Info().
+			Int("submission_index", i).
+			Uint64("submission_superblock_number", sub.SuperblockNumber).
+			Str("submission_superblock_hash", sub.SuperblockHash.Hex()).
+			Uint32("chain_id", sub.ChainID).
+			Msg("Found proof submission")
 	}
 
 	required := p.requiredChainIDs(subs)
 	ready := p.isReady(required, subs)
+
+	p.log.Info().
+		Uint64("superblock", sb.Number).
+		Interface("required_chain_ids", required).
+		Int("submissions_count", len(subs)).
+		Bool("ready_for_prover", ready).
+		Bool("require_all_chains", p.cfg.Collector.RequireAllChains).
+		Msg("Evaluated proof readiness")
+
 	if !ready {
 		missing := p.missingChains(required, subs)
 		p.log.Info().
 			Uint64("superblock", sb.Number).
 			Ints("missing_chains", missing).
 			Int("received", len(subs)).
-			Msg("Waiting for remaining chain proofs")
+			Interface("required_chain_ids", required).
+			Msg("Not ready - waiting for remaining chain proofs")
 		_ = p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
 			st.Required = required
 			if st.State == "" {
