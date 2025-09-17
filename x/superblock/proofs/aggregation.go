@@ -73,7 +73,7 @@ type AggregationOutputsWithChainID struct {
 // AggregationProofData packages per-rollup proof inputs.
 type AggregationProofData struct {
 	AggregationOutputs AggregationOutputs `json:"aggregation_outputs"`
-	RawPublicValues    []byte             `json:"raw_public_values"`
+	RawPublicValues    PublicValueBytes   `json:"raw_public_values"`
 	CompressedProof    []byte             `json:"compressed_proof"`
 	ChainID            []byte             `json:"chain_id"`
 	SuperblockNumber   uint64             `json:"superblock_number"`

@@ -80,3 +80,19 @@ func TestAggregationOutputsABIEncode(t *testing.T) {
 	require.Equal(t, byte(0x12), encoded[3*32+30])
 	require.Equal(t, byte(0x34), encoded[3*32+31])
 }
+
+func TestPublicValueBytes_MarshalAsArray(t *testing.T) {
+	// Test that PublicValueBytes marshals as array, not base64 string
+	pvb := PublicValueBytes{1, 2, 3, 255, 0}
+
+	marshaled, err := json.Marshal(pvb)
+	require.NoError(t, err)
+
+	// Should be [1,2,3,255,0] not a base64 string
+	require.JSONEq(t, `[1,2,3,255,0]`, string(marshaled))
+
+	// Test unmarshaling back
+	var pvb2 PublicValueBytes
+	require.NoError(t, json.Unmarshal(marshaled, &pvb2))
+	require.Equal(t, pvb.Bytes(), pvb2.Bytes())
+}
