@@ -135,7 +135,7 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 
 	endpoint := c.buildURL(path.Join("proof", jobID))
 
-	c.log.Info().
+	c.log.Debug().
 		Str("job_id", jobID).
 		Str("endpoint", endpoint).
 		Msg("checking proof job status")
@@ -187,7 +187,7 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 		result.Cycles = status.Result.Cycles
 	}
 
-	c.log.Info().
+	c.log.Debug().
 		Str("job_id", jobID).
 		Str("status", result.Status).
 		Interface("proving_time_ms", result.ProvingTimeMS).
