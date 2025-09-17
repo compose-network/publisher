@@ -12,13 +12,14 @@ type Status struct {
 	SuperblockNumber uint64               `json:"superblock_number"`
 	Required         []uint32             `json:"required_chain_ids"`
 	Received         map[uint32]time.Time `json:"received"`
-	State            string               `json:"state"` // collecting|dispatched|proving|complete|failed
+	State            string               `json:"state"` // collecting|queued|dispatched|proving|complete|failed
 	JobID            string               `json:"job_id"`
 	Error            string               `json:"error,omitempty"`
 }
 
 const (
 	StateCollecting = "collecting"
+	StateQueued     = "queued"
 	StateDispatched = "dispatched"
 	StateProving    = "proving"
 	StateComplete   = "complete"

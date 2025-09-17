@@ -157,6 +157,34 @@ func (m *ProofCollector) GetStats() map[string]interface{} {
 	return stats
 }
 
+// CountProvingJobs returns the number of jobs currently in StateProving
+func (m *ProofCollector) CountProvingJobs(_ context.Context) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	count := 0
+	for _, status := range m.statuses {
+		if status.State == proofs.StateProving {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// ListQueuedJobs returns all jobs currently in StateQueued
+func (m *ProofCollector) ListQueuedJobs(_ context.Context) ([]proofs.Status, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var queuedJobs []proofs.Status
+	for _, status := range m.statuses {
+		if status.State == proofs.StateQueued {
+			queuedJobs = append(queuedJobs, status)
+		}
+	}
+	return queuedJobs, nil
+}
+
 // statsLogger periodically logs collector statistics
 func (m *ProofCollector) statsLogger(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
