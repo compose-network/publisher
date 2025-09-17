@@ -171,6 +171,7 @@ func (a *App) initialize() error {
 	}
 	s := apisrv.NewServer(apiCfg, a.log)
 	s.Use(apimw.Recover(a.log))
+	s.Use(apimw.RequestID())
 	s.Use(apimw.Logger(a.log))
 
 	// Health/readiness/stats
