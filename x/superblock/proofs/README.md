@@ -152,4 +152,6 @@ type AggregationOutputsWithChainID struct {
 
 `AggregationOutputsWithChainID` embeds each chain’s encoded outputs (`json.RawMessage`) for later ABI packing.
 
-**State Flow**: `collecting` → `dispatched` → `proving` → `complete` | `failed`
+**State Flow**: `collecting` → `queued` → `dispatched` → `proving` → `complete` | `failed`
+
+**Rate Limiting**: Only one proof can be in `proving` state at a time. Additional ready proofs will be queued in `queued` state until the current proof completes or fails.
