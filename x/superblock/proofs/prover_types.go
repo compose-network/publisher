@@ -33,7 +33,7 @@ type RollupStateTransition struct {
 // SuperblockBatch represents a superblock batch structure.
 type SuperblockBatch struct {
 	SuperblockNumber          uint64                  `json:"superblock_number"`            // uint256 - Sequential superblock number
-	ParentSuperblockBatchHash []byte                  `json:"parent_superblock_batch_hash"` // bytes32 - Hash of the previous superblock
+	ParentSuperblockBatchHash []int                   `json:"parent_superblock_batch_hash"` // bytes32 - Hash of the previous superblock
 	RollupSt                  []RollupStateTransition `json:"rollup_st"`                    // RollupStateTransition[] - State transition information about each rollup
 }
 
