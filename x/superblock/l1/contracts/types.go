@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -9,7 +10,7 @@ import (
 
 // superblockAggregationOutputs matches the Solidity struct in ComposeL2OutputOracle.sol
 type superblockAggregationOutputs struct {
-	SuperblockNumber          uint64           `abi:"superblockNumber"`
+	SuperblockNumber          *big.Int         `abi:"superblockNumber"`
 	ParentSuperblockBatchHash common.Hash      `abi:"parentSuperblockBatchHash"`
 	BootInfo                  []bootInfoStruct `abi:"bootInfo"`
 }
