@@ -263,10 +263,10 @@ func (p *proofPipeline) buildProofJobInput(
 		}
 
 		rollupStateTransitions = append(rollupStateTransitions, proofs.RollupStateTransition{
-			RollupConfigHash: s.Aggregation.RollupConfigHash.Bytes(),
-			L2PreRoot:        s.Aggregation.L2PreRoot.Bytes(),
-			L2PostRoot:       s.Aggregation.L2PostRoot.Bytes(),
-			L2BlockNumber:    l2BlockNumberBytes,
+			RollupConfigHash: bytesToInts(s.Aggregation.RollupConfigHash.Bytes()),
+			L2PreRoot:        bytesToInts(s.Aggregation.L2PreRoot.Bytes()),
+			L2PostRoot:       bytesToInts(s.Aggregation.L2PostRoot.Bytes()),
+			L2BlockNumber:    bytesToInts(l2BlockNumberBytes),
 		})
 	}
 
