@@ -169,7 +169,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
         ISP1Verifier(verifier).verifyProof(
             aggregationVkey,
-            abi.encodePacked(superBlockAggOutputs.commitmentHash),
+            abi.encode(superBlockAggOutputs.commitmentHash),
             proof
         );
 
