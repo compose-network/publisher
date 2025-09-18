@@ -28,6 +28,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     struct SuperblockAggregationOutputs {
         uint256 superblockNumber; // New head superblock number
         bytes32 parentSuperblockBatchHash; // Hash of the previous superblock
+        bytes32 commitmentHash;
         BootInfoStruct[] bootInfo; // BootInfoStruct, one for each rollup
     }
 
@@ -168,7 +169,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
         ISP1Verifier(verifier).verifyProof(
             aggregationVkey,
-            abi.encode(superBlockAggOutputs),
+            abi.encodePacked(superBlockAggOutputs.commitmentHash),
             proof
         );
 
