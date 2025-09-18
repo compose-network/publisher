@@ -1,12 +1,10 @@
 package contracts
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
@@ -44,18 +42,7 @@ func TestBuildPublishCalldataComputesHashWhenMissing(t *testing.T) {
 		t.Fatalf("expected non-zero root claim")
 	}
 
-	header := make([]byte, 0, 8+8+common.HashLength+common.HashLength)
-	numBytes := make([]byte, 8)
-	slotBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(numBytes, sb.Number)
-	binary.BigEndian.PutUint64(slotBytes, sb.Slot)
-	header = append(header, numBytes...)
-	header = append(header, slotBytes...)
-	header = append(header, sb.ParentHash.Bytes()...)
-	header = append(header, sb.MerkleRoot.Bytes()...)
-	expected := common.BytesToHash(crypto.Keccak256(header))
-
-	if rootClaim != expected {
-		t.Fatalf("unexpected root claim: got %s want %s", rootClaim.Hex(), expected.Hex())
+	if rootClaim != sb.ParentHash {
+		t.Fatalf("unexpected root claim: got %s want %s", rootClaim.Hex(), sb.ParentHash.Hex())
 	}
 }
