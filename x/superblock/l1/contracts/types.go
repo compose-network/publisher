@@ -12,8 +12,8 @@ import (
 type superblockAggregationOutputs struct {
 	SuperblockNumber          *big.Int         `abi:"superblockNumber"`
 	ParentSuperblockBatchHash common.Hash      `abi:"parentSuperblockBatchHash"`
-	BootInfo                  []bootInfoStruct `abi:"bootInfo"`
 	CommitmentHash            string           `abi:"commitmentHash"`
+	BootInfo                  []bootInfoStruct `abi:"bootInfo"`
 }
 
 // bootInfoStruct matches the Solidity struct in ComposeL2OutputOracle.sol
