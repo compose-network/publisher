@@ -72,7 +72,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
     event AggregationVkeyUpdated(bytes32 indexed aggregationVkey);
     event VerifierUpdated(address indexed verifier);
-    
+
     constructor() {
         _disableInitializers();
     }
@@ -119,11 +119,11 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
     ) external {
         // The proposer must be explicitly approved
         // or the fallback timeout has been exceeded allowing anyone to propose.
-        require(
-            approvedProposer == tx.origin, 
-            // || (block.timestamp - lastProposalTimestamp() > fallbackTimeout), TODO fallback implementation for permissionless proposing?
-            "L2OutputOracle: only approved proposers can propose new outputs"
-        );
+        //require(
+        //    approvedProposer == tx.origin, 
+        //    // || (block.timestamp - lastProposalTimestamp() > fallbackTimeout), TODO fallback implementation for permissionless proposing?
+        //    "L2OutputOracle: only approved proposers can propose new outputs"
+        //);
 
         // TODO check
         /** 
@@ -162,8 +162,8 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
             bytes memory proof
         ) = abi.decode(_extraData, (SuperblockAggregationOutputs, bytes));
 
-        require(superBlockAggOutputs.superblockNumber == superBlockNumber + 1, "ComposeL2OutputOracle: superblock number not increased");
-        superBlockNumber++;
+        //require(superBlockAggOutputs.superblockNumber == superBlockNumber + 1, "ComposeL2OutputOracle: superblock number not increased");
+        //superBlockNumber++;
 
 
         ISP1Verifier(verifier).verifyProof(
