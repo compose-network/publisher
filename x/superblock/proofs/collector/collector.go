@@ -82,7 +82,6 @@ func (m *ProofCollector) SubmitOpSuccinct(_ context.Context, s proofs.Submission
 		Str("superblock_hash", key).
 		Uint64("superblock_number", s.SuperblockNumber).
 		Uint32("chain_id", s.ChainID).
-		Str("prover_address", s.ProverAddress.Hex()).
 		Int("total_submissions", len(m.bySB[key])).
 		Msg("proof submission collected")
 

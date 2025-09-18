@@ -74,12 +74,6 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 	}
 	l1Head := common.BytesToHash(l1HeadBytes)
 
-	if !common.IsHexAddress(req.ProverAddress) {
-		apicommon.WriteError(w, r, http.StatusBadRequest, "invalid_prover_address", "bad address", nil)
-		return
-	}
-	prover := common.HexToAddress(req.ProverAddress)
-
 	// Convert from op-succinct format to internal format
 	aggregation := req.Aggregation.ToAggregationOutputs()
 
@@ -100,29 +94,6 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 			http.StatusBadRequest,
 			"invalid_aggregation_outputs",
 			"aggregation_outputs.l1_head (or l1Head) mismatch",
-			nil,
-		)
-		return
-	}
-
-	if aggregation.ProverAddress == (common.Hash{}) {
-		apicommon.WriteError(
-			w, r,
-			http.StatusBadRequest,
-			"invalid_aggregation_outputs",
-			"aggregation_outputs.proverAddress is required",
-			nil,
-		)
-		return
-	}
-
-	proverFromAggregation := common.BytesToAddress(aggregation.ProverAddress[12:])
-	if proverFromAggregation != prover {
-		apicommon.WriteError(
-			w, r,
-			http.StatusBadRequest,
-			"invalid_aggregation_outputs",
-			"aggregation_outputs.proverAddress mismatch",
 			nil,
 		)
 		return
@@ -154,7 +125,6 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		SuperblockNumber: req.SuperblockNumber,
 		SuperblockHash:   sbHash,
 		ChainID:          req.ChainID,
-		ProverAddress:    prover,
 		L1Head:           l1Head,
 		Aggregation:      aggregation,
 		L2StartBlock:     req.L2StartBlock,

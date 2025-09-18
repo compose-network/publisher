@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"fmt"
 	"math/big"
@@ -80,8 +81,16 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 		return nil, fmt.Errorf("proof cannot be empty")
 	}
 
-	// Create SuperblockAggregationOutputs structure
-	superblockAggOutputs := b.toSuperblockAggregationOutputs(sb, outputs)
+	superblockAggOutputs := b.toSuperblockAggregationOutputs(outputs)
+
+	encodedAggOutputs, err := abi.Arguments{
+		{Type: mustParseType("tuple", buildSuperblockAggregationOutputsType())},
+	}.Pack(superblockAggOutputs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode superblockAggOutputs: %w", err)
+	}
+	hash := sha256.Sum256(encodedAggOutputs)
+	fmt.Printf("SuperblockAggOutputs sha256: %x (superblock number: %d)\n", hash[:], sb.Number)
 
 	// Encode the extraData as (SuperblockAggregationOutputs, bytes proof)
 	extraData, err := abi.Arguments{
@@ -107,10 +116,7 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 // toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
 //
 //nolint:unparam // TODO: we should support sb input
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(
-	sb *store.Superblock,
-	outputs *proofs.SuperblockAggOutputs,
-) superblockAggregationOutputs {
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs) superblockAggregationOutputs {
 	var bootInfo []bootInfoStruct
 	superblockNumber := new(big.Int)
 	var parentSuperblockBatchHash common.Hash
