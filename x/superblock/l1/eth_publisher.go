@@ -140,6 +140,30 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 		return nil, fmt.Errorf("build calldata: %w", err)
 	}
 
+	if ap, ok := p.contract.(abiProvider); ok {
+		if method, exists := ap.ABI().Methods["create"]; exists {
+			if decoded, decErr := method.Inputs.Unpack(calldata[4:]); decErr == nil {
+				if len(decoded) >= 3 {
+					if rc, ok := decoded[1].([32]byte); ok {
+						root := common.BytesToHash(rc[:]).Hex()
+						var extraLen int
+						if extra, ok := decoded[2].([]byte); ok {
+							extraLen = len(extra)
+						}
+						// TODO: drop once on-chain data is validated in staging.
+						p.log.Info().
+							Str("root_claim", root).
+							Int("extra_data_len", extraLen).
+							Msg("Decoded dispute game create call")
+					}
+				}
+			} else {
+				// TODO: remove once calldata validation is stable.
+				p.log.Info().Err(decErr).Msg("Failed to decode create calldata")
+			}
+		}
+	}
+
 	from := p.signer.From()
 	to := p.contract.Address()
 	callValue := p.resolveCallValue(ctx, from, to)
