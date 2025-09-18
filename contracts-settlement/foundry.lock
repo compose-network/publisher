@@ -16,14 +16,14 @@
   },
   "lib/openzeppelin-contracts": {
     "tag": {
-      "name": "v4.9.3",
-      "rev": "fd81a96f01cc42ef1c9a5399364968d0e07e9e90"
+      "name": "v4.7.3",
+      "rev": "ecd2ca2cd7cac116f7a37d0e474bbb3d7d5e1c4d"
     }
   },
   "lib/openzeppelin-contracts-upgradeable": {
     "tag": {
-      "name": "v4.9.3",
-      "rev": "3d4c0d5741b131c231e558d7a6213392ab3672a5"
+      "name": "v4.7.3",
+      "rev": "0a2cb9a445c365870ed7a8ab461b12acf3e27d63"
     }
   },
   "lib/optimism": {
@@ -34,8 +34,8 @@
   },
   "lib/solady": {
     "tag": {
-      "name": "v0.1.26",
-      "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
+      "name": "v0.0.158",
+      "rev": "502cc1ea718e6fa73b380635ee0868b0740595f0"
     }
   },
   "lib/sp1-contracts": {
