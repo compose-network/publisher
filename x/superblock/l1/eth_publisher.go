@@ -2,7 +2,6 @@ package l1
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -79,7 +78,7 @@ func NewEthPublisher(
 		if err != nil {
 			return nil, fmt.Errorf("invalid private key hex: %w", err)
 		}
-		privKey, err := cryptoToECDSA(keyBytes)
+		privKey, err := crypto.ToECDSA(keyBytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse private key: %w", err)
 		}
@@ -365,10 +364,4 @@ func (p *EthPublisher) GetLatestL1Block(ctx context.Context) (*BlockInfo, error)
 		GasUsed:    head.GasUsed,
 	}
 	return bi, nil
-}
-
-// cryptoToECDSA parses a raw 32-byte private key into ecdsa.PrivateKey.
-// Defined here to avoid importing crypto directly in tests.
-func cryptoToECDSA(priv []byte) (*ecdsa.PrivateKey, error) {
-	return crypto.ToECDSA(priv)
 }
