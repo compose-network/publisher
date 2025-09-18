@@ -3,14 +3,12 @@ package contracts
 import (
 	"context"
 	_ "embed"
-	"encoding/binary"
 	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
@@ -92,39 +90,16 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 		return nil, fmt.Errorf("failed to encode extraData: %w", err)
 	}
 
-	// COMPOSE_GAME_TYPE from ComposeDisputeGame.sol
-	gameType := composeGameType
-
-	// rootClaim is the new superblock batch hash being proposed on L1
-	rootClaim := superblockBatchHash(sb)
+	// rootClaim - parent superblock batch hash.
+	rootClaim := sb.ParentHash
 
 	// Pack the create() function call
-	data, err := b.abi.Pack("create", gameType, rootClaim, extraData)
+	data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DisputeGameFactory.create calldata: %w", err)
 	}
 
 	return data, nil
-}
-
-func superblockBatchHash(sb *store.Superblock) common.Hash {
-	if sb == nil {
-		return common.Hash{}
-	}
-	if sb.Hash != (common.Hash{}) {
-		return sb.Hash
-	}
-	// TODO: remove this fallback once superblock hashing is persisted before calling the publisher.
-	header := make([]byte, 0, 8+8+common.HashLength+common.HashLength)
-	nb := make([]byte, 8)
-	binary.BigEndian.PutUint64(nb, sb.Number)
-	slotBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(slotBytes, sb.Slot)
-	header = append(header, nb...)
-	header = append(header, slotBytes...)
-	header = append(header, sb.ParentHash.Bytes()...)
-	header = append(header, sb.MerkleRoot.Bytes()...)
-	return common.BytesToHash(crypto.Keccak256(header))
 }
 
 // toSuperblockAggregationOutputs converts a store.Superblock to SuperblockAggregationOutputs
