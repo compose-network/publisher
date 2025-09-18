@@ -12,7 +12,7 @@ import (
 type superblockAggregationOutputs struct {
 	SuperblockNumber          *big.Int         `abi:"superblockNumber"`
 	ParentSuperblockBatchHash common.Hash      `abi:"parentSuperblockBatchHash"`
-	CommitmentHash            string           `abi:"commitmentHash"`
+	CommitmentHash            common.Hash      `abi:"commitmentHash"`
 	BootInfo                  []bootInfoStruct `abi:"bootInfo"`
 }
 

@@ -129,6 +129,6 @@ func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proo
 		SuperblockNumber:          superblockNumber,
 		ParentSuperblockBatchHash: parentSuperblockBatchHash,
 		BootInfo:                  bootInfo,
-		CommitmentHash:            commitment,
+		CommitmentHash:            common.HexToHash(commitment),
 	}
 }
