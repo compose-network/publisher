@@ -93,8 +93,8 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 	// COMPOSE_GAME_TYPE from ComposeDisputeGame.sol
 	gameType := composeGameType
 
-	// rootClaim is the parent superblock batch hash
-	rootClaim := sb.ParentHash
+	// rootClaim is the new superblock batch hash being proposed on L1
+	rootClaim := sb.Hash
 
 	// Pack the create() function call
 	data, err := b.abi.Pack("create", gameType, rootClaim, extraData)
