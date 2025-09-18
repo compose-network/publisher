@@ -20,8 +20,6 @@ type BootInfo struct {
 	L2PostRoot       string `json:"l2_post_root"` // hex string
 	L2BlockNumber    uint64 `json:"l2_block_number"`
 	RollupConfigHash string `json:"rollup_config_hash"` // hex string
-	MultiBlockVkey   string `json:"multi_block_vkey"`   // hex string
-	ProverAddress    string `json:"prover_address"`     // hex string
 }
 
 // SuperblockAggOutputs represents serializable superblock aggregation outputs (mirrors Rust SuperblockAggOutputs).

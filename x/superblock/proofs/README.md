@@ -48,7 +48,6 @@ type Submission struct {
     SuperblockNumber uint64
     SuperblockHash   common.Hash
     ChainID          uint32
-    ProverAddress    common.Address
     L1Head           common.Hash
     Aggregation      AggregationOutputs
     L2StartBlock     uint64
@@ -140,7 +139,6 @@ type SuperblockAggregationOutputs struct {
     L1Head           common.Hash
     SuperblockHash   common.Hash
     SuperblockNumber uint64
-    ProverAddress    []common.Address
     RollupOutput     []AggregationOutputsWithChainID
 }
 
