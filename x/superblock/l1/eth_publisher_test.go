@@ -2,10 +2,11 @@ package l1
 
 import (
 	"context"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 
 	"strings"
 
@@ -90,7 +91,12 @@ func newMockBinding(addr common.Address) *mockBinding {
 
 func (b *mockBinding) Address() common.Address { return b.addr }
 
-func (b *mockBinding) BuildPublishWithProofCalldata(ctx context.Context, superblock *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs) ([]byte, error) {
+func (b *mockBinding) BuildPublishWithProofCalldata(
+	ctx context.Context,
+	superblock *store.Superblock,
+	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
+) ([]byte, error) {
 	return []byte{0xde, 0xad, 0xbe, 0xef}, nil
 }
 

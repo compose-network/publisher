@@ -8,6 +8,7 @@ import (
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
+// TODO: Temporary solution - support nil outputs parameter
 func TestBuildPublishCalldataComputesHashWhenMissing(t *testing.T) {
 	binding, err := NewDisputeGameFactoryBinding("0x000000000000000000000000000000000000dEaD")
 	if err != nil {

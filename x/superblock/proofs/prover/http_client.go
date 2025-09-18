@@ -129,7 +129,6 @@ func (c *HTTPClient) RequestProof(ctx context.Context, job proofs.ProofJobInput)
 // GetStatus fetches the status of a previously submitted job.
 func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJobStatus, error) {
 	if jobID == "" {
-		c.log.Error().Msg("job ID is required for status check")
 		return proofs.ProofJobStatus{}, errors.New("jobID is required")
 	}
 
@@ -142,36 +141,27 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		c.log.Error().Err(err).Str("job_id", jobID).Msg("failed to prepare status request")
 		return proofs.ProofJobStatus{}, fmt.Errorf("prepare status request: %w", err)
 	}
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
-		c.log.Error().Err(err).Str("job_id", jobID).Str("endpoint", endpoint).Msg("status request failed")
 		return proofs.ProofJobStatus{}, fmt.Errorf("get proof status: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode >= 400 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		c.log.Error().
-			Str("job_id", jobID).
-			Int("status_code", res.StatusCode).
-			Str("response", string(msg)).
-			Msg("prover returned error for status check")
 		return proofs.ProofJobStatus{}, fmt.Errorf("prover returned %s: %s", res.Status, string(msg))
 	}
 
 	var status statusResponse
 	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
-		c.log.Error().Err(err).Str("job_id", jobID).Msg("failed to decode status response")
 		return proofs.ProofJobStatus{}, fmt.Errorf("decode status response: %w", err)
 	}
 
 	if !status.Success {
 		errMsg := status.errorMessage()
-		c.log.Error().Str("job_id", jobID).Str("error", errMsg).Msg("prover reported job failure")
 		if errMsg == "" {
 			return proofs.ProofJobStatus{}, errors.New("prover returned unsuccessful status")
 		}
