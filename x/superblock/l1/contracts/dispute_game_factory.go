@@ -21,6 +21,8 @@ var (
 	_ Binding = (*DisputeGameFactoryBinding)(nil)
 )
 
+const composeGameType uint32 = 5555
+
 // DisputeGameFactoryBinding provides functionality to interact with DisputeGameFactory
 // smart contracts for creating dispute games with superblock proofs.
 type DisputeGameFactoryBinding struct {
@@ -57,6 +59,11 @@ func (b *DisputeGameFactoryBinding) ABI() abi.ABI {
 	return b.abi
 }
 
+// GameType returns the compose dispute game type identifier used when creating games.
+func (b *DisputeGameFactoryBinding) GameType() uint32 {
+	return composeGameType
+}
+
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
 func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
@@ -84,7 +91,7 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 	}
 
 	// COMPOSE_GAME_TYPE from ComposeDisputeGame.sol
-	gameType := uint32(5555)
+	gameType := composeGameType
 
 	// rootClaim is the parent superblock batch hash
 	rootClaim := sb.ParentHash
