@@ -67,7 +67,12 @@ func (b *DisputeGameFactoryBinding) GameType() uint32 {
 
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
-func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(_ context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs) ([]byte, error) {
+func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
+	_ context.Context,
+	sb *store.Superblock,
+	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
+) ([]byte, error) {
 	if sb == nil {
 		return nil, fmt.Errorf("superblock cannot be nil")
 	}
@@ -100,27 +105,38 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(_ context.Cont
 }
 
 // toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
-// format expected by the settlement layer.
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(sb *store.Superblock, outputs *proofs.SuperblockAggOutputs) superblockAggregationOutputs {
-	bootInfo := make([]bootInfoStruct, 0, len(outputs.BootInfo))
-	for _, proverBootInfo := range outputs.BootInfo {
-		bootInfo = append(bootInfo, bootInfoStruct{
-			L1Head:           common.HexToHash(proverBootInfo.L1Head),
-			L2PreRoot:        common.HexToHash(proverBootInfo.L2PreRoot),
-			L2PostRoot:       common.HexToHash(proverBootInfo.L2PostRoot),
-			L2BlockNumber:    proverBootInfo.L2BlockNumber,
-			RollupConfigHash: common.HexToHash(proverBootInfo.RollupConfigHash),
-		})
-	}
-
+//
+//nolint:unparam // TODO: we should support sb input
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(
+	sb *store.Superblock,
+	outputs *proofs.SuperblockAggOutputs,
+) superblockAggregationOutputs {
+	var bootInfo []bootInfoStruct
 	superblockNumber := new(big.Int)
-	if outputs.SuperblockNumber != "" {
-		superblockNumber.SetString(outputs.SuperblockNumber, 0)
+	var parentSuperblockBatchHash common.Hash
+
+	if outputs != nil {
+		bootInfo = make([]bootInfoStruct, 0, len(outputs.BootInfo))
+		for _, proverBootInfo := range outputs.BootInfo {
+			bootInfo = append(bootInfo, bootInfoStruct{
+				L1Head:           common.HexToHash(proverBootInfo.L1Head),
+				L2PreRoot:        common.HexToHash(proverBootInfo.L2PreRoot),
+				L2PostRoot:       common.HexToHash(proverBootInfo.L2PostRoot),
+				L2BlockNumber:    proverBootInfo.L2BlockNumber,
+				RollupConfigHash: common.HexToHash(proverBootInfo.RollupConfigHash),
+			})
+		}
+
+		if outputs.SuperblockNumber != "" {
+			superblockNumber.SetString(outputs.SuperblockNumber, 0)
+		}
+
+		parentSuperblockBatchHash = common.HexToHash(outputs.ParentSuperblockBatchHash)
 	}
 
 	return superblockAggregationOutputs{
 		SuperblockNumber:          superblockNumber,
-		ParentSuperblockBatchHash: common.HexToHash(outputs.ParentSuperblockBatchHash),
+		ParentSuperblockBatchHash: parentSuperblockBatchHash,
 		BootInfo:                  bootInfo,
 	}
 }
