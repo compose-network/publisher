@@ -88,6 +88,8 @@ func (p *proofPipeline) Stop() {
 
 // HandleSuperblock processes a given superblock by checking and handling proof submissions required for its processing.
 // TODO: fix block numbers
+//
+//nolint:gocyclo // ok
 func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblock) error {
 	if p == nil {
 		return nil
@@ -302,7 +304,8 @@ func (p *proofPipeline) buildProofJobInput(
 			previousBatch = proofs.SuperblockBatch{
 				SuperblockNumber:          prev.Number,
 				ParentSuperblockBatchHash: parentHashInts,
-				RollupSt:                  []proofs.RollupStateTransition{}, // TODO: Get actual rollup state transitions for previous batch
+				// TODO: Get actual rollup state transitions for previous batch
+				RollupSt: []proofs.RollupStateTransition{},
 			}
 		}
 	}
@@ -317,7 +320,7 @@ func (p *proofPipeline) buildProofJobInput(
 	aggProofs := make([]proofs.AggregationProofData, 0, len(subs))
 	for _, s := range subs {
 		// TODO: revert, now mocking
-		//raw := s.Aggregation.ABIEncode()
+		// raw := s.Aggregation.ABIEncode()
 		raw := rawPublicValues
 		proofBytes := make([]byte, len(s.Proof))
 		copy(proofBytes, s.Proof)
@@ -357,62 +360,62 @@ func (p *proofPipeline) buildProofJobInput(
 	}
 }
 
-func (p *proofPipeline) collectSuperblocks(
-	ctx context.Context,
-	current *store.Superblock,
-) []proofs.ProverSuperblock {
-	result := []proofs.ProverSuperblock{convertSuperblock(current)}
-	if current.Number > 0 {
-		prev, err := p.sbStore.GetSuperblock(ctx, current.Number-1)
-		if err == nil {
-			result = append([]proofs.ProverSuperblock{convertSuperblock(prev)}, result...)
-		}
-	}
-
-	return result
-}
-
-func convertSuperblock(sb *store.Superblock) proofs.ProverSuperblock {
-	psb := proofs.ProverSuperblock{
-		Number:     sb.Number,
-		Slot:       sb.Slot,
-		ParentHash: sb.ParentHash.Bytes(),
-		Hash:       sb.Hash.Bytes(),
-		MerkleRoot: sb.MerkleRoot.Bytes(),
-		Timestamp:  uint64(sb.Timestamp.Unix()),
-	}
-
-	for _, blk := range sb.L2Blocks {
-		psb.L2Blocks = append(psb.L2Blocks, proofs.ProverL2Block{
-			Slot:            blk.GetSlot(),
-			ChainID:         append([]byte(nil), blk.GetChainId()...),
-			BlockNumber:     blk.GetBlockNumber(),
-			BlockHash:       append([]byte(nil), blk.GetBlockHash()...),
-			ParentBlockHash: append([]byte(nil), blk.GetParentBlockHash()...),
-			IncludedXTs:     cloneSlices(blk.GetIncludedXts()),
-			Block:           append([]byte(nil), blk.GetBlock()...),
-		})
-	}
-
-	for _, xt := range sb.IncludedXTs {
-		psb.IncludedXTs = append(psb.IncludedXTs, xt.Bytes())
-	}
-
-	if sb.L1TransactionHash != (common.Hash{}) {
-		psb.L1TransactionHash = sb.L1TransactionHash.Bytes()
-	}
-
-	return psb
-}
-
-func cloneSlices(src [][]byte) [][]byte {
-	out := make([][]byte, len(src))
-	for i, b := range src {
-		out[i] = append([]byte(nil), b...)
-	}
-
-	return out
-}
+// func (p *proofPipeline) collectSuperblocks(
+//	ctx context.Context,
+//	current *store.Superblock,
+// ) []proofs.ProverSuperblock {
+//	result := []proofs.ProverSuperblock{convertSuperblock(current)}
+//	if current.Number > 0 {
+//		prev, err := p.sbStore.GetSuperblock(ctx, current.Number-1)
+//		if err == nil {
+//			result = append([]proofs.ProverSuperblock{convertSuperblock(prev)}, result...)
+//		}
+//	}
+//
+//	return result
+// }
+//
+// func convertSuperblock(sb *store.Superblock) proofs.ProverSuperblock {
+//	psb := proofs.ProverSuperblock{
+//		Number:     sb.Number,
+//		Slot:       sb.Slot,
+//		ParentHash: sb.ParentHash.Bytes(),
+//		Hash:       sb.Hash.Bytes(),
+//		MerkleRoot: sb.MerkleRoot.Bytes(),
+//		Timestamp:  uint64(sb.Timestamp.Unix()),
+//	}
+//
+//	for _, blk := range sb.L2Blocks {
+//		psb.L2Blocks = append(psb.L2Blocks, proofs.ProverL2Block{
+//			Slot:            blk.GetSlot(),
+//			ChainID:         append([]byte(nil), blk.GetChainId()...),
+//			BlockNumber:     blk.GetBlockNumber(),
+//			BlockHash:       append([]byte(nil), blk.GetBlockHash()...),
+//			ParentBlockHash: append([]byte(nil), blk.GetParentBlockHash()...),
+//			IncludedXTs:     cloneSlices(blk.GetIncludedXts()),
+//			Block:           append([]byte(nil), blk.GetBlock()...),
+//		})
+//	}
+//
+//	for _, xt := range sb.IncludedXTs {
+//		psb.IncludedXTs = append(psb.IncludedXTs, xt.Bytes())
+//	}
+//
+//	if sb.L1TransactionHash != (common.Hash{}) {
+//		psb.L1TransactionHash = sb.L1TransactionHash.Bytes()
+//	}
+//
+//	return psb
+// }
+//
+// func cloneSlices(src [][]byte) [][]byte {
+//	out := make([][]byte, len(src))
+//	for i, b := range src {
+//		out[i] = append([]byte(nil), b...)
+//	}
+//
+//	return out
+// }
 
 // processQueuedJobs attempts to process jobs that are in StateQueued
 func (p *proofPipeline) processQueuedJobs(ctx context.Context) {
@@ -462,13 +465,19 @@ func (p *proofPipeline) processQueuedJobs(ctx context.Context) {
 	// Get the superblock for this job
 	sb, err := p.sbStore.GetSuperblock(ctx, jobToProcess.SuperblockNumber)
 	if err != nil {
-		p.log.Error().Err(err).Uint64("superblock", jobToProcess.SuperblockNumber).Msg("Failed to load superblock for queued job")
+		p.log.Error().
+			Err(err).
+			Uint64("superblock", jobToProcess.SuperblockNumber).
+			Msg("Failed to load superblock for queued job")
 		return
 	}
 
 	// Process this superblock (this will go through the normal flow but should now pass the rate limiter)
 	if err := p.HandleSuperblock(ctx, sb); err != nil {
-		p.log.Error().Err(err).Uint64("superblock", jobToProcess.SuperblockNumber).Msg("Failed to process queued superblock")
+		p.log.Error().
+			Err(err).
+			Uint64("superblock", jobToProcess.SuperblockNumber).
+			Msg("Failed to process queued superblock")
 	}
 }
 
@@ -616,10 +625,6 @@ func (p *proofPipeline) missingChains(required []uint32, subs []proofs.Submissio
 func (p *proofPipeline) logStats() {
 	p.mu.Lock()
 	queued := len(p.jobs)
-	jobIDs := make([]string, 0, queued)
-	for id := range p.jobs {
-		jobIDs = append(jobIDs, id)
-	}
 	p.mu.Unlock()
 
 	if queued == 0 {
