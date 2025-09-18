@@ -17,6 +17,7 @@ type ethClient interface {
 	SuggestGasTipCap(ctx context.Context) (*big.Int, error)
 	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 	EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error)
+	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	SendTransaction(ctx context.Context, tx *types.Transaction) error
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
