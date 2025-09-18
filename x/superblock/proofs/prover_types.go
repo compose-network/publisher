@@ -36,6 +36,7 @@ type ProofJobStatus struct {
 	ProvingTimeMS        *uint64
 	Cycles               *uint64
 	SuperblockAggOutputs *SuperblockAggOutputs `json:"superblock_agg_outputs,omitempty"`
+	Commitment           *string               `json:"commitment"`
 }
 
 // RollupStateTransition represents state transition information for a single rollup.

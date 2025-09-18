@@ -176,6 +176,7 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 		result.ProvingTimeMS = status.Result.ProvingTimeMs
 		result.Cycles = status.Result.Cycles
 		result.SuperblockAggOutputs = status.Result.SuperblockAggOutputs
+		result.Commitment = status.Result.Commitment
 	}
 
 	c.log.Debug().
@@ -183,6 +184,7 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 		Str("status", result.Status).
 		Interface("proving_time_ms", result.ProvingTimeMS).
 		Interface("cycles", result.Cycles).
+		Interface("commitment", result.Commitment).
 		Bool("has_proof", len(result.Proof) > 0).
 		Msg("retrieved proof job status")
 
@@ -196,10 +198,11 @@ func (c *HTTPClient) buildURL(elem ...string) string {
 }
 
 type submissionResponse struct {
-	Success   bool    `json:"success"`
-	Message   string  `json:"message"`
-	RequestID string  `json:"request_id"`
-	Error     *string `json:"error"`
+	Success    bool    `json:"success"`
+	Message    string  `json:"message"`
+	RequestID  string  `json:"request_id"`
+	Error      *string `json:"error"`
+	Commitment *string `json:"commitment"`
 }
 
 func (r submissionResponse) errorMessage() string {
@@ -210,10 +213,11 @@ func (r submissionResponse) errorMessage() string {
 }
 
 type statusResponse struct {
-	Success bool          `json:"success"`
-	Status  string        `json:"status"`
-	Result  *statusResult `json:"result"`
-	Error   *string       `json:"error"`
+	Success    bool          `json:"success"`
+	Status     string        `json:"status"`
+	Result     *statusResult `json:"result"`
+	Error      *string       `json:"error"`
+	Commitment *string       `json:"commitment"`
 }
 
 func (r statusResponse) errorMessage() string {
@@ -228,6 +232,7 @@ type statusResult struct {
 	ProvingTimeMs        *uint64                      `json:"proving_time_ms"`
 	Cycles               *uint64                      `json:"cycles"`
 	SuperblockAggOutputs *proofs.SuperblockAggOutputs `json:"superblock_agg_outputs,omitempty"`
+	Commitment           *string                      `json:"commitment"`
 }
 
 // Ensure HTTPClient satisfies proofs.ProverClient at compile time.

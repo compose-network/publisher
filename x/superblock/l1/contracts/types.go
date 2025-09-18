@@ -13,6 +13,7 @@ type superblockAggregationOutputs struct {
 	SuperblockNumber          *big.Int         `abi:"superblockNumber"`
 	ParentSuperblockBatchHash common.Hash      `abi:"parentSuperblockBatchHash"`
 	BootInfo                  []bootInfoStruct `abi:"bootInfo"`
+	CommitmentHash            string           `abi:"commitmentHash"`
 }
 
 // bootInfoStruct matches the Solidity struct in ComposeL2OutputOracle.sol
@@ -37,6 +38,7 @@ func buildSuperblockAggregationOutputsType() []abi.ArgumentMarshaling {
 	return []abi.ArgumentMarshaling{
 		{Name: "superblockNumber", Type: "uint256"},
 		{Name: "parentSuperblockBatchHash", Type: "bytes32"},
+		{Name: "commitmentHash", Type: "bytes32"},
 		{
 			Name: "bootInfo",
 			Type: "tuple[]",
