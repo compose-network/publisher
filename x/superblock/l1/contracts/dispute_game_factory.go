@@ -2,7 +2,6 @@ package contracts
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
 	"fmt"
 	"math/big"
@@ -68,12 +67,7 @@ func (b *DisputeGameFactoryBinding) GameType() uint32 {
 
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
-func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
-	_ context.Context,
-	sb *store.Superblock,
-	proof []byte,
-	outputs *proofs.SuperblockAggOutputs,
-) ([]byte, error) {
+func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) ([]byte, error) {
 	if sb == nil {
 		return nil, fmt.Errorf("superblock cannot be nil")
 	}
@@ -81,16 +75,7 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 		return nil, fmt.Errorf("proof cannot be empty")
 	}
 
-	superblockAggOutputs := b.toSuperblockAggregationOutputs(outputs)
-
-	encodedAggOutputs, err := abi.Arguments{
-		{Type: mustParseType("tuple", buildSuperblockAggregationOutputsType())},
-	}.Pack(superblockAggOutputs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode superblockAggOutputs: %w", err)
-	}
-	hash := sha256.Sum256(encodedAggOutputs)
-	fmt.Printf("SuperblockAggOutputs sha256: %x (superblock number: %d)\n", hash[:], sb.Number)
+	superblockAggOutputs := b.toSuperblockAggregationOutputs(outputs, commitment)
 
 	// Encode the extraData as (SuperblockAggregationOutputs, bytes proof)
 	extraData, err := abi.Arguments{
@@ -116,7 +101,7 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 // toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
 //
 //nolint:unparam // TODO: we should support sb input
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs) superblockAggregationOutputs {
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs, commitment string) superblockAggregationOutputs {
 	var bootInfo []bootInfoStruct
 	superblockNumber := new(big.Int)
 	var parentSuperblockBatchHash common.Hash
@@ -144,5 +129,6 @@ func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proo
 		SuperblockNumber:          superblockNumber,
 		ParentSuperblockBatchHash: parentSuperblockBatchHash,
 		BootInfo:                  bootInfo,
+		CommitmentHash:            commitment,
 	}
 }
