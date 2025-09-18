@@ -105,26 +105,51 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 // toSuperblockAggregationOutputs converts a store.Superblock to SuperblockAggregationOutputs
 // format expected by the settlement layer.
 func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(sb *store.Superblock) superblockAggregationOutputs {
-	// Convert L2 blocks to BootInfoStruct array
-	bootInfo := make([]bootInfoStruct, 0, len(sb.L2Blocks))
-	for _, block := range sb.L2Blocks {
-		if block == nil {
-			continue
-		}
+	// MOCK VALUES - Original code commented out
+	// // Convert L2 blocks to BootInfoStruct array
+	// bootInfo := make([]bootInfoStruct, 0, len(sb.L2Blocks))
+	// for _, block := range sb.L2Blocks {
+	// 	if block == nil {
+	// 		continue
+	// 	}
 
-		// Extract required fields for BootInfoStruct
-		bootInfo = append(bootInfo, bootInfoStruct{
-			L1Head:           sb.ParentHash,                             // L1 head from superblock context
-			L2PreRoot:        common.BytesToHash(block.ParentBlockHash), // Previous state root
-			L2PostRoot:       common.BytesToHash(block.BlockHash),       // Post-execution state root
-			L2BlockNumber:    block.BlockNumber,                         // L2 block number
-			RollupConfigHash: common.BytesToHash(block.ChainId),         // Chain ID as config hash
-		})
+	// 	// Extract required fields for BootInfoStruct
+	// 	bootInfo = append(bootInfo, bootInfoStruct{
+	// 		L1Head:           sb.ParentHash,                             // L1 head from superblock context
+	// 		L2PreRoot:        common.BytesToHash(block.ParentBlockHash), // Previous state root
+	// 		L2PostRoot:       common.BytesToHash(block.BlockHash),       // Post-execution state root
+	// 		L2BlockNumber:    block.BlockNumber,                         // L2 block number
+	// 		RollupConfigHash: common.BytesToHash(block.ChainId),         // Chain ID as config hash
+	// 	})
+	// }
+
+	// return superblockAggregationOutputs{
+	// 	SuperblockNumber:          big.NewInt(int64(sb.Number)),
+	// 	ParentSuperblockBatchHash: sb.ParentHash,
+	// 	BootInfo:                  bootInfo,
+	// }
+
+	// Hardcoded mock values as specified in requirements
+	bootInfo := []bootInfoStruct{
+		{
+			L1Head:           common.HexToHash("0x3030303030303030303030303030303030303030303030303030303030303030"),
+			L2PreRoot:        common.HexToHash("0x1010101010101010101010101010101010101010101010101010101010101010"),
+			L2PostRoot:       common.HexToHash("0x2020202020202020202020202020202020202020202020202020202020202020"),
+			L2BlockNumber:    1001,
+			RollupConfigHash: common.HexToHash("0x4040404040404040404040404040404040404040404040404040404040404040"),
+		},
+		{
+			L1Head:           common.HexToHash("0x3030303030303030303030303030303030303030303030303030303030303030"),
+			L2PreRoot:        common.HexToHash("0x1010101010101010101010101010101010101010101010101010101010101010"),
+			L2PostRoot:       common.HexToHash("0x2020202020202020202020202020202020202020202020202020202020202020"),
+			L2BlockNumber:    1001,
+			RollupConfigHash: common.HexToHash("0x4040404040404040404040404040404040404040404040404040404040404040"),
+		},
 	}
 
 	return superblockAggregationOutputs{
-		SuperblockNumber:          big.NewInt(int64(sb.Number)),
-		ParentSuperblockBatchHash: sb.ParentHash,
+		SuperblockNumber:          big.NewInt(100), // 0x64
+		ParentSuperblockBatchHash: common.HexToHash("0xaa346763ea9fc7662b529c389abec8c5a0085efbd712246eccf600e7a64aad12"),
 		BootInfo:                  bootInfo,
 	}
 }
