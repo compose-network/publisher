@@ -2,7 +2,6 @@ package proofs
 
 import "context"
 
-// ProverClient defines the interface for interacting with the external superblock-prover.
 type ProverClient interface {
 	RequestProof(ctx context.Context, job ProofJobInput) (jobID string, err error)
 	GetStatus(ctx context.Context, jobID string) (ProofJobStatus, error)
@@ -14,12 +13,31 @@ type ProofJobInput struct {
 	Input     SuperblockProverInput `json:"input"`
 }
 
+// BootInfo represents boot information for a rollup (mirrors Rust BootInfo).
+type BootInfo struct {
+	L1Head           string `json:"l1_head"`      // hex string
+	L2PreRoot        string `json:"l2_pre_root"`  // hex string
+	L2PostRoot       string `json:"l2_post_root"` // hex string
+	L2BlockNumber    uint64 `json:"l2_block_number"`
+	RollupConfigHash string `json:"rollup_config_hash"` // hex string
+	MultiBlockVkey   string `json:"multi_block_vkey"`   // hex string
+	ProverAddress    string `json:"prover_address"`     // hex string
+}
+
+// SuperblockAggOutputs represents serializable superblock aggregation outputs (mirrors Rust SuperblockAggOutputs).
+type SuperblockAggOutputs struct {
+	SuperblockNumber          string     `json:"superblock_number"`            // U256 as hex string
+	ParentSuperblockBatchHash string     `json:"parent_superblock_batch_hash"` // hex string
+	BootInfo                  []BootInfo `json:"boot_info"`
+}
+
 // ProofJobStatus represents the prover's reported state.
 type ProofJobStatus struct {
-	Status        string `json:"status"`
-	Proof         []byte `json:"proof,omitempty"`
-	ProvingTimeMS *uint64
-	Cycles        *uint64
+	Status               string `json:"status"`
+	Proof                []byte `json:"proof,omitempty"`
+	ProvingTimeMS        *uint64
+	Cycles               *uint64
+	SuperblockAggOutputs *SuperblockAggOutputs `json:"superblock_agg_outputs,omitempty"`
 }
 
 // RollupStateTransition represents state transition information for a single rollup.

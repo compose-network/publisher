@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 	"math/big"
 	"strings"
 	"time"
@@ -109,11 +110,7 @@ func NewEthPublisher(
 
 // PublishSuperblockWithProof constructs, signs, and broadcasts a transaction
 // that calls a proof-enabled contract method to publish the superblock + proof.
-func (p *EthPublisher) PublishSuperblockWithProof(
-	ctx context.Context,
-	superblock *store.Superblock,
-	proof []byte,
-) (*tx.Transaction, error) {
+func (p *EthPublisher) PublishSuperblockWithProof(ctx context.Context, superblock *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs) (*tx.Transaction, error) {
 	p.log.Info().
 		Uint64("superblock_number", superblock.Number).
 		Int("l2_block_count", len(superblock.L2Blocks)).
@@ -131,7 +128,7 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 		}
 	}
 
-	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof)
+	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof, outputs)
 	if err != nil {
 		p.log.Error().
 			Err(err).

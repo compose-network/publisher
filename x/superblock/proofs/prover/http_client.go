@@ -185,6 +185,7 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 		}
 		result.ProvingTimeMS = status.Result.ProvingTimeMs
 		result.Cycles = status.Result.Cycles
+		result.SuperblockAggOutputs = status.Result.SuperblockAggOutputs
 	}
 
 	c.log.Debug().
@@ -233,9 +234,10 @@ func (r statusResponse) errorMessage() string {
 }
 
 type statusResult struct {
-	Proof         proofs.ProofBytes `json:"proof"`
-	ProvingTimeMs *uint64           `json:"proving_time_ms"`
-	Cycles        *uint64           `json:"cycles"`
+	Proof                proofs.ProofBytes            `json:"proof"`
+	ProvingTimeMs        *uint64                      `json:"proving_time_ms"`
+	Cycles               *uint64                      `json:"cycles"`
+	SuperblockAggOutputs *proofs.SuperblockAggOutputs `json:"superblock_agg_outputs,omitempty"`
 }
 
 // Ensure HTTPClient satisfies proofs.ProverClient at compile time.
