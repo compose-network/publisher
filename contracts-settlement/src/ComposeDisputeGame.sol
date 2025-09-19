@@ -16,6 +16,8 @@ interface ISP1Verifier {
     ) external view returns (bool);
 }
 
+
+
 error AlreadyInitialized();
 
 contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
@@ -40,7 +42,21 @@ contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
     address public constant verifier = 0x17Ef331C3c90E9e5718e81085c721a404eF18436;
 
     /// @notice The verification key of the aggregation SP1 program.
-    bytes32 public constant aggregationVkey = 0x006fbd76ba3d17a0308a1d24a686d1c5954f8d1e2a4c310f94ec84dc4a123902;
+    bytes32 public constant aggregationVkey = 0x0059ae2f8c8ad61a6af02594067148b58dbecff2e3352170923efda8ea603f1e;
+
+    struct SuperblockAggregationOutputs {
+        uint256 superblockNumber; // New head superblock number
+        bytes32 parentSuperblockBatchHash; // Hash of the previous superblock
+        BootInfoStruct[] bootInfo; // BootInfoStruct, one for each rollup
+    }
+
+    struct BootInfoStruct {
+        bytes32 l1Head;
+        bytes32 l2PreRoot;
+        bytes32 l2PostRoot;
+        uint64 l2BlockNumber;
+        bytes32 rollupConfigHash;
+    }
 
     // ---------------------------------------------------------------------
     // IDisputeGame immutable getters (CWIA layout)
@@ -59,10 +75,16 @@ contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
         status = GameStatus.IN_PROGRESS;
         wasRespectedGameTypeWhenCreated = true;
 
+        (
+            SuperblockAggregationOutputs memory superBlockAggOutputs,
+            bytes memory proof
+        ) = abi.decode(extraData(), (SuperblockAggregationOutputs, bytes));
+
+
         ISP1Verifier(verifier).verifyProof(
             aggregationVkey,
-            bytes.concat(rootClaim().raw()),
-            extraData()
+            bytes32ToBytes(sha256(abi.encode(superBlockAggOutputs))),
+            proof
         );
 
         this.resolve();
@@ -141,4 +163,12 @@ contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
     {
         return 0;
     }
+
+    function bytes32ToBytes(bytes32 input) public pure returns (bytes memory) {
+    bytes memory b = new bytes(32);
+    assembly {
+        mstore(add(b, 32), input)
+    }
+    return b;
+}
 }
