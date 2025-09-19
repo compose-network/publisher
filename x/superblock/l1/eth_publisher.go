@@ -116,7 +116,6 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 	superblock *store.Superblock,
 	proof []byte,
 	outputs *proofs.SuperblockAggOutputs,
-	commitment string,
 ) (*tx.Transaction, error) {
 	p.log.Info().
 		Uint64("superblock_number", superblock.Number).
@@ -135,7 +134,7 @@ func (p *EthPublisher) PublishSuperblockWithProof(
 		}
 	}
 
-	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof, outputs, commitment)
+	calldata, err := p.contract.BuildPublishWithProofCalldata(ctx, superblock, proof, outputs)
 	if err != nil {
 		p.log.Error().
 			Err(err).
