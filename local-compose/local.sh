@@ -553,6 +553,106 @@ restart_services() {
   esac
 }
 
+log_targets() {
+  local token=$1
+  case "$token" in
+    all)
+      printf '%s\n' \
+        "rollup-shared-publisher" \
+        "op-geth-a" "op-geth-b" \
+        "op-node-a" "op-node-b" \
+        "op-batcher-a" "op-batcher-b" \
+        "op-proposer-a" "op-proposer-b"
+      ;;
+    op-geth)
+      printf '%s\n' \
+        "op-geth-a" "op-geth-b" \
+        "op-node-a" "op-node-b" \
+        "op-batcher-a" "op-batcher-b" \
+        "op-proposer-a" "op-proposer-b"
+      ;;
+    publisher|rollup-shared-publisher)
+      printf '%s\n' "rollup-shared-publisher"
+      ;;
+    op-geth-a|op-geth-b|op-node-a|op-node-b|op-batcher-a|op-batcher-b|op-proposer-a|op-proposer-b)
+      printf '%s\n' "$token"
+      ;;
+    '')
+      return 1
+      ;;
+    *)
+      err "Unknown service alias: ${token}"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_logs() {
+  shift || true
+  local -a services=()
+  local -a options=()
+  local accept_options=1
+  local expect_value=0
+  local pending_option=''
+  local arg
+  while (($#)); do
+    arg=$1
+    shift
+    if [[ $accept_options -eq 1 && $arg == "--" ]]; then
+      accept_options=0
+      continue
+    fi
+    if [[ $accept_options -eq 1 && $expect_value -eq 1 ]]; then
+      options+=("$arg")
+      expect_value=0
+      pending_option=''
+      continue
+    fi
+    if [[ $accept_options -eq 1 && $arg == -* ]]; then
+      options+=("$arg")
+      case "$arg" in
+        --tail|--since)
+          expect_value=1
+          pending_option="$arg"
+          ;;
+      esac
+    else
+      local resolved
+      resolved=$(log_targets "$arg")
+      local svc
+      while IFS=$'\n' read -r svc; do
+        [[ -z $svc ]] && continue
+        local exists=0
+        local current
+        for current in "${services[@]}"; do
+          if [[ $current == "$svc" ]]; then
+            exists=1
+            break
+          fi
+        done
+        (( exists == 0 )) && services+=("$svc")
+      done <<< "$resolved"
+    fi
+  done
+
+  if [[ $expect_value -eq 1 ]]; then
+    err "Missing value for option: ${pending_option}"
+    exit 1
+  fi
+
+  if ((${#services[@]} == 0)); then
+    local resolved_all
+    resolved_all=$(log_targets all)
+    while IFS=$'\n' read -r svc; do
+      [[ -z $svc ]] && continue
+      services+=("$svc")
+    done <<< "$resolved_all"
+  fi
+
+  log "Streaming logs for: ${services[*]}"
+  compose logs "${options[@]}" "${services[@]}"
+}
+
 deploy_services() {
   local target=${1:-all}
   load_env 1
@@ -587,6 +687,9 @@ main() {
     deploy)
       shift || true
       deploy_services "${1:-all}"
+      ;;
+    logs)
+      cmd_logs "$@"
       ;;
     purge)
       shift || true
