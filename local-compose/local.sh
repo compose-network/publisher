@@ -7,6 +7,8 @@ RPC_RETRIES=${RPC_RETRIES:-240}
 RPC_DELAY=${RPC_DELAY:-1}
 PUBLISHER_HEALTH_TIMEOUT=${PUBLISHER_HEALTH_TIMEOUT:-2}
 PUBLISHER_RETRIES=${PUBLISHER_RETRIES:-240}
+BLOCKSCOUT_HEALTH_TIMEOUT=${BLOCKSCOUT_HEALTH_TIMEOUT:-5}
+BLOCKSCOUT_RETRIES=${BLOCKSCOUT_RETRIES:-240}
 TABLE_DELIM=$'\x1f'
 declare -A CONTRACTS=()
 
@@ -26,9 +28,9 @@ Commands:
   up                    Bootstrap (runs setup on first use) or start the stack.
   down                  Stop containers without removing volumes.
   status                Show container state, RPC endpoints, and health summaries.
-  logs [service ...]    Stream logs for services (aliases: op-geth, publisher, all, or compose names).
-  restart <target>      Restart services (target: op-geth | publisher | all).
-  deploy <target>       Rebuild images then restart (target: op-geth | publisher | all).
+  logs [service ...]    Stream logs for services (aliases: op-geth, publisher, blockscout, all, or compose names).
+  restart <target>      Restart services (target: op-geth | publisher | blockscout | all).
+  deploy <target>       Rebuild images then restart (target: op-geth | publisher | blockscout | all).
   purge [--force]       Stop everything, remove volumes, and delete generated state.
   help                  Show this message.
 
@@ -337,6 +339,29 @@ wait_for_publisher() {
   return 1
 }
 
+blockscout_health() {
+  local base=$1
+  local health="${base%/}/api/health"
+  curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --max-time "$BLOCKSCOUT_HEALTH_TIMEOUT" --connect-timeout "$BLOCKSCOUT_HEALTH_TIMEOUT" "$health" 2>/dev/null || true
+}
+
+wait_for_blockscout() {
+  local base=$1
+  local display="${base%/}/api/health"
+  for ((i=1; i<=BLOCKSCOUT_RETRIES; i++)); do
+    local code
+    code=$(blockscout_health "$base")
+    if [[ $code == "200" ]]; then
+      log "Blockscout ready (${base})"
+      return 0
+    fi
+    sleep "$RPC_DELAY"
+  done
+  err "Timed out waiting for Blockscout health at ${display}"
+  return 1
+}
+
 service_status_map() {
   compose ps --format '{{.Service}}|{{.State}}|{{.Status}}' 2>/dev/null || true
 }
@@ -390,6 +415,41 @@ print_status() {
   render_panel "rollup-shared-publisher" "${publisher_rows[@]}"
   printf '\n'
 
+  local blockscout_a_base=${BLOCKSCOUT_A_URL:-http://localhost:19000}
+  local blockscout_b_base=${BLOCKSCOUT_B_URL:-http://localhost:29000}
+
+  local blockscout_a_entry
+  blockscout_a_entry=$(get_service_entry "blockscout-a-proxy" "missing")
+  local blockscout_a_state=${blockscout_a_entry%%|*}
+  local blockscout_a_status=${blockscout_a_entry#*|}
+  local blockscout_a_status_text
+  blockscout_a_status_text=$(format_status_text "$blockscout_a_state" "$blockscout_a_status")
+  local blockscout_a_code
+  blockscout_a_code=$(blockscout_health "$blockscout_a_base")
+  [[ -z $blockscout_a_code ]] && blockscout_a_code="(no response)"
+  local blockscout_a_health
+  if [[ $blockscout_a_code == "200" ]]; then
+    blockscout_a_health="❤️ healthy"
+  else
+    blockscout_a_health="⚠️ health $blockscout_a_code"
+  fi
+
+  local blockscout_b_entry
+  blockscout_b_entry=$(get_service_entry "blockscout-b-proxy" "missing")
+  local blockscout_b_state=${blockscout_b_entry%%|*}
+  local blockscout_b_status=${blockscout_b_entry#*|}
+  local blockscout_b_status_text
+  blockscout_b_status_text=$(format_status_text "$blockscout_b_state" "$blockscout_b_status")
+  local blockscout_b_code
+  blockscout_b_code=$(blockscout_health "$blockscout_b_base")
+  [[ -z $blockscout_b_code ]] && blockscout_b_code="(no response)"
+  local blockscout_b_health
+  if [[ $blockscout_b_code == "200" ]]; then
+    blockscout_b_health="❤️ healthy"
+  else
+    blockscout_b_health="⚠️ health $blockscout_b_code"
+  fi
+
   local block_label_a
   if [[ $block_a =~ ^[0-9]+$ ]]; then
     block_label_a="⛏️ block $block_a"
@@ -408,6 +468,7 @@ print_status() {
   rollup_a_rows+=("op-node${delim}$(format_service_status "op-node-a" "missing")${delim}${delim}rpc http://localhost:19545")
   rollup_a_rows+=("batcher${delim}$(format_service_status "op-batcher-a" "missing")${delim}${delim}port 18548")
   rollup_a_rows+=("proposer${delim}$(format_service_status "op-proposer-a" "missing")${delim}${delim}port 18560")
+  rollup_a_rows+=("blockscout${delim}$blockscout_a_status_text${delim}$blockscout_a_health${delim}${blockscout_a_base%/}")
   render_panel "rollup-a (${ROLLUP_A_CHAIN_ID:-?})" "${rollup_a_rows[@]}"
   printf '\n'
 
@@ -416,6 +477,7 @@ print_status() {
   rollup_b_rows+=("op-node${delim}$(format_service_status "op-node-b" "missing")${delim}${delim}rpc http://localhost:29545")
   rollup_b_rows+=("batcher${delim}$(format_service_status "op-batcher-b" "missing")${delim}${delim}port 28548")
   rollup_b_rows+=("proposer${delim}$(format_service_status "op-proposer-b" "missing")${delim}${delim}port 28560")
+  rollup_b_rows+=("blockscout${delim}$blockscout_b_status_text${delim}$blockscout_b_health${delim}${blockscout_b_base%/}")
   render_panel "rollup-b (${ROLLUP_B_CHAIN_ID:-?})" "${rollup_b_rows[@]}"
   printf '\n'
 
@@ -500,11 +562,24 @@ service_targets() {
     publisher)
       printf '%s\n' "rollup-shared-publisher"
       ;;
+    blockscout)
+      printf '%s\n' "blockscout-a" "blockscout-b" "blockscout-a-db" "blockscout-b-db" "blockscout-a-redis" "blockscout-b-redis" "blockscout-a-frontend" "blockscout-b-frontend" "blockscout-a-proxy" "blockscout-b-proxy"
+      ;;
     all)
-      printf '%s\n' "rollup-shared-publisher" "op-geth-a" "op-geth-b" "op-node-a" "op-node-b" "op-batcher-a" "op-batcher-b" "op-proposer-a" "op-proposer-b"
+      printf '%s\n' \
+        "rollup-shared-publisher" \
+        "op-geth-a" "op-geth-b" \
+        "op-node-a" "op-node-b" \
+        "op-batcher-a" "op-batcher-b" \
+        "op-proposer-a" "op-proposer-b" \
+        "blockscout-a" "blockscout-b" \
+        "blockscout-a-db" "blockscout-b-db" \
+        "blockscout-a-redis" "blockscout-b-redis" \
+        "blockscout-a-frontend" "blockscout-b-frontend" \
+        "blockscout-a-proxy" "blockscout-b-proxy"
       ;;
     *)
-      err "Unknown target: ${target} (expected op-geth, publisher, or all)"
+      err "Unknown target: ${target} (expected op-geth, publisher, blockscout, or all)"
       exit 1
       ;;
   esac
@@ -518,6 +593,9 @@ build_targets() {
       ;;
     publisher)
       printf '%s\n' "rollup-shared-publisher"
+      ;;
+    blockscout)
+      :
       ;;
     all)
       printf '%s\n' "rollup-shared-publisher" "op-geth-a" "op-geth-b"
@@ -551,6 +629,12 @@ restart_services() {
       wait_for_publisher "${ROLLUP_SHARED_PUBLISHER_HEALTH_URL:-http://localhost:18081/health}"
       ;;
   esac
+  case "$target" in
+    blockscout|all)
+      wait_for_blockscout "${BLOCKSCOUT_A_URL:-http://localhost:19000}"
+      wait_for_blockscout "${BLOCKSCOUT_B_URL:-http://localhost:29000}"
+      ;;
+  esac
 }
 
 log_targets() {
@@ -562,7 +646,8 @@ log_targets() {
         "op-geth-a" "op-geth-b" \
         "op-node-a" "op-node-b" \
         "op-batcher-a" "op-batcher-b" \
-        "op-proposer-a" "op-proposer-b"
+        "op-proposer-a" "op-proposer-b" \
+        "blockscout-a-proxy" "blockscout-b-proxy"
       ;;
     op-geth)
       printf '%s\n' \
@@ -574,7 +659,10 @@ log_targets() {
     publisher|rollup-shared-publisher)
       printf '%s\n' "rollup-shared-publisher"
       ;;
-    op-geth-a|op-geth-b|op-node-a|op-node-b|op-batcher-a|op-batcher-b|op-proposer-a|op-proposer-b)
+    blockscout)
+      printf '%s\n' "blockscout-a-proxy" "blockscout-b-proxy" "blockscout-a" "blockscout-b" "blockscout-a-frontend" "blockscout-b-frontend"
+      ;;
+    op-geth-a|op-geth-b|op-node-a|op-node-b|op-batcher-a|op-batcher-b|op-proposer-a|op-proposer-b|blockscout-a|blockscout-b|blockscout-a-frontend|blockscout-b-frontend|blockscout-a-proxy|blockscout-b-proxy)
       printf '%s\n' "$token"
       ;;
     '')

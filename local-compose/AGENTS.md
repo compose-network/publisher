@@ -66,10 +66,11 @@ These must exist at the repo root before running the stack; `setup.sh` will sync
      - Shared publisher: TCP `18080`, HTTP `18081`.
      - Rollup A: HTTP `18545`, WS `18546`, auth `18551`, compose mailbox `19898`, op-node RPC `19545`, batcher `18548`, proposer `18560`.
      - Rollup B: mirrored on ports `28545/28546/28551/29898/29545/28548/28560`.
+     - Blockscout explorers: Rollup A `19000`, Rollup B `29000`.
 
 4. **Iterate on op-geth or other services**
    - Modify code under `op-geth/`, `rollup-shared-publisher/`, or `optimism/` (or the directories pointed to by `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH`).
-   - Rebuild and restart targeted services with `./local.sh deploy op-geth`, `./local.sh deploy publisher`, or `./local.sh deploy all` (uses short RPC waits to confirm readiness).
+   - Rebuild and restart targeted services with `./local.sh deploy op-geth`, `./local.sh deploy publisher`, `./local.sh deploy blockscout`, or `./local.sh deploy all` (uses short RPC waits to confirm readiness).
    - Need to redeploy contracts after changing them? Update the sources and rerun `./local.sh up` (or invoke `scripts/setup.sh` directly) to broadcast the new bytecode.
 
 5. **Resetting the environment**
@@ -82,6 +83,7 @@ These must exist at the repo root before running the stack; `setup.sh` will sync
 - **Compose mailbox**: tail `docker logs op-geth-{a,b}` for messages referencing `compose` or mailbox connections. You should see successful dials to `rollup-shared-publisher:8080` and cross-chain gossip over port `9898`.
 - **Bridge sanity**: run `go run ./cmd/mint` once per redeploy to seed L2 funds, then `go run ./cmd/xbridge`. A healthy run mints 100 `MyToken` on Rollup B, burns the same amount on Rollup A, and `./toolkit.sh debug-bridge` shows matching `SEND`/`ACK SEND` mailbox entries.
 - **Shared publisher health**: `curl http://localhost:18081/health` should return `200`; readiness requires at least one connected sequencer.
+- **Blockscout health**: `curl http://localhost:19000/api/health` and `http://localhost:29000/api/health` should return `200` once indexing catches up.
 - **Accounts**: the sequencer key is pre-imported during container bootstrap. `eth_accounts` on either rollup should return the wallet address from `.env`.
 - **Funding**: the Hoodi wallet must remain funded; script deploys multiple contracts and the batcher/proposer continue to submit transactions. Monitor balance via the L1 RPC to avoid failures.
 - **op-deployer cache**: stored in `state/op-deployer/.cache`. Safe to delete between runs if you need to refresh artifacts.
