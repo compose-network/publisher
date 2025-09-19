@@ -67,13 +67,7 @@ func (b *DisputeGameFactoryBinding) GameType() uint32 {
 
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
-func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
-	ctx context.Context,
-	sb *store.Superblock,
-	proof []byte,
-	outputs *proofs.SuperblockAggOutputs,
-	commitment string,
-) ([]byte, error) {
+func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) ([]byte, error) {
 	if sb == nil {
 		return nil, fmt.Errorf("superblock cannot be nil")
 	}
@@ -81,22 +75,20 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 		return nil, fmt.Errorf("proof cannot be empty")
 	}
 
-	//superblockAggOutputs := b.toSuperblockAggregationOutputs(outputs, commitment)
-
-	// Encode the extraData as (SuperblockAggregationOutputs, bytes proof)
-	//extraData, err := abi.Arguments{
-	//	{Type: mustParseType("tuple", buildSuperblockAggregationOutputsType())},
-	//	{Type: mustParseType("bytes", nil)},
-	//}.Pack(superblockAggOutputs, proof)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to encode extraData: %w", err)
-	//}
+	// Encode the extraData as (bytes commitment, bytes proof)
+	extraData, err := abi.Arguments{
+		{Type: mustParseType("bytes", nil)},
+		{Type: mustParseType("bytes", nil)},
+	}.Pack(commitment, proof)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode extraData: %w", err)
+	}
 
 	// rootClaim - parent superblock batch hash.
 	rootClaim := sb.ParentHash
 
 	// Pack the create() function call
-	data, err := b.abi.Pack("create", composeGameType, rootClaim, common.HexToHash(commitment).Bytes())
+	data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DisputeGameFactory.create calldata: %w", err)
 	}
@@ -106,11 +98,8 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 
 // toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
 //
-// TODO: we should support sb input
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(
-	outputs *proofs.SuperblockAggOutputs,
-	commitment string,
-) superblockAggregationOutputs {
+//nolint:unparam // TODO: we should support sb input
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs, commitment string) superblockAggregationOutputs {
 	var bootInfo []bootInfoStruct
 	superblockNumber := new(big.Int)
 	var parentSuperblockBatchHash common.Hash
