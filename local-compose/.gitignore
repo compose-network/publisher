@@ -1,0 +1,38 @@
+# Node & Yarn
+node_modules/
+yarn.lock
+
+# Python
+__pycache__/
+*.pyc
+
+# Go build
+bin/
+**/*.test
+
+# Docker build artifacts
+docker/*.tar
+
+# Local state
+state/
+networks/
+/tmp/
+
+# IDE/editor
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+
+# External repos
+op-geth/
+op-geth-backup-20250919095542/
+optimism/
+rollup-shared-publisher/
+rollup-shared-publisher-archived/
+.env
+contracts/
+.env
+.cache

@@ -1,0 +1,291 @@
+version: "3.9"
+
+services:
+  rollup-shared-publisher:
+    build:
+      context: ${ROLLUP_SHARED_PUBLISHER_PATH:-./rollup-shared-publisher}
+      dockerfile: Dockerfile
+    image: local/rollup-shared-publisher:dev
+    container_name: rollup-shared-publisher
+    environment:
+      SERVER_LISTEN_ADDR: ":8080"
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "8081"
+      LOG_LEVEL: "info"
+      LOG_PRETTY: "true"
+      AUTH_ENABLED: "false"
+      PROOFS_ENABLED: "false"
+      PROOFS_REQUIRE_PROOF: "false"
+      CONSENSUS_TIMEOUT: "20s"
+      L1_RPC_ENDPOINT: "${HOODI_EL_RPC}"
+      L1_SUPERBLOCK_CONTRACT: "${SP_L1_SUPERBLOCK_CONTRACT}"
+      L1_SHARED_PUBLISHER_PK_HEX: "${SP_L1_SHARED_PUBLISHER_PK_HEX:-${WALLET_PRIVATE_KEY}}"
+      L1_FROM_ADDRESS: "${SP_L1_FROM_ADDRESS:-${WALLET_ADDRESS}}"
+      L1_DISPUTE_GAME_FACTORY: "${SP_L1_DISPUTE_GAME_FACTORY}"
+      L1_CHAIN_ID: "${HOODI_CHAIN_ID}"
+    ports:
+      - "18080:8080"
+      - "18081:8081"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  op-geth-a:
+    build:
+      context: ${OP_GETH_PATH:-./op-geth}
+      dockerfile: Dockerfile
+    image: local/op-geth:dev
+    container_name: op-geth-a
+    environment:
+      ROLLUP_CHAIN_ID: "${ROLLUP_A_CHAIN_ID}"
+      WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+    volumes:
+      - rollup-a-geth:/data
+      - ./networks/rollup-a:/config:ro
+    ports:
+      - "18545:8545"
+      - "18546:8546"
+      - "18551:8551"
+      - "19898:9898"
+    depends_on:
+      - rollup-shared-publisher
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ ! -f /data/geth/chaindata/CURRENT ]; then
+          echo '[*] initializing op-geth datadir'
+          geth init --state.scheme=hash --datadir /data /config/genesis.json
+          if [ ! -d /data/keystore ] || [ -z $$(ls -A /data/keystore 2>/dev/null) ]; then
+            printf '%s' "$${WALLET_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+          fi
+        fi
+        EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
+        exec geth \
+          --datadir /data \
+          --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
+          --http.api=web3,debug,eth,txpool,net,engine,compose \
+          --ws --ws.addr=0.0.0.0 --ws.port=8546 --ws.origins='*' --ws.api=debug,eth,txpool,net,engine \
+          --authrpc.addr=0.0.0.0 --authrpc.port=8551 --authrpc.vhosts='*' --authrpc.jwtsecret=/config/jwt.txt \
+          --syncmode=full --gcmode=archive --nodiscover --maxpeers=0 \
+          --networkid=$${ROLLUP_CHAIN_ID} \
+          --metrics --metrics.addr=0.0.0.0 --metrics.port=6060 \
+          --rollup.disabletxpoolgossip=true \
+          --rpc.allow-unprotected-txs \
+          --sp.addr=rollup-shared-publisher:8080 \
+          --sp.listen.addr=:9898 \
+          --sequencer.addrs=${ROLLUP_B_CHAIN_ID}:op-geth-b:9898 \
+          --sequencer.key=$${WALLET_PRIVATE_KEY} \
+          --rollup.computependingblock=true \
+          $${EXTRA_FLAGS}
+
+  op-node-a:
+    build:
+      context: .
+      dockerfile: docker/op-node.Dockerfile
+    image: local/op-node:dev
+    container_name: op-node-a
+    depends_on:
+      - op-geth-a
+    environment:
+      OP_NODE_L1_ETH_RPC: "${HOODI_EL_RPC}"
+      OP_NODE_L1_BEACON: "${HOODI_CL_RPC}"
+      OP_NODE_L2_ENGINE_RPC: "http://op-geth-a:8551"
+      OP_NODE_L2_ENGINE_AUTH: "/config/jwt.txt"
+      OP_NODE_ROLLUP_CONFIG: "/config/rollup.json"
+      OP_NODE_P2P_DISABLE: "true"
+      OP_NODE_SEQUENCER_ENABLED: "true"
+      OP_NODE_SEQUENCER_L1_CONFS: "5"
+      OP_NODE_VERIFIER_L1_CONFS: "4"
+      OP_NODE_P2P_SEQUENCER_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_NODE_RPC_ADDR: "0.0.0.0"
+      OP_NODE_RPC_PORT: "9545"
+      OP_NODE_RPC_ENABLE_ADMIN: "true"
+      OP_NODE_LOG_LEVEL: "info"
+    volumes:
+      - rollup-a-opnode:/data
+      - ./networks/rollup-a:/config:ro
+    ports:
+      - "19545:9545"
+
+  op-batcher-a:
+    build:
+      context: .
+      dockerfile: docker/op-batcher.Dockerfile
+    image: local/op-batcher:dev
+    container_name: op-batcher-a
+    depends_on:
+      - op-node-a
+    environment:
+      OP_BATCHER_L1_ETH_RPC: "${HOODI_EL_RPC}"
+      OP_BATCHER_L2_ETH_RPC: "http://op-geth-a:8545"
+      OP_BATCHER_ROLLUP_RPC: "http://op-node-a:9545"
+      OP_BATCHER_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_BATCHER_POLL_INTERVAL: "1s"
+      OP_BATCHER_SUB_SAFETY_MARGIN: "6"
+      OP_BATCHER_NUM_CONFIRMATIONS: "1"
+      OP_BATCHER_MAX_CHANNEL_DURATION: "25"
+      OP_BATCHER_RPC_ADDR: "0.0.0.0"
+      OP_BATCHER_RPC_PORT: "8548"
+      OP_BATCHER_RPC_ENABLE_ADMIN: "true"
+    ports:
+      - "18548:8548"
+
+  op-proposer-a:
+    build:
+      context: .
+      dockerfile: docker/op-proposer.Dockerfile
+    image: local/op-proposer:dev
+    container_name: op-proposer-a
+    depends_on:
+      - op-node-a
+    env_file:
+      - ./networks/rollup-a/runtime.env
+    environment:
+      OP_PROPOSER_L1_ETH_RPC: "${HOODI_EL_RPC}"
+      OP_PROPOSER_ROLLUP_RPC: "http://op-node-a:9545"
+      OP_PROPOSER_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_PROPOSER_POLL_INTERVAL: "12s"
+      OP_PROPOSER_PROPOSAL_INTERVAL: "10m"
+      OP_PROPOSER_GAME_TYPE: "1"
+      OP_PROPOSER_RPC_PORT: "8560"
+      OP_PROPOSER_RPC_ADDR: "0.0.0.0"
+      OP_PROPOSER_RPC_ENABLE_ADMIN: "true"
+    ports:
+      - "18560:8560"
+
+  op-geth-b:
+    build:
+      context: ${OP_GETH_PATH:-./op-geth}
+      dockerfile: Dockerfile
+    image: local/op-geth:dev
+    container_name: op-geth-b
+    environment:
+      ROLLUP_CHAIN_ID: "${ROLLUP_B_CHAIN_ID}"
+      WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+    volumes:
+      - rollup-b-geth:/data
+      - ./networks/rollup-b:/config:ro
+    ports:
+      - "28545:8545"
+      - "28546:8546"
+      - "28551:8551"
+      - "29898:9898"
+    depends_on:
+      - rollup-shared-publisher
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ ! -f /data/geth/chaindata/CURRENT ]; then
+          echo '[*] initializing op-geth datadir'
+          geth init --state.scheme=hash --datadir /data /config/genesis.json
+          if [ ! -d /data/keystore ] || [ -z $$(ls -A /data/keystore 2>/dev/null) ]; then
+            printf '%s' "$${WALLET_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+          fi
+        fi
+        EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
+        exec geth \
+          --datadir /data \
+          --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
+          --http.api=web3,debug,eth,txpool,net,engine,compose \
+          --ws --ws.addr=0.0.0.0 --ws.port=8546 --ws.origins='*' --ws.api=debug,eth,txpool,net,engine \
+          --authrpc.addr=0.0.0.0 --authrpc.port=8551 --authrpc.vhosts='*' --authrpc.jwtsecret=/config/jwt.txt \
+          --syncmode=full --gcmode=archive --nodiscover --maxpeers=0 \
+          --networkid=$${ROLLUP_CHAIN_ID} \
+          --metrics --metrics.addr=0.0.0.0 --metrics.port=6060 \
+          --rollup.disabletxpoolgossip=true \
+          --rpc.allow-unprotected-txs \
+          --sp.addr=rollup-shared-publisher:8080 \
+          --sp.listen.addr=:9898 \
+          --sequencer.addrs=${ROLLUP_A_CHAIN_ID}:op-geth-a:9898 \
+          --sequencer.key=$${WALLET_PRIVATE_KEY} \
+          --rollup.computependingblock=true \
+          $${EXTRA_FLAGS}
+
+  op-node-b:
+    build:
+      context: .
+      dockerfile: docker/op-node.Dockerfile
+    image: local/op-node:dev
+    container_name: op-node-b
+    depends_on:
+      - op-geth-b
+    environment:
+      OP_NODE_L1_ETH_RPC: "${HOODI_EL_RPC}"
+      OP_NODE_L1_BEACON: "${HOODI_CL_RPC}"
+      OP_NODE_L2_ENGINE_RPC: "http://op-geth-b:8551"
+      OP_NODE_L2_ENGINE_AUTH: "/config/jwt.txt"
+      OP_NODE_ROLLUP_CONFIG: "/config/rollup.json"
+      OP_NODE_P2P_DISABLE: "true"
+      OP_NODE_SEQUENCER_ENABLED: "true"
+      OP_NODE_SEQUENCER_L1_CONFS: "5"
+      OP_NODE_VERIFIER_L1_CONFS: "4"
+      OP_NODE_P2P_SEQUENCER_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_NODE_RPC_ADDR: "0.0.0.0"
+      OP_NODE_RPC_PORT: "9545"
+      OP_NODE_RPC_ENABLE_ADMIN: "true"
+      OP_NODE_LOG_LEVEL: "info"
+    volumes:
+      - rollup-b-opnode:/data
+      - ./networks/rollup-b:/config:ro
+    ports:
+      - "29545:9545"
+
+  op-batcher-b:
+    build:
+      context: .
+      dockerfile: docker/op-batcher.Dockerfile
+    image: local/op-batcher:dev
+    container_name: op-batcher-b
+    depends_on:
+      - op-node-b
+    environment:
+      OP_BATCHER_L1_ETH_RPC: "${HOODI_EL_RPC}"
+      OP_BATCHER_L2_ETH_RPC: "http://op-geth-b:8545"
+      OP_BATCHER_ROLLUP_RPC: "http://op-node-b:9545"
+      OP_BATCHER_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_BATCHER_POLL_INTERVAL: "1s"
+      OP_BATCHER_SUB_SAFETY_MARGIN: "6"
+      OP_BATCHER_NUM_CONFIRMATIONS: "1"
+      OP_BATCHER_MAX_CHANNEL_DURATION: "25"
+      OP_BATCHER_RPC_ADDR: "0.0.0.0"
+      OP_BATCHER_RPC_PORT: "8548"
+      OP_BATCHER_RPC_ENABLE_ADMIN: "true"
+    ports:
+      - "28548:8548"
+
+  op-proposer-b:
+    build:
+      context: .
+      dockerfile: docker/op-proposer.Dockerfile
+    image: local/op-proposer:dev
+    container_name: op-proposer-b
+    depends_on:
+      - op-node-b
+    env_file:
+      - ./networks/rollup-b/runtime.env
+    environment:
+      OP_PROPOSER_L1_ETH_RPC: "${HOODI_EL_RPC}"
+      OP_PROPOSER_ROLLUP_RPC: "http://op-node-b:9545"
+      OP_PROPOSER_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_PROPOSER_POLL_INTERVAL: "12s"
+      OP_PROPOSER_PROPOSAL_INTERVAL: "10m"
+      OP_PROPOSER_GAME_TYPE: "1"
+      OP_PROPOSER_RPC_PORT: "8560"
+      OP_PROPOSER_RPC_ADDR: "0.0.0.0"
+      OP_PROPOSER_RPC_ENABLE_ADMIN: "true"
+    ports:
+      - "28560:8560"
+
+volumes:
+  rollup-a-geth:
+  rollup-b-geth:
+  rollup-a-opnode:
+  rollup-b-opnode:
