@@ -21,6 +21,5 @@ type Binding interface {
 		superblock *store.Superblock,
 		proof []byte,
 		outputs *proofs.SuperblockAggOutputs,
-		commitment string,
 	) ([]byte, error)
 }

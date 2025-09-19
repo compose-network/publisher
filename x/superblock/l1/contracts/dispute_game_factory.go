@@ -67,7 +67,7 @@ func (b *DisputeGameFactoryBinding) GameType() uint32 {
 
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
-func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) ([]byte, error) {
+func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs) ([]byte, error) {
 	if sb == nil {
 		return nil, fmt.Errorf("superblock cannot be nil")
 	}
@@ -75,22 +75,15 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Co
 		return nil, fmt.Errorf("proof cannot be empty")
 	}
 
-	// Encode the extraData as (bytes commitment, bytes proof)
-	//extraData, err := abi.Arguments{
-	//	{Type: mustParseType("bytes", nil)},
-	//	{Type: mustParseType("bytes", nil)},
-	//}.Pack(commitment, proof)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to encode extraData: %w", err)
-	//}
+	// Encode the extraData as (bytes outputs, bytes proof)
+	extraData, err := encodeExtraData(b.toSuperblockAggregationOutputs(outputs), proof)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode extradata: %v", err)
+	}
 
 	// rootClaim - parent superblock batch hash.
-	//rootClaim := sb.ParentHash
-	rootClaim := common.HexToHash(commitment).Bytes()
-
-	// Pack the create() function call
-	//data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
-	data, err := b.abi.Pack("create", composeGameType, rootClaim, proof)
+	rootClaim := sb.ParentHash
+	data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DisputeGameFactory.create calldata: %w", err)
 	}
@@ -98,10 +91,36 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Co
 	return data, nil
 }
 
+func encodeExtraData(superBlockAggOutputs superblockAggregationOutputs, proof []byte) ([]byte, error) {
+	superblockType, _ := abi.NewType("tuple", "SuperblockAggregationOutputs", []abi.ArgumentMarshaling{
+		{Name: "superblockNumber", Type: "uint256"},
+		{Name: "parentSuperblockBatchHash", Type: "bytes32"},
+		{Name: "bootInfo", Type: "tuple[]", Components: []abi.ArgumentMarshaling{
+			{Name: "l1Head", Type: "bytes32"},
+			{Name: "l2PreRoot", Type: "bytes32"},
+			{Name: "l2PostRoot", Type: "bytes32"},
+			{Name: "l2BlockNumber", Type: "uint64"},
+			{Name: "rollupConfigHash", Type: "bytes32"},
+		}},
+	})
+
+	bytesType, _ := abi.NewType("bytes", "", nil)
+
+	arguments := abi.Arguments{
+		{Type: superblockType},
+		{Type: bytesType},
+	}
+
+	packed, err := arguments.Pack(superBlockAggOutputs, proof)
+	if err != nil {
+		return nil, err
+	}
+
+	return packed, nil
+}
+
 // toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
-//
-//nolint:unparam // TODO: we should support sb input
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs, commitment string) superblockAggregationOutputs {
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs) superblockAggregationOutputs {
 	var bootInfo []bootInfoStruct
 	superblockNumber := new(big.Int)
 	var parentSuperblockBatchHash common.Hash
@@ -128,7 +147,6 @@ func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proo
 	return superblockAggregationOutputs{
 		SuperblockNumber:          superblockNumber,
 		ParentSuperblockBatchHash: parentSuperblockBatchHash,
-		CommitmentHash:            common.HexToHash(commitment),
 		BootInfo:                  bootInfo,
 	}
 }

@@ -5,24 +5,22 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 // superblockAggregationOutputs matches the Solidity struct in ComposeL2OutputOracle.sol
 type superblockAggregationOutputs struct {
 	SuperblockNumber          *big.Int         `abi:"superblockNumber"`
-	ParentSuperblockBatchHash common.Hash      `abi:"parentSuperblockBatchHash"`
-	CommitmentHash            common.Hash      `abi:"commitmentHash"`
+	ParentSuperblockBatchHash [32]byte         `abi:"parentSuperblockBatchHash"`
 	BootInfo                  []bootInfoStruct `abi:"bootInfo"`
 }
 
 // bootInfoStruct matches the Solidity struct in ComposeL2OutputOracle.sol
 type bootInfoStruct struct {
-	L1Head           common.Hash `abi:"l1Head"`
-	L2PreRoot        common.Hash `abi:"l2PreRoot"`
-	L2PostRoot       common.Hash `abi:"l2PostRoot"`
-	L2BlockNumber    uint64      `abi:"l2BlockNumber"`
-	RollupConfigHash common.Hash `abi:"rollupConfigHash"`
+	L1Head           [32]byte `abi:"l1Head"`
+	L2PreRoot        [32]byte `abi:"l2PreRoot"`
+	L2PostRoot       [32]byte `abi:"l2PostRoot"`
+	L2BlockNumber    uint64   `abi:"l2BlockNumber"`
+	RollupConfigHash [32]byte `abi:"rollupConfigHash"`
 }
 
 // Helper functions for ABI type parsing
@@ -38,7 +36,6 @@ func buildSuperblockAggregationOutputsType() []abi.ArgumentMarshaling {
 	return []abi.ArgumentMarshaling{
 		{Name: "superblockNumber", Type: "uint256"},
 		{Name: "parentSuperblockBatchHash", Type: "bytes32"},
-		{Name: "commitmentHash", Type: "bytes32"},
 		{
 			Name: "bootInfo",
 			Type: "tuple[]",

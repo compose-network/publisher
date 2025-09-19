@@ -23,7 +23,7 @@ type proofPipeline struct {
 	log       zerolog.Logger
 	pollEvery time.Duration
 
-	publishFn func(context.Context, *store.Superblock, []byte, *proofs.SuperblockAggOutputs, string) error
+	publishFn func(context.Context, *store.Superblock, []byte, *proofs.SuperblockAggOutputs) error
 
 	mu   sync.Mutex
 	jobs map[string]proofJob
@@ -42,7 +42,7 @@ func newProofPipeline(
 	collector apicollector.Service,
 	prover proofs.ProverClient,
 	sbStore store.SuperblockStore,
-	publishFn func(context.Context, *store.Superblock, []byte, *proofs.SuperblockAggOutputs, string) error,
+	publishFn func(context.Context, *store.Superblock, []byte, *proofs.SuperblockAggOutputs) error,
 	log zerolog.Logger,
 ) *proofPipeline {
 	if !cfg.Enabled || collector == nil || prover == nil {
@@ -565,10 +565,6 @@ func (p *proofPipeline) handleCompleted(ctx context.Context, jobID string, job p
 		Msg("Proof job finished successfully")
 
 	outputs := status.SuperblockAggOutputs
-	var commitment string
-	if status.Commitment != nil {
-		commitment = *status.Commitment
-	}
 	proofBytes := status.Proof
 	if len(proofBytes) == 0 {
 		p.log.Warn().Str("job_id", jobID).Msg("Completed proof job returned empty proof")
@@ -593,7 +589,7 @@ func (p *proofPipeline) handleCompleted(ctx context.Context, jobID string, job p
 	}
 
 	if p.publishFn != nil {
-		if err := p.publishFn(ctx, sb, proofBytes, outputs, commitment); err != nil {
+		if err := p.publishFn(ctx, sb, proofBytes, outputs); err != nil {
 			p.log.Error().Err(err).Uint64("superblock", job.number).Msg("Failed to publish superblock with proof")
 			_ = p.collector.UpdateStatus(ctx, job.hash, func(st *proofs.Status) {
 				st.State = proofs.StateFailed
