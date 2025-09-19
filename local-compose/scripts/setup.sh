@@ -180,7 +180,15 @@ copy_contract_bundle() {
 
 reset_workspace() {
   log "Resetting workspace (state, networks, contracts)"
-  rm -rf "$ROOT_DIR/state" "$ROOT_DIR/networks" "$CONTRACTS_DIR"
+  rm -rf "$ROOT_DIR/state" "$ROOT_DIR/networks"
+
+  if [[ -d "$CONTRACTS_DIR" ]]; then
+    local sub
+    for sub in artifacts broadcast cache out lib; do
+      rm -rf "$CONTRACTS_DIR/$sub"
+    done
+    mkdir -p "$CONTRACTS_DIR/artifacts" "$CONTRACTS_DIR/broadcast" "$CONTRACTS_DIR/cache" "$CONTRACTS_DIR/out"
+  fi
 }
 
 stop_compose_stack() {
