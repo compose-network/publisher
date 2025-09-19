@@ -76,19 +76,21 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Co
 	}
 
 	// Encode the extraData as (bytes commitment, bytes proof)
-	extraData, err := abi.Arguments{
-		{Type: mustParseType("bytes", nil)},
-		{Type: mustParseType("bytes", nil)},
-	}.Pack(commitment, proof)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode extraData: %w", err)
-	}
+	//extraData, err := abi.Arguments{
+	//	{Type: mustParseType("bytes", nil)},
+	//	{Type: mustParseType("bytes", nil)},
+	//}.Pack(commitment, proof)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to encode extraData: %w", err)
+	//}
 
 	// rootClaim - parent superblock batch hash.
-	rootClaim := sb.ParentHash
+	//rootClaim := sb.ParentHash
+	rootClaim := common.HexToHash(commitment).Bytes()
 
 	// Pack the create() function call
-	data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
+	//data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
+	data, err := b.abi.Pack("create", composeGameType, rootClaim, proof)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DisputeGameFactory.create calldata: %w", err)
 	}
