@@ -1,0 +1,9 @@
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@ssv/lib/=lib/
+@ssv/test/=test/
+@ssv/script/=script/
+@ssv/src/=src/
+@ssv/src/interfaces=src/interfaces
+@ssv/src/libraries=src/libraries
+@ssv/src/modules=src/modules

@@ -3,7 +3,7 @@ version: "3.9"
 services:
   rollup-shared-publisher:
     build:
-      context: ${ROLLUP_SHARED_PUBLISHER_PATH:-./rollup-shared-publisher}
+      context: ${ROLLUP_SHARED_PUBLISHER_PATH:-..}
       dockerfile: Dockerfile
     image: local/rollup-shared-publisher:dev
     container_name: rollup-shared-publisher
@@ -22,7 +22,7 @@ services:
       L1_SHARED_PUBLISHER_PK_HEX: "${SP_L1_SHARED_PUBLISHER_PK_HEX:-${WALLET_PRIVATE_KEY}}"
       L1_FROM_ADDRESS: "${SP_L1_FROM_ADDRESS:-${WALLET_ADDRESS}}"
       L1_DISPUTE_GAME_FACTORY: "${SP_L1_DISPUTE_GAME_FACTORY}"
-      L1_CHAIN_ID: "${HOODI_CHAIN_ID}"
+      L1_CHAIN_ID: "${HOODI_CHAIN_ID:-560048}"
     ports:
       - "18080:8080"
       - "18081:8081"
@@ -39,7 +39,7 @@ services:
     image: local/op-geth:dev
     container_name: op-geth-a
     environment:
-      ROLLUP_CHAIN_ID: "${ROLLUP_A_CHAIN_ID}"
+      ROLLUP_CHAIN_ID: "${ROLLUP_A_CHAIN_ID:-77771}"
       WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
     volumes:
       - rollup-a-geth:/data
@@ -78,7 +78,7 @@ services:
           --rpc.allow-unprotected-txs \
           --sp.addr=rollup-shared-publisher:8080 \
           --sp.listen.addr=:9898 \
-          --sequencer.addrs=${ROLLUP_B_CHAIN_ID}:op-geth-b:9898 \
+          --sequencer.addrs=${ROLLUP_B_CHAIN_ID:-77772}:op-geth-b:9898 \
           --sequencer.key=$${WALLET_PRIVATE_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}
@@ -165,7 +165,7 @@ services:
     image: local/op-geth:dev
     container_name: op-geth-b
     environment:
-      ROLLUP_CHAIN_ID: "${ROLLUP_B_CHAIN_ID}"
+      ROLLUP_CHAIN_ID: "${ROLLUP_B_CHAIN_ID:-77772}"
       WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
     volumes:
       - rollup-b-geth:/data
@@ -204,7 +204,7 @@ services:
           --rpc.allow-unprotected-txs \
           --sp.addr=rollup-shared-publisher:8080 \
           --sp.listen.addr=:9898 \
-          --sequencer.addrs=${ROLLUP_A_CHAIN_ID}:op-geth-a:9898 \
+          --sequencer.addrs=${ROLLUP_A_CHAIN_ID:-77771}:op-geth-a:9898 \
           --sequencer.key=$${WALLET_PRIVATE_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}

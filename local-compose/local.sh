@@ -26,6 +26,7 @@ Commands:
   up                    Bootstrap (runs setup on first use) or start the stack.
   down                  Stop containers without removing volumes.
   status                Show container state, RPC endpoints, and health summaries.
+  logs [service ...]    Stream logs for services (aliases: op-geth, publisher, all, or compose names).
   restart <target>      Restart services (target: op-geth | publisher | all).
   deploy <target>       Rebuild images then restart (target: op-geth | publisher | all).
   purge [--force]       Stop everything, remove volumes, and delete generated state.
@@ -56,6 +57,9 @@ load_env() {
     source "${ROOT_DIR}/toolkit.env"
     set +a
   fi
+
+  export ROLLUP_A_CHAIN_ID=${ROLLUP_A_CHAIN_ID:-77771}
+  export ROLLUP_B_CHAIN_ID=${ROLLUP_B_CHAIN_ID:-77772}
 }
 
 compose() {

@@ -33,6 +33,11 @@ optimism/
 rollup-shared-publisher/
 rollup-shared-publisher-archived/
 .env
-contracts/
-.env
 .cache
+
+# Contracts build outputs
+contracts/artifacts/
+contracts/broadcast/
+contracts/cache/
+contracts/out/
+contracts/lib/
