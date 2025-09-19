@@ -91,7 +91,13 @@ func newMockBinding(addr common.Address) *mockBinding {
 
 func (b *mockBinding) Address() common.Address { return b.addr }
 
-func (b *mockBinding) BuildPublishWithProofCalldata(ctx context.Context, superblock *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) ([]byte, error) {
+func (b *mockBinding) BuildPublishWithProofCalldata(
+	ctx context.Context,
+	superblock *store.Superblock,
+	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
+	commitment string,
+) ([]byte, error) {
 	return []byte{0xde, 0xad, 0xbe, 0xef}, nil
 }
 

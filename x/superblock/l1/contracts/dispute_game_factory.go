@@ -67,7 +67,13 @@ func (b *DisputeGameFactoryBinding) GameType() uint32 {
 
 // BuildPublishWithProofCalldata encodes a superblock and proof for DisputeGameFactory.create()
 // according to the settlement layer specification.
-func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) ([]byte, error) {
+func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
+	ctx context.Context,
+	sb *store.Superblock,
+	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
+	commitment string,
+) ([]byte, error) {
 	if sb == nil {
 		return nil, fmt.Errorf("superblock cannot be nil")
 	}
@@ -100,8 +106,11 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(ctx context.Co
 
 // toSuperblockAggregationOutputs converts prover outputs to SuperblockAggregationOutputs
 //
-//nolint:unparam // TODO: we should support sb input
-func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(outputs *proofs.SuperblockAggOutputs, commitment string) superblockAggregationOutputs {
+// TODO: we should support sb input
+func (b *DisputeGameFactoryBinding) toSuperblockAggregationOutputs(
+	outputs *proofs.SuperblockAggOutputs,
+	commitment string,
+) superblockAggregationOutputs {
 	var bootInfo []bootInfoStruct
 	superblockNumber := new(big.Int)
 	var parentSuperblockBatchHash common.Hash

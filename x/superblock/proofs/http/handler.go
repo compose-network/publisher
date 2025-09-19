@@ -30,8 +30,6 @@ func NewHandler(collector collector.Service, log zerolog.Logger) *Handler {
 }
 
 // handleSubmitAggregation handles the submission of aggregation proofs via a POST request
-//
-//nolint:gocyclo // ok, we can refactor this later
 func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)

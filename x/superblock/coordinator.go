@@ -984,7 +984,13 @@ func (c *Coordinator) calculateXtID(request *pb.XTRequest) []byte {
 	return xtID.Hash
 }
 
-func (c *Coordinator) publishSuperblockTx(ctx context.Context, sb *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) error {
+func (c *Coordinator) publishSuperblockTx(
+	ctx context.Context,
+	sb *store.Superblock,
+	proof []byte,
+	outputs *proofs.SuperblockAggOutputs,
+	commitment string,
+) error {
 	if len(proof) == 0 {
 		return fmt.Errorf("proof is required for superblock submission")
 	}

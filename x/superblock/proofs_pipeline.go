@@ -302,7 +302,7 @@ func (p *proofPipeline) buildProofJobInput(
 			parentHashInts := bytesToInts(parentHashBytes)
 
 			if len(parentHashInts) == 0 {
-				parentHashInts = make([]int, 32, 32)
+				parentHashInts = make([]int, 32)
 			}
 
 			previousBatch = proofs.SuperblockBatch{
