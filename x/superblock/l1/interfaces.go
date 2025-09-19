@@ -11,7 +11,13 @@ import (
 )
 
 type Publisher interface {
-	PublishSuperblockWithProof(ctx context.Context, superblock *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) (*tx.Transaction, error)
+	PublishSuperblockWithProof(
+		ctx context.Context,
+		superblock *store.Superblock,
+		proof []byte,
+		outputs *proofs.SuperblockAggOutputs,
+		commitment string,
+	) (*tx.Transaction, error)
 	GetPublishStatus(ctx context.Context, txHash []byte) (*tx.TransactionStatus, error)
 	WatchSuperblocks(ctx context.Context) (<-chan *events.SuperblockEvent, error)
 	GetLatestL1Block(ctx context.Context) (*BlockInfo, error)

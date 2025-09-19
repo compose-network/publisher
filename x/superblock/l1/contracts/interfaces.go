@@ -16,5 +16,11 @@ type Binding interface {
 	Address() common.Address
 
 	// BuildPublishWithProofCalldata encodes the calldata to publish the given superblock with proof.
-	BuildPublishWithProofCalldata(ctx context.Context, superblock *store.Superblock, proof []byte, outputs *proofs.SuperblockAggOutputs, commitment string) ([]byte, error)
+	BuildPublishWithProofCalldata(
+		ctx context.Context,
+		superblock *store.Superblock,
+		proof []byte,
+		outputs *proofs.SuperblockAggOutputs,
+		commitment string,
+	) ([]byte, error)
 }
