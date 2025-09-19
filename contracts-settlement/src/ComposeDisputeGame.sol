@@ -19,23 +19,7 @@ interface ISP1Verifier {
 error AlreadyInitialized();
 
 contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
-    struct SuperblockAggregationOutputs {
-        uint256 superblockNumber;
-        bytes32 parentSuperblockBatchHash;
-        BootInfoStruct[] bootInfo;
-    }
-
-    struct BootInfoStruct {
-        bytes32 l1Head;
-        bytes32 l2PreRoot;
-        bytes32 l2PostRoot;
-        uint64 l2BlockNumber;
-        bytes32 rollupConfigHash;
-    }
-
     uint32 public constant COMPOSE_GAME_TYPE = 5555;
-
-    address internal immutable L2_OUTPUT_ORACLE;
 
     /// @notice The timestamp of the game's global creation.
     Timestamp public createdAt;
@@ -52,6 +36,12 @@ contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
     /// @custom:semver v0.0.1
     string public constant version = "v0.0.1";
 
+    /// @notice The deployed SP1Verifier contract to verify proofs.
+    address public constant verifier = 0x17Ef331C3c90E9e5718e81085c721a404eF18436;
+
+    /// @notice The verification key of the aggregation SP1 program.
+    bytes32 public constant aggregationVkey = 0x006fbd76ba3d17a0308a1d24a686d1c5954f8d1e2a4c310f94ec84dc4a123902;
+
     // ---------------------------------------------------------------------
     // IDisputeGame immutable getters (CWIA layout)
     //
@@ -62,28 +52,6 @@ contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
     //   [84, ...): extraData (opaque)
     // ---------------------------------------------------------------------
 
-    /** extraData layout
-     *  (SuperblockAggregationOutputs superBlockAggregationOutputs, bytes proof)
-     * 
-    struct SuperblockAggregationOutputs {
-        uint256 superblockNumber; // New head superblock number
-        bytes32 parentSuperblockBatchHash; // Hash of the previous superblock
-        BootInfoStruct[] bootInfo; // BootInfoStruct, one for each rollup
-    }
-
-    struct BootInfoStruct {
-        bytes32 l1Head;
-        bytes32 l2PreRoot;
-        bytes32 l2PostRoot;
-        uint64 l2BlockNumber;
-        bytes32 rollupConfigHash;
-    }
-     */
-
-    constructor(address _l2OutputOracle) {
-        L2_OUTPUT_ORACLE = _l2OutputOracle;
-    }
-
     function initialize() external payable {
         if (Timestamp.unwrap(createdAt) != 0) revert AlreadyInitialized();
 
@@ -91,9 +59,11 @@ contract ComposeDisputeGame is ISemver, Clone, IDisputeGame {
         status = GameStatus.IN_PROGRESS;
         wasRespectedGameTypeWhenCreated = true;
 
-        ComposeL2OutputOracle oracle = ComposeL2OutputOracle(L2_OUTPUT_ORACLE);
-
-        oracle.proposeL2Output(rootClaim().raw(), l1Head().raw(), extraData());
+        ISP1Verifier(verifier).verifyProof(
+            aggregationVkey,
+            bytes.concat(rootClaim().raw()),
+            extraData()
+        );
 
         this.resolve();
     }

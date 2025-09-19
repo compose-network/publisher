@@ -24,7 +24,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
         // address disputeGameFactory;
         // uint256 fallbackTimeout;
     }
-
+/*
     struct SuperblockAggregationOutputs {
         uint256 superblockNumber; // New head superblock number
         bytes32 parentSuperblockBatchHash; // Hash of the previous superblock
@@ -39,7 +39,7 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
         uint64 l2BlockNumber;
         bytes32 rollupConfigHash;
     }
-
+*/
     /// @notice The version of the initializer on the contract. Used for managing upgrades.
     uint8 public constant INITIALIZER_VERSION = 1;
 
@@ -73,6 +73,8 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
     event AggregationVkeyUpdated(bytes32 indexed aggregationVkey);
     event VerifierUpdated(address indexed verifier);
+
+    event tempEvent(bytes commitmentHash, bytes proof);
 
     constructor() {
         _disableInitializers();
@@ -159,9 +161,9 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
         // Decode the struct and save to storage for getter
         (
-            SuperblockAggregationOutputs memory superBlockAggOutputs,
+            bytes memory commitmentHash,
             bytes memory proof
-        ) = abi.decode(_extraData, (SuperblockAggregationOutputs, bytes));
+        ) = abi.decode(_extraData, (bytes, bytes));
 
         //require(superBlockAggOutputs.superblockNumber == superBlockNumber + 1, "ComposeL2OutputOracle: superblock number not increased");
         //superBlockNumber++;
@@ -169,10 +171,11 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
 
         ISP1Verifier(verifier).verifyProof(
             aggregationVkey,
-            abi.encode(superBlockAggOutputs.commitmentHash),
+            commitmentHash,
             proof
         );
 
+        /*
         BootInfoStruct memory bootInfo;
 
         for (uint256 i = 0; i < superBlockAggOutputs.bootInfo.length; i++) {
@@ -193,6 +196,9 @@ contract ComposeL2OutputOracle is Initializable, ISemver {
             superBlockAggOutputs.parentSuperblockBatchHash,
             block.timestamp
         );
+        */
+
+       emit tempEvent(commitmentHash, proof);
     }
 
     function setAggregationVkey(bytes32 _aggregationVkey) external {
