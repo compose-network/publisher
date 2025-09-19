@@ -81,22 +81,22 @@ func (b *DisputeGameFactoryBinding) BuildPublishWithProofCalldata(
 		return nil, fmt.Errorf("proof cannot be empty")
 	}
 
-	superblockAggOutputs := b.toSuperblockAggregationOutputs(outputs, commitment)
+	//superblockAggOutputs := b.toSuperblockAggregationOutputs(outputs, commitment)
 
 	// Encode the extraData as (SuperblockAggregationOutputs, bytes proof)
-	extraData, err := abi.Arguments{
-		{Type: mustParseType("tuple", buildSuperblockAggregationOutputsType())},
-		{Type: mustParseType("bytes", nil)},
-	}.Pack(superblockAggOutputs, proof)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode extraData: %w", err)
-	}
+	//extraData, err := abi.Arguments{
+	//	{Type: mustParseType("tuple", buildSuperblockAggregationOutputsType())},
+	//	{Type: mustParseType("bytes", nil)},
+	//}.Pack(superblockAggOutputs, proof)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to encode extraData: %w", err)
+	//}
 
 	// rootClaim - parent superblock batch hash.
 	rootClaim := sb.ParentHash
 
 	// Pack the create() function call
-	data, err := b.abi.Pack("create", composeGameType, rootClaim, extraData)
+	data, err := b.abi.Pack("create", composeGameType, rootClaim, common.HexToHash(commitment).Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack DisputeGameFactory.create calldata: %w", err)
 	}
