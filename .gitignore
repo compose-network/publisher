@@ -34,7 +34,5 @@ go.work.sum
 bin/
 
 # AI
-AGENTS.md
-CLAUDE.md
 *plan.md
 .claude/
