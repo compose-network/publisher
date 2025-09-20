@@ -100,6 +100,8 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 		Str("superblock_hash", sb.Hash.Hex()).
 		Msg("HandleSuperblock called - checking for proofs")
 
+	// Initialize superblock status if it doesn't exist (collector now handles this automatically)
+
 	// TODO: For testing, can bypass missing proofs by creating dummy submissions
 	subs, err := p.collector.ListSubmissions(ctx, sb.Hash)
 	if err != nil {

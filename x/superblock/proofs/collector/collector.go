@@ -123,7 +123,15 @@ func (m *ProofCollector) UpdateStatus(_ context.Context, sbHash common.Hash, mut
 	key := sbHash.Hex()
 	st, ok := m.statuses[key]
 	if !ok {
-		return fmt.Errorf("unknown superblock")
+		// Initialize a new status entry if it doesn't exist
+		st = proofs.Status{
+			SuperblockHash: sbHash,
+			State:          proofs.StateCollecting,
+			Received:       make(map[uint32]time.Time),
+		}
+		m.log.Info().
+			Str("superblock_hash", key).
+			Msg("Initializing new superblock status")
 	}
 	mutate(&st)
 	m.statuses[key] = st
