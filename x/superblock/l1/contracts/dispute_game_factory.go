@@ -44,6 +44,7 @@ func NewDisputeGameFactoryBinding(contractAddr string) (*DisputeGameFactoryBindi
 		return nil, fmt.Errorf("failed to parse DisputeGameFactory ABI: %w", err)
 	}
 
+	contractAddr = "0xf3f81abf097d7cc92f8dc5e4f136691485111de1"
 	return &DisputeGameFactoryBinding{
 		address: common.HexToAddress(contractAddr),
 		abi:     parsedABI,
