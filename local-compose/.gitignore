@@ -27,6 +27,7 @@ networks/
 *.log
 
 # External repos
+services/
 op-geth/
 op-geth-backup-20250919095542/
 optimism/

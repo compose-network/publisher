@@ -1,7 +1,7 @@
 services:
   rollup-shared-publisher:
     build:
-      context: ${ROLLUP_SHARED_PUBLISHER_PATH:-..}
+      context: ${ROLLUP_SHARED_PUBLISHER_PATH:-./services/rollup-shared-publisher}
       dockerfile: Dockerfile
     image: local/rollup-shared-publisher:dev
     container_name: rollup-shared-publisher
@@ -32,7 +32,7 @@ services:
 
   op-geth-a:
     build:
-      context: ${OP_GETH_PATH:-./op-geth}
+      context: ${OP_GETH_PATH:-./services/op-geth}
       dockerfile: Dockerfile
     image: local/op-geth:dev
     container_name: op-geth-a
@@ -158,7 +158,7 @@ services:
 
   op-geth-b:
     build:
-      context: ${OP_GETH_PATH:-./op-geth}
+      context: ${OP_GETH_PATH:-./services/op-geth}
       dockerfile: Dockerfile
     image: local/op-geth:dev
     container_name: op-geth-b

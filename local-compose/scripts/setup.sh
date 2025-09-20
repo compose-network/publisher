@@ -29,6 +29,8 @@ ROLLUP_A_CHAIN_ID=${ROLLUP_A_CHAIN_ID:-$DEFAULT_ROLLUP_A_CHAIN_ID}
 ROLLUP_B_CHAIN_ID=${ROLLUP_B_CHAIN_ID:-$DEFAULT_ROLLUP_B_CHAIN_ID}
 export ROLLUP_A_CHAIN_ID ROLLUP_B_CHAIN_ID
 
+SERVICES_DIR=${SERVICES_DIR:-$ROOT_DIR/services}
+
 OP_DEPLOYER_IMAGE=${OP_DEPLOYER_IMAGE:-local/op-deployer:dev}
 L1_CONTRACTS_TAG=${L1_CONTRACTS_TAG:-tag://op-contracts/v3.0.0}
 L2_CONTRACTS_TAG=${L2_CONTRACTS_TAG:-tag://op-contracts/v3.0.0}
@@ -39,14 +41,14 @@ DOCKER_USER_FLAG="--user ${HOST_UID}:${HOST_GID}"
 STATE_DIR="$ROOT_DIR/state/op-deployer"
 ROLLUP_A_DIR="$ROOT_DIR/networks/rollup-a"
 ROLLUP_B_DIR="$ROOT_DIR/networks/rollup-b"
-OPTIMISM_DIR="$ROOT_DIR/optimism"
+OPTIMISM_DIR="${OPTIMISM_PATH:-$SERVICES_DIR/optimism}"
 OPTIMISM_REPO=${OPTIMISM_REPO:-https://github.com/ethereum-optimism/optimism.git}
 OPTIMISM_REF=${OPTIMISM_REF:-op-node/v1.13.4}
-OP_GETH_DIR="${OP_GETH_PATH:-$ROOT_DIR/op-geth}"
+OP_GETH_DIR="${OP_GETH_PATH:-$SERVICES_DIR/op-geth}"
 OP_GETH_REPO=${OP_GETH_REPO:-https://github.com/ssvlabs/op-geth.git}
 OP_GETH_BRANCH=${OP_GETH_BRANCH:-feat/configurable-addresses}
 ROLLUP_SP_SOURCE=${ROLLUP_SP_SOURCE:-$ROOT_DIR/..}
-ROLLUP_SP_DIR="${ROLLUP_SHARED_PUBLISHER_PATH:-$ROOT_DIR/..}"
+ROLLUP_SP_DIR="${ROLLUP_SHARED_PUBLISHER_PATH:-$SERVICES_DIR/rollup-shared-publisher}"
 CONTRACTS_SOURCE=${CONTRACTS_SOURCE:-$ROOT_DIR/contracts}
 CONTRACTS_DIR=${CONTRACTS_DIR:-$ROOT_DIR/contracts}
 ROLLUP_A_RPC_URL=${ROLLUP_A_RPC_URL:-http://localhost:18545}
@@ -83,6 +85,8 @@ if ! docker compose version >/dev/null 2>&1; then
   log "[ERROR] docker compose v2 is required"
   exit 1
 fi
+
+mkdir -p "$SERVICES_DIR"
 
 clone_repo_if_missing() {
   local repo=$1
@@ -359,7 +363,7 @@ write_helper_config() {
     return
   fi
 
-  local config_path="$ROOT_DIR/op-geth/config.yml"
+  local config_path="$OP_GETH_DIR/config.yml"
   cat >"$config_path" <<EOF
 token: ${mytoken_addr}
 rollups:
