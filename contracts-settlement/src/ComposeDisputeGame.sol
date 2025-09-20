@@ -13,7 +13,7 @@ interface ISP1Verifier {
         bytes32 vkey,
         bytes calldata publicInputs,
         bytes calldata proof
-    ) external view returns (bool);
+    ) external view;
 }
 
 
