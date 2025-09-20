@@ -28,11 +28,28 @@ Commands:
   up                    Bootstrap (runs setup on first use) or start the stack.
   down                  Stop containers without removing volumes.
   status                Show container state, RPC endpoints, and health summaries.
-  logs [service ...]    Stream logs for services (aliases: op-geth, publisher, blockscout, all, or compose names).
+  logs [service ...]    Stream logs for services (see Log Targets below).
   restart <target>      Restart services (target: op-geth | publisher | blockscout | all).
   deploy <target>       Rebuild images then restart (target: op-geth | publisher | blockscout | all).
   purge [--force]       Stop everything, remove volumes, and delete generated state.
   help                  Show this message.
+
+Log Targets:
+  Path-like syntax (rollup-specific):
+    a/op-geth            Logs for op-geth on rollup A only
+    b/op-node            Logs for op-node on rollup B only
+    a/blockscout         All blockscout services for rollup A
+    a/                   All services for rollup A
+    b/                   All services for rollup B
+
+  Service aliases (both rollups):
+    op-geth              Both op-geth instances + nodes/batchers/proposers
+    blockscout           All blockscout services (both rollups)
+    publisher            Shared publisher service
+    all                  All services
+
+  Direct service names:
+    op-geth-a, op-node-b, blockscout-a-proxy, etc.
 
 Environment:
   STATUS_TIMEOUT (default 2s)   RPC and health check curl timeout.
@@ -639,6 +656,79 @@ restart_services() {
 
 log_targets() {
   local token=$1
+
+  # Check for path-like syntax (e.g., a/op-geth, b/blockscout, a/)
+  if [[ "$token" == *"/"* ]]; then
+    local rollup="${token%%/*}"
+    local service="${token#*/}"
+
+    # Validate rollup identifier
+    if [[ "$rollup" != "a" && "$rollup" != "b" ]]; then
+      err "Invalid rollup identifier: ${rollup} (use 'a' or 'b')"
+      exit 1
+    fi
+
+    # Handle "a/" or "b/" (all services for that rollup)
+    if [[ -z "$service" ]]; then
+      if [[ "$rollup" == "a" ]]; then
+        printf '%s\n' \
+          "op-geth-a" "op-node-a" "op-batcher-a" "op-proposer-a" \
+          "blockscout-a" "blockscout-a-db" "blockscout-a-redis" \
+          "blockscout-a-frontend" "blockscout-a-proxy"
+      else
+        printf '%s\n' \
+          "op-geth-b" "op-node-b" "op-batcher-b" "op-proposer-b" \
+          "blockscout-b" "blockscout-b-db" "blockscout-b-redis" \
+          "blockscout-b-frontend" "blockscout-b-proxy"
+      fi
+      return
+    fi
+
+    # Map service names to actual docker-compose service names
+    case "$service" in
+      op-geth|geth)
+        printf '%s\n' "op-geth-${rollup}"
+        ;;
+      op-node|node)
+        printf '%s\n' "op-node-${rollup}"
+        ;;
+      op-batcher|batcher)
+        printf '%s\n' "op-batcher-${rollup}"
+        ;;
+      op-proposer|proposer)
+        printf '%s\n' "op-proposer-${rollup}"
+        ;;
+      blockscout)
+        printf '%s\n' \
+          "blockscout-${rollup}" "blockscout-${rollup}-db" \
+          "blockscout-${rollup}-redis" "blockscout-${rollup}-frontend" \
+          "blockscout-${rollup}-proxy"
+        ;;
+      blockscout-proxy)
+        printf '%s\n' "blockscout-${rollup}-proxy"
+        ;;
+      blockscout-frontend)
+        printf '%s\n' "blockscout-${rollup}-frontend"
+        ;;
+      blockscout-db)
+        printf '%s\n' "blockscout-${rollup}-db"
+        ;;
+      blockscout-redis)
+        printf '%s\n' "blockscout-${rollup}-redis"
+        ;;
+      # Also handle direct service names
+      op-geth-${rollup}|op-node-${rollup}|op-batcher-${rollup}|op-proposer-${rollup}|blockscout-${rollup}*)
+        printf '%s\n' "$service"
+        ;;
+      *)
+        err "Unknown service: ${service} for rollup ${rollup}"
+        exit 1
+        ;;
+    esac
+    return
+  fi
+
+  # Original behavior for backward compatibility
   case "$token" in
     all)
       printf '%s\n' \
