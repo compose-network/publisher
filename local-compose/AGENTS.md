@@ -50,7 +50,10 @@ External repositories **not committed** here (ignored via `.gitignore`):
    - Ensure Docker Engine + Compose v2, Python 3, and Git are available.
    - Clone `optimism` at the desired revision into `services/optimism` (or let `scripts/setup.sh` clone it on first run).
    - Make the private `rollup-shared-publisher` repository available at the path referenced by `ROLLUP_SP_SOURCE` (defaults to `../rollup-shared-publisher`); the setup script mirrors it into `services/rollup-shared-publisher`.
-   - Populate `.env` with valid Hoodi RPC endpoints and a funded wallet. The same key/address are reused for mailbox signing and the shared publisher unless you override them explicitly.
+  - Populate `.env` with valid Hoodi RPC endpoints and a funded wallet. The same key/address are reused for mailbox signing and the shared publisher unless you override them explicitly.
+    `.env` is strictly user-facing—treat it as the knobs an environment owner adjusts. If you
+    need dev-only overrides, add them via `setup.sh`/scripts or source changes rather than
+    stuffing extra variables into `.env`.
    - Keep the Compose helper contracts bundle accessible (default `../old-contracts`). The setup script copies it into `./contracts` so Foundry can build and deploy from a writable path.
    - Optional: set `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH` in `.env` to point at existing source checkouts; when provided, the setup flow skips syncing and Docker builds use those paths directly.
 
@@ -78,7 +81,7 @@ External repositories **not committed** here (ignored via `.gitignore`):
 
 5. **Resetting the environment**
    - Run `./local down` to stop containers while keeping volumes.
-   - Use `./local purge --force` for a clean slate (`state/`, `networks/`, `contracts/`, `.cache/genesis-go`). Follow with `./local up` to redeploy.
+   - Use `./local purge --force` for a clean slate (removes `state/`, `networks/`, `.cache/genesis-go`, and the generated subfolders under `contracts/`). Follow with `./local up` to redeploy.
    - The shared publisher keeps no persistent volume; `./local deploy publisher` is enough to pick up source changes.
 
 ## Testing & Verification Tips
@@ -115,6 +118,8 @@ External repositories **not committed** here (ignored via `.gitignore`):
 - `debug-bridge [--blocks N --session ID --since 2m]` – scan recent blocks for Mailbox writes/ACKs, fetch shared publisher stats, and tail compose-specific log lines.
 - `check-bridge` – fast health check with balances, block heights, and shared publisher status (suitable after restarts).
 - `clear-nonces` – restarts the op-geth containers to flush their txpools when CLI experiments get stuck on nonce reuse.
+- `cast …` – run Foundry’s CLI safely via Docker (e.g., `set -a; source .env; set +a; ./toolkit.sh cast block-number --rpc-url http://localhost:18545`). Make sure the required env vars (wallet key/address, RPC URLs) are exported in the same shell invocation before calling `cast`. For state-changing calls (e.g., minting test tokens) the pattern is:
+  `set -a; source .env; set +a; ./toolkit.sh cast send --rpc-url http://localhost:18545 --private-key "$WALLET_PRIVATE_KEY" 0x281bc484c01A3A524DfcBc92049d796f9A946A72 'mint(address,uint256)' "$WALLET_ADDRESS" 1000000000000000000`.
 - `toolkit.env` can override RPC endpoints or stats URLs; keep an up-to-date helper bundle in `./contracts` (refreshed via `CONTRACTS_SOURCE`) when iterating on helper contracts.
 - Configuration: the scripts read `.env` first and then (optionally) `toolkit.env` for overrides. Drop custom RPC endpoints or stats URLs in `toolkit.env` so they survive `.env` refreshes from upstream.
 - Prerequisites: Python 3 is already required for `setup.sh`. The toolkit only depends on the standard library plus Docker/Compose and Foundry’s `cast` container (pulled automatically when invoked).

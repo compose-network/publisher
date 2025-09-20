@@ -59,6 +59,56 @@ Environment:
 USAGE
 }
 
+populate_mailbox_env() {
+  if [[ -n "${ROLLUP_A_MAILBOX_ADDR:-}" && -n "${ROLLUP_B_MAILBOX_ADDR:-}" ]]; then
+    return
+  fi
+
+  local contracts_json="${ROOT_DIR}/networks/rollup-a/contracts.json"
+  if [[ ! -f "$contracts_json" ]]; then
+    return
+  fi
+
+  local detected
+  detected=$(CONTRACTS_JSON="$contracts_json" python3 - <<'PY'
+import json
+import os
+
+path = os.environ.get("CONTRACTS_JSON")
+if not path:
+    raise SystemExit
+try:
+    with open(path) as fh:
+        data = json.load(fh)
+except Exception:
+    raise SystemExit
+
+addresses = {}
+if isinstance(data, dict):
+    addresses = data.get("addresses") or {}
+    if not isinstance(addresses, dict):
+        parent = data.get("parent") or {}
+        if isinstance(parent, dict):
+            addresses = parent.get("addresses") or {}
+
+mailbox = addresses.get("Mailbox")
+if mailbox:
+    print(mailbox)
+PY
+  )
+
+  if [[ -z "$detected" ]]; then
+    return
+  fi
+
+  if [[ -z "${ROLLUP_A_MAILBOX_ADDR:-}" ]]; then
+    export ROLLUP_A_MAILBOX_ADDR="$detected"
+  fi
+  if [[ -z "${ROLLUP_B_MAILBOX_ADDR:-}" ]]; then
+    export ROLLUP_B_MAILBOX_ADDR="$detected"
+  fi
+}
+
 load_env() {
   local required=${1:-1}
   if [[ -f "${ROOT_DIR}/.env" ]]; then
@@ -80,6 +130,8 @@ load_env() {
 
   export ROLLUP_A_CHAIN_ID=${ROLLUP_A_CHAIN_ID:-77771}
   export ROLLUP_B_CHAIN_ID=${ROLLUP_B_CHAIN_ID:-77772}
+
+  populate_mailbox_env
 }
 
 compose() {
@@ -129,6 +181,25 @@ repeat_char() {
   local buf
   printf -v buf '%*s' "$count" ''
   printf '%s' "${buf// /$char}"
+}
+
+display_width() {
+  python3 - "$1" <<'PY'
+import sys
+import unicodedata
+
+text = sys.argv[1]
+width = 0
+for ch in text:
+    if unicodedata.combining(ch):
+        continue
+    east = unicodedata.east_asian_width(ch)
+    if east in ('F', 'W'):
+        width += 2
+    else:
+        width += 1
+print(width)
+PY
 }
 
 build_title_line() {
@@ -216,7 +287,8 @@ render_panel() {
     (( ${#cols[@]} > col_count )) && col_count=${#cols[@]}
     local i
     for ((i=0; i<${#cols[@]}; i++)); do
-      local len=${#cols[i]}
+      local len
+      len=$(display_width "${cols[i]}")
       if [[ -z ${widths[i]:-} || ${widths[i]} -lt $len ]]; then
         widths[i]=$len
       fi
@@ -233,17 +305,41 @@ render_panel() {
     local line='|'
     for ((i=0; i<col_count; i++)); do
       local val=${cols[i]:-}
-      local segment
-      printf -v segment ' %-*s |' "${widths[i]}" "$val"
-      line+="$segment"
+      local pad
+      local disp
+      disp=$(display_width "$val")
+      pad=$((widths[i] - disp))
+      (( pad < 0 )) && pad=0
+      line+=' '
+      line+="$val"
+      line+="$(repeat_char ' ' "$pad")"
+      line+=' |'
     done
     row_strings+=("$line")
   done
 
-  local total_width=${#row_strings[0]}
-  local inner_width=$((total_width - 2))
-  printf '%s\n' "$(build_title_line "$title" "$inner_width")"
+  local max_display_width=0
   for row in "${row_strings[@]}"; do
+    local disp
+    disp=$(display_width "$row")
+    if (( disp > max_display_width )); then
+      max_display_width=$disp
+    fi
+  done
+
+  local -a normalized_rows=()
+  for row in "${row_strings[@]}"; do
+    local disp
+    disp=$(display_width "$row")
+    local pad=$((max_display_width - disp))
+    (( pad < 0 )) && pad=0
+    normalized_rows+=("${row}$(repeat_char ' ' "$pad")")
+  done
+
+  local inner_width=$((max_display_width - 2))
+  (( inner_width < 0 )) && inner_width=0
+  printf '%s\n' "$(build_title_line "$title" "$inner_width")"
+  for row in "${normalized_rows[@]}"; do
     printf '%s\n' "$row"
   done
   printf '+%s+\n' "$(repeat_char '=' "$inner_width")"

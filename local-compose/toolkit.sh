@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Default Foundry image (override via FOUNDRY_IMAGE if needed)
+FOUNDRY_IMAGE="${FOUNDRY_IMAGE:-ghcr.io/foundry-rs/foundry:latest}"
+
 load_env() {
   if [[ -f "${ROOT_DIR}/.env" ]]; then
     set -o allexport
@@ -110,9 +113,42 @@ Commands:
   deploy-op-geth        Rebuild op-geth images, restart services, wait for RPC readiness.
   debug-bridge [args]   Run the bridge diagnostics helper (scripts/debug_bridge.py --mode debug).
   check-bridge [args]   Quick health check (balances, stats, block heights).
+  cast [args]           Run Foundry's `cast` via container with safe entrypoint/networking.
   clear-nonces          Restart op-geth containers to flush pending tx pool/nonces.
   help                  Show this message.
 EOF
+}
+
+# --- Foundry CAST wrapper ---------------------------------------------------
+# Runs `cast` inside the Foundry image, bypassing the default `forge` entrypoint.
+# Linux: uses --network host so localhost:<port> works.
+# macOS: rewrites --rpc-url localhost/127.0.0.1 to host.docker.internal.
+cmd_cast() {
+  load_env
+
+  local image="$FOUNDRY_IMAGE"
+  local os="$(uname -s)"
+  local -a net_args=()
+
+  if [[ "$os" == "Linux" ]]; then
+    net_args+=(--network host)
+  fi
+
+  if [[ "$os" == "Darwin" ]]; then
+    local -a rewritten=()
+    local prev=""
+    for arg in "$@"; do
+      if [[ "$prev" == "--rpc-url" || "$prev" == "-r" ]]; then
+        arg="${arg//http:\/\/localhost/http:\/\/host.docker.internal}"
+        arg="${arg//http:\/\/127.0.0.1/http:\/\/host.docker.internal}"
+      fi
+      rewritten+=("$arg")
+      prev="$arg"
+    done
+    set -- "${rewritten[@]}"
+  fi
+
+  exec docker run --rm "${net_args[@]}" --entrypoint cast "$image" "$@"
 }
 
 main() {
@@ -127,6 +163,9 @@ main() {
       ;;
     check-bridge)
       check_bridge "$@"
+      ;;
+    cast)
+      cmd_cast "$@"
       ;;
     clear-nonces)
       restart_txpools "$@"

@@ -21,6 +21,7 @@ services:
       L1_FROM_ADDRESS: "${SP_L1_FROM_ADDRESS:-${WALLET_ADDRESS}}"
       L1_DISPUTE_GAME_FACTORY: "${SP_L1_DISPUTE_GAME_FACTORY}"
       L1_CHAIN_ID: "${HOODI_CHAIN_ID:-560048}"
+      REGISTRY_STATIC_CHAIN_IDS: "${ROLLUP_A_CHAIN_ID:-77771},${ROLLUP_B_CHAIN_ID:-77772}"
     ports:
       - "18080:8080"
       - "18081:8081"
@@ -77,6 +78,8 @@ services:
           --sp.addr=rollup-shared-publisher:8080 \
           --sp.listen.addr=:9898 \
           --sequencer.addrs=${ROLLUP_B_CHAIN_ID:-77772}:op-geth-b:9898 \
+          --mailbox.addr-a=${ROLLUP_A_MAILBOX_ADDR:-0xfc83487BA02a87Ec53669cdE81367C117872e157} \
+          --mailbox.addr-b=${ROLLUP_B_MAILBOX_ADDR:-0x62678733dcD7ea6D5Db1Cf508157ea5F113e7E32} \
           --sequencer.key=$${WALLET_PRIVATE_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}
@@ -203,6 +206,8 @@ services:
           --sp.addr=rollup-shared-publisher:8080 \
           --sp.listen.addr=:9898 \
           --sequencer.addrs=${ROLLUP_A_CHAIN_ID:-77771}:op-geth-a:9898 \
+          --mailbox.addr-a=${ROLLUP_A_MAILBOX_ADDR:-0xfc83487BA02a87Ec53669cdE81367C117872e157} \
+          --mailbox.addr-b=${ROLLUP_B_MAILBOX_ADDR:-0x62678733dcD7ea6D5Db1Cf508157ea5F113e7E32} \
           --sequencer.key=$${WALLET_PRIVATE_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}
