@@ -371,6 +371,7 @@ rollups:
     rpc: ${ROLLUP_A_RPC_URL}
     chain_id: ${ROLLUP_A_CHAIN_ID}
     private_key: ${WALLET_PRIVATE_KEY}
+    bridge: ${bridge_addr}
     contracts:
       bridge: ${bridge_addr}
       pingpong: ${pingpong_addr}
@@ -380,6 +381,7 @@ rollups:
     rpc: ${ROLLUP_B_RPC_URL}
     chain_id: ${ROLLUP_B_CHAIN_ID}
     private_key: ${WALLET_PRIVATE_KEY}
+    bridge: ${bridge_addr}
     contracts:
       bridge: ${bridge_addr}
       pingpong: ${pingpong_addr}
@@ -947,7 +949,7 @@ with open(path, 'w') as f:
     json.dump(genesis, f, indent=2)
 PYGENFILE
 
-  genesis_rel_path=$(realpath --relative-to="$ROOT_DIR" "$TARGET_DIR")
+  genesis_rel_path=$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$TARGET_DIR" "$ROOT_DIR")
   mkdir -p "${GENESIS_HASH_CACHE_DIR}/mod" "${GENESIS_HASH_CACHE_DIR}/build"
   genesis_hash=$(docker run --rm \
     -v "${ROOT_DIR}:/workspace" \

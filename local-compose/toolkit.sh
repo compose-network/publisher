@@ -208,6 +208,101 @@ bridge_once() {
   return 1
 }
 
+mint_token() {
+  load_env
+
+  local chain="rollup-a"
+  local amt="1000000000000000000"
+  local recipient="${WALLET_ADDRESS:-}"
+  local pk="${WALLET_PRIVATE_KEY:-}"
+  local rpc_url=""
+  local token_addr=""
+  local settle_wait=5
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --chain)
+        chain=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]'); shift 2 ;;
+      --amount)
+        amt="$2"; shift 2 ;;
+      --to|--recipient)
+        recipient="$2"; shift 2 ;;
+      --rpc-url)
+        rpc_url="$2"; shift 2 ;;
+      --token)
+        token_addr="$2"; shift 2 ;;
+      --wait)
+        settle_wait="$2"; shift 2 ;;
+      *)
+        echo "unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+
+  [[ -n "$recipient" ]] || { echo "[error] recipient address not set (set WALLET_ADDRESS or pass --to)" >&2; return 1; }
+  [[ -n "$pk" ]] || { echo "[error] WALLET_PRIVATE_KEY not set" >&2; return 1; }
+
+  local network_dir label default_rpc
+  case "$chain" in
+    a|rollup-a)
+      network_dir="rollup-a"
+      label="rollup-a"
+      default_rpc="${TOOLKIT_ROLLUP_A_RPC:-${ROLLUP_A_RPC_URL:-http://127.0.0.1:18545}}"
+      ;;
+    b|rollup-b)
+      network_dir="rollup-b"
+      label="rollup-b"
+      default_rpc="${TOOLKIT_ROLLUP_B_RPC:-${ROLLUP_B_RPC_URL:-http://127.0.0.1:28545}}"
+      ;;
+    *)
+      echo "[error] unsupported chain '$chain' (use rollup-a|rollup-b)" >&2
+      return 2
+      ;;
+  esac
+
+  rpc_url=${rpc_url:-$default_rpc}
+
+  if [[ -z "$token_addr" ]]; then
+    if ! token_addr=$(jq -r .addresses.MyToken "${ROOT_DIR}/networks/${network_dir}/contracts.json" 2>/dev/null); then
+      echo "[error] could not read token address for $label" >&2
+      return 1
+    fi
+  fi
+
+  if [[ "$token_addr" == "null" || ! "$token_addr" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+    echo "[error] invalid token address '$token_addr'" >&2
+    return 1
+  fi
+
+  wait_for_rpc "$rpc_url" "$label" >/dev/null || return 1
+
+  CAST() {
+    "${ROOT_DIR}/toolkit.sh" cast "$@"
+  }
+  bal_token() {
+    CAST call --rpc-url "$1" "$2" 'balanceOf(address)(uint256)' "$3" | tail -n1 | awk '{print $1}'
+  }
+
+  local before after expected
+  before=$(bal_token "$rpc_url" "$token_addr" "$recipient") || before=0x0
+
+  echo "[mint] current MTK balance on $label for $recipient: $before"
+  echo "[mint] minting $amt wei to $recipient on $label"
+
+  CAST send --rpc-url "$rpc_url" --private-key "$pk" "$token_addr" 'mint(address,uint256)' "$recipient" "$amt" >/dev/null
+
+  sleep "$settle_wait"
+
+  after=$(bal_token "$rpc_url" "$token_addr" "$recipient") || after=0x0
+  expected=$(( before + amt ))
+
+  echo "[mint] new MTK balance on $label for $recipient: $after"
+  if (( after < expected )); then
+    echo "[warn] balance increase ($after) below expected >= $expected" >&2
+  else
+    echo "[mint] SUCCESS"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./toolkit.sh <command> [args]
@@ -217,6 +312,7 @@ Commands:
   debug-bridge [args]   Run the bridge diagnostics helper (scripts/debug_bridge.py --mode debug).
   check-bridge [args]   Quick health check (balances, stats, block heights).
   bridge-once [args]    Bridge 1 MTK A→B once; waits and verifies. Args: [--amount WEI] [--mint-if-needed] [--wait SECS]
+  mint [args]           Mint MTK on a rollup. Args: [--chain rollup-a|rollup-b] [--amount WEI] [--to ADDRESS] [--wait SECS]
   cast [args]           Run Foundry's `cast` via container with safe entrypoint/networking.
   clear-nonces          Restart op-geth containers to flush pending tx pool/nonces.
   help                  Show this message.
@@ -250,6 +346,7 @@ cmd_cast() {
       prev="$arg"
     done
     set -- "${rewritten[@]}"
+    net_args+=(--add-host=host.docker.internal:host-gateway)
   fi
 
   if [[ ${#net_args[@]:-0} -gt 0 ]]; then
@@ -274,6 +371,9 @@ main() {
       ;;
     bridge-once)
       bridge_once "$@"
+      ;;
+    mint)
+      mint_token "$@"
       ;;
     cast)
       cmd_cast "$@"
