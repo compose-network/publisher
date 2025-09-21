@@ -40,9 +40,11 @@ services:
     environment:
       ROLLUP_CHAIN_ID: "${ROLLUP_A_CHAIN_ID:-77771}"
       WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      SSV_CIRC_TIMEOUT_MS: "${SSV_CIRC_TIMEOUT_MS:-20000}"
     volumes:
       - rollup-a-geth:/data
       - ./networks/rollup-a:/config:ro
+      - ./networks/rollup-b:/config_b:ro
     ports:
       - "18545:8545"
       - "18546:8546"
@@ -64,6 +66,8 @@ services:
           fi
         fi
         EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
+        MAILBOX_A=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config/contracts.json | head -n1)
+        MAILBOX_B=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config_b/contracts.json | head -n1)
         exec geth \
           --datadir /data \
           --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
@@ -78,8 +82,8 @@ services:
           --sp.addr=rollup-shared-publisher:8080 \
           --sp.listen.addr=:9898 \
           --sequencer.addrs=${ROLLUP_B_CHAIN_ID:-77772}:op-geth-b:9898 \
-          --mailbox.addr-a=${ROLLUP_A_MAILBOX_ADDR:-0xfc83487BA02a87Ec53669cdE81367C117872e157} \
-          --mailbox.addr-b=${ROLLUP_B_MAILBOX_ADDR:-0x62678733dcD7ea6D5Db1Cf508157ea5F113e7E32} \
+          --mailbox.addr-a=$${MAILBOX_A} \
+          --mailbox.addr-b=$${MAILBOX_B} \
           --sequencer.key=$${WALLET_PRIVATE_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}
@@ -168,9 +172,11 @@ services:
     environment:
       ROLLUP_CHAIN_ID: "${ROLLUP_B_CHAIN_ID:-77772}"
       WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      SSV_CIRC_TIMEOUT_MS: "${SSV_CIRC_TIMEOUT_MS:-20000}"
     volumes:
       - rollup-b-geth:/data
       - ./networks/rollup-b:/config:ro
+      - ./networks/rollup-a:/config_a:ro
     ports:
       - "28545:8545"
       - "28546:8546"
@@ -192,6 +198,8 @@ services:
           fi
         fi
         EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
+        MAILBOX_A=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config_a/contracts.json | head -n1)
+        MAILBOX_B=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config/contracts.json | head -n1)
         exec geth \
           --datadir /data \
           --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
@@ -206,8 +214,8 @@ services:
           --sp.addr=rollup-shared-publisher:8080 \
           --sp.listen.addr=:9898 \
           --sequencer.addrs=${ROLLUP_A_CHAIN_ID:-77771}:op-geth-a:9898 \
-          --mailbox.addr-a=${ROLLUP_A_MAILBOX_ADDR:-0xfc83487BA02a87Ec53669cdE81367C117872e157} \
-          --mailbox.addr-b=${ROLLUP_B_MAILBOX_ADDR:-0x62678733dcD7ea6D5Db1Cf508157ea5F113e7E32} \
+          --mailbox.addr-a=$${MAILBOX_A} \
+          --mailbox.addr-b=$${MAILBOX_B} \
           --sequencer.key=$${WALLET_PRIVATE_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}

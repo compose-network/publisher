@@ -155,8 +155,36 @@ remove_path() {
 remove_generated_artifacts() {
   remove_path "state"
   remove_path "networks"
-  remove_path "contracts"
   remove_path ".cache/genesis-go"
+  clean_contracts_generated
+}
+
+clean_contracts_generated() {
+  local -a targets=()
+  local gitignore="$ROOT_DIR/.gitignore"
+  if [[ -f "$gitignore" ]]; then
+    while IFS= read -r line; do
+      [[ -z "$line" || "$line" =~ ^# ]] && continue
+      if [[ "$line" == contracts/* ]]; then
+        line="${line%/}"
+        targets+=("$line")
+      fi
+    done <"$gitignore"
+  fi
+
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    targets=(
+      "contracts/artifacts"
+      "contracts/broadcast"
+      "contracts/cache"
+      "contracts/out"
+      "contracts/lib"
+    )
+  fi
+
+  for rel in "${targets[@]}"; do
+    remove_path "$rel"
+  done
 }
 
 is_bootstrapped() {

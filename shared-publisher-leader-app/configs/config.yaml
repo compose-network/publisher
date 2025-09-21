@@ -10,6 +10,6 @@ metrics:
   path: "/metrics"
 
 log:
-  level: info
-  pretty: true
+  level: debug
+  pretty: false
   output: stdout

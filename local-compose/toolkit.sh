@@ -105,6 +105,109 @@ check_bridge() {
   python3 "${ROOT_DIR}/scripts/debug_bridge.py" --mode check "$@"
 }
 
+# Bridge 1 MTK from A to B, robustly:
+# 1) Ensure enough MTK on A (optional mint)
+# 2) Trigger xbridge (which causes SP to inject SEND and may execute receive on B)
+# 3) Wait for B balance to increase by amount
+# 4) Wait for ACK on A's mailbox, then submit Bridge.send on A to burn
+# 5) Wait and verify final balances
+bridge_once() {
+  load_env
+
+  local rpc_a="${TOOLKIT_ROLLUP_A_RPC:-${ROLLUP_A_RPC_URL:-http://127.0.0.1:18545}}"
+  local rpc_b="${TOOLKIT_ROLLUP_B_RPC:-${ROLLUP_B_RPC_URL:-http://127.0.0.1:28545}}"
+  local addr="${WALLET_ADDRESS:?WALLET_ADDRESS not set}"
+  local pk="${WALLET_PRIVATE_KEY:?WALLET_PRIVATE_KEY not set}"
+  local amt="1000000000000000000"  # 1e18 default
+  local verify_wait=15
+  local mint_if_needed=0
+  local require_burn=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --amount)
+        amt="$2"; shift 2 ;;
+      --wait)
+        verify_wait="$2"; shift 2 ;;
+      --mint-if-needed)
+        mint_if_needed=1; shift ;;
+      --require-burn)
+        require_burn=1; shift ;;
+      *)
+        echo "unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+
+  # Contracts and chain IDs
+  local token_a token_b bridge_a bridge_b mailbox_a mailbox_b chain_a chain_b
+  token_a=$(jq -r .addresses.MyToken "${ROOT_DIR}/networks/rollup-a/contracts.json")
+  token_b=$(jq -r .addresses.MyToken "${ROOT_DIR}/networks/rollup-b/contracts.json")
+  bridge_a=$(jq -r .addresses.Bridge  "${ROOT_DIR}/networks/rollup-a/contracts.json")
+  bridge_b=$(jq -r .addresses.Bridge  "${ROOT_DIR}/networks/rollup-b/contracts.json")
+  mailbox_a=$(jq -r .addresses.Mailbox "${ROOT_DIR}/networks/rollup-a/contracts.json")
+  mailbox_b=$(jq -r .addresses.Mailbox "${ROOT_DIR}/networks/rollup-b/contracts.json")
+  chain_a=$(jq -r .chainInfo.chainId "${ROOT_DIR}/networks/rollup-a/contracts.json")
+  chain_b=$(jq -r .chainInfo.chainId "${ROOT_DIR}/networks/rollup-b/contracts.json")
+
+  [[ "$token_a" =~ ^0x && "$bridge_a" =~ ^0x && "$mailbox_a" =~ ^0x ]] || { echo "[error] missing contracts for rollup-a" >&2; return 1; }
+  [[ "$token_b" =~ ^0x && "$bridge_b" =~ ^0x && "$mailbox_b" =~ ^0x ]] || { echo "[error] missing contracts for rollup-b" >&2; return 1; }
+
+  wait_for_rpc "$rpc_a" "rollup-a" >/dev/null || return 1
+  wait_for_rpc "$rpc_b" "rollup-b" >/dev/null || return 1
+
+  # Helpers
+  CAST() { "${ROOT_DIR}/toolkit.sh" cast "$@"; }
+  bal_token() { # rpc token addr -> raw uint
+    CAST call --rpc-url "$1" "$2" 'balanceOf(address)(uint256)' "$3" | tail -n1 | awk '{print $1}'
+  }
+  hexlabel_ack="0x41434b2053454e44"  # "ACK SEND"
+
+  # Initial balances
+  local a0 b0
+  a0=$(bal_token "$rpc_a" "$token_a" "$addr")
+  b0=$(bal_token "$rpc_b" "$token_b" "$addr")
+  echo "[bridge] initial MTK balances  A=$a0  B=$b0"
+
+  # Ensure funds on A
+  if (( a0 < amt )); then
+    if (( mint_if_needed )); then
+      echo "[bridge] minting on A to reach required amount ($amt)"
+      CAST send --rpc-url "$rpc_a" --private-key "$pk" "$token_a" 'mint(address,uint256)' "$addr" "$amt" >/dev/null
+      sleep 2
+      a0=$(bal_token "$rpc_a" "$token_a" "$addr")
+      echo "[bridge] new A balance: $a0"
+      if (( a0 < amt )); then echo "[error] mint on A did not reach required amount" >&2; return 1; fi
+    else
+      echo "[error] not enough MTK on A (have $a0, need $amt). Re-run with --mint-if-needed." >&2
+      return 1
+    fi
+  fi
+
+  # Trigger xbridge (atomic 2PC)
+  echo "[bridge] triggering xbridge (A→B, amount=1e18 wei fixed by CLI)"
+  (cd "${ROOT_DIR}/services/op-geth" && go run ./cmd/xbridge >/dev/null 2>&1) &
+
+  # Poll for up to ~40s for both sides to reflect the transfer
+  local target_b=$(( b0 + amt ))
+  local target_a=$(( a0 - amt ))
+  local a1 b1 okA=0 okB=0
+  for ((i=1;i<=40;i++)); do
+    a1=$(bal_token "$rpc_a" "$token_a" "$addr") || a1=0
+    b1=$(bal_token "$rpc_b" "$token_b" "$addr") || b1=0
+    (( b1 >= target_b )) && okB=1 || okB=0
+    (( a1 == target_a )) && okA=1 || okA=0
+    if (( (require_burn && okA==1 && okB==1) || (!require_burn && okB==1) )); then
+      echo "[bridge] final MTK balances      A=$a1  B=$b1"
+      echo "[bridge] SUCCESS"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "[bridge] final MTK balances      A=${a1:-?}  B=${b1:-?}"
+  echo "[bridge] ERROR: balances did not change as expected within 40s." >&2
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./toolkit.sh <command> [args]
@@ -113,6 +216,7 @@ Commands:
   deploy-op-geth        Rebuild op-geth images, restart services, wait for RPC readiness.
   debug-bridge [args]   Run the bridge diagnostics helper (scripts/debug_bridge.py --mode debug).
   check-bridge [args]   Quick health check (balances, stats, block heights).
+  bridge-once [args]    Bridge 1 MTK A→B once; waits and verifies. Args: [--amount WEI] [--mint-if-needed] [--wait SECS]
   cast [args]           Run Foundry's `cast` via container with safe entrypoint/networking.
   clear-nonces          Restart op-geth containers to flush pending tx pool/nonces.
   help                  Show this message.
@@ -148,7 +252,11 @@ cmd_cast() {
     set -- "${rewritten[@]}"
   fi
 
-  exec docker run --rm "${net_args[@]}" --entrypoint cast "$image" "$@"
+  if [[ ${#net_args[@]:-0} -gt 0 ]]; then
+    exec docker run --rm "${net_args[@]}" -e FOUNDRY_DISABLE_NIGHTLY_WARNING=1 --entrypoint cast "$image" "$@"
+  else
+    exec docker run --rm -e FOUNDRY_DISABLE_NIGHTLY_WARNING=1 --entrypoint cast "$image" "$@"
+  fi
 }
 
 main() {
@@ -163,6 +271,9 @@ main() {
       ;;
     check-bridge)
       check_bridge "$@"
+      ;;
+    bridge-once)
+      bridge_once "$@"
       ;;
     cast)
       cmd_cast "$@"

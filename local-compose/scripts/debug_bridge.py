@@ -366,7 +366,7 @@ def eth_get_balance(rpc_url: str, address: str) -> Optional[int]:
         return None
 
 
-def summarize_balances(rollups: List[Rollup]) -> List[str]:
+def summarize_eth_balances(rollups: List[Rollup]) -> List[str]:
     rows: List[str] = []
     for rollup in rollups:
         balance_wei = eth_get_balance(rollup.rpc_url, rollup.wallet_address)
@@ -375,6 +375,44 @@ def summarize_balances(rollups: List[Rollup]) -> List[str]:
         else:
             eth_value = balance_wei / 10**18
             rows.append(f"{rollup.name}: balance {eth_value:.4f} ETH ({balance_wei} wei)")
+    return rows
+
+
+def erc20_balance(rpc_url: str, token_address: str, account: str) -> Optional[int]:
+    if not token_address:
+        return None
+    account_hex = account.lower()
+    if account_hex.startswith("0x"):
+        account_hex = account_hex[2:]
+    data = "0x70a08231" + account_hex.rjust(64, "0")
+    params = [{"to": token_address, "data": data}, "latest"]
+    try:
+        result = rpc_call(rpc_url, "eth_call", params)
+    except RuntimeError:
+        return None
+    if not isinstance(result, str):
+        return None
+    try:
+        return int(result, 16)
+    except (TypeError, ValueError):
+        return None
+
+
+def summarize_token_balances(rollups: List[Rollup]) -> List[str]:
+    rows: List[str] = []
+    for rollup in rollups:
+        token_address = rollup.token
+        if not token_address:
+            rows.append(f"{rollup.name}: token address unavailable")
+            continue
+        balance_raw = erc20_balance(rollup.rpc_url, token_address, rollup.wallet_address)
+        if balance_raw is None:
+            rows.append(f"{rollup.name}: token balance query failed ({token_address})")
+            continue
+        token_value = balance_raw / 10**18
+        rows.append(
+            f"{rollup.name}: token balance {token_value:.4f} ({balance_raw} raw) [{token_address}]"
+        )
     return rows
 
 
@@ -413,8 +451,13 @@ def run(mode: str, session: Optional[int], block_window: int, since_logs: str) -
 
     if mode == "check":
         print("Balances:")
-        for line in summarize_balances(configs):
+        for line in summarize_eth_balances(configs):
             print("  ", line)
+        token_lines = summarize_token_balances(configs)
+        if token_lines:
+            print("Token balances:")
+            for line in token_lines:
+                print("  ", line)
         try:
             stats = fetch_shared_publisher_stats(stats_url)
             active = stats.get("active_2pc_transactions")
@@ -456,8 +499,13 @@ def run(mode: str, session: Optional[int], block_window: int, since_logs: str) -
         print(f"Shared publisher stats unavailable: {exc}")
 
     print("Recent balances:")
-    for line in summarize_balances(configs):
+    for line in summarize_eth_balances(configs):
         print("  ", line)
+    token_lines = summarize_token_balances(configs)
+    if token_lines:
+        print("Token balances:")
+        for line in token_lines:
+            print("  ", line)
 
     print("Log snippets:")
     for rollup in configs:
