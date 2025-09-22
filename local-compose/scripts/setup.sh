@@ -391,14 +391,47 @@ EOF
   log "[setup] helper config written to $config_path"
 
   if [[ ${ROLLUP_RESTART_WITH_MAILBOX:-1} == 1 ]]; then
-    log "Restarting op-geth instances with mailbox configuration"
+    log "Restarting services with mailbox configuration"
+    local -a restart_targets=(
+      op-geth-a op-geth-b
+      op-node-a op-node-b
+      blockscout-a blockscout-b
+      blockscout-a-frontend blockscout-b-frontend
+      blockscout-a-proxy blockscout-b-proxy
+    )
     (
       cd "$ROOT_DIR"
       ROLLUP_A_MAILBOX_ADDR="$mailbox_addr" \
       ROLLUP_B_MAILBOX_ADDR="$mailbox_addr" \
-      docker compose up -d op-geth-a op-geth-b >/dev/null
+      docker compose up -d "${restart_targets[@]}" >/dev/null
     )
   fi
+}
+
+ensure_placeholder_contracts_json() {
+  local dir=$1
+  local chain_id=$2
+  local file="$dir/contracts.json"
+
+  if [[ -s "$file" ]]; then
+    return
+  fi
+
+  mkdir -p "$dir"
+  cat >"$file" <<EOF
+{
+  "chainInfo": {
+    "chainId": ${chain_id}
+  },
+  "addresses": {
+    "Mailbox": "0x0000000000000000000000000000000000000000",
+    "PingPong": "0x0000000000000000000000000000000000000000",
+    "MyToken": "0x0000000000000000000000000000000000000000",
+    "Bridge": "0x0000000000000000000000000000000000000000"
+  }
+}
+EOF
+  log "Seeded placeholder contracts.json at $file"
 }
 
 rpc_ready() {
@@ -698,6 +731,9 @@ fi
 
 mkdir -p "$STATE_DIR" "$ROLLUP_A_DIR" "$ROLLUP_B_DIR"
 mkdir -p "$STATE_DIR/.cache"
+
+ensure_placeholder_contracts_json "$ROLLUP_A_DIR" "$ROLLUP_A_CHAIN_ID"
+ensure_placeholder_contracts_json "$ROLLUP_B_DIR" "$ROLLUP_B_CHAIN_ID"
 
 if ! docker image inspect "$OP_DEPLOYER_IMAGE" >/dev/null 2>&1; then
   log "Building op-deployer image ($OP_DEPLOYER_IMAGE)"
