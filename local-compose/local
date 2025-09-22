@@ -148,6 +148,9 @@ log_source_contexts() {
       describe_source_path "rollup-shared-publisher" "$rsp_src"
       ;;
   esac
+  if [[ -n ${SEQUENCER_ADDRESS:-} ]]; then
+    log "sequencer address: ${SEQUENCER_ADDRESS}"
+  fi
 }
 
 load_env() {
@@ -171,6 +174,11 @@ load_env() {
 
   export ROLLUP_A_CHAIN_ID=${ROLLUP_A_CHAIN_ID:-77771}
   export ROLLUP_B_CHAIN_ID=${ROLLUP_B_CHAIN_ID:-77772}
+
+  local default_seq_priv=0x1111111111111111111111111111111111111111111111111111111111111111
+  local default_seq_addr=0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a
+  export SEQUENCER_PRIVATE_KEY=${SEQUENCER_PRIVATE_KEY:-$default_seq_priv}
+  export SEQUENCER_ADDRESS=${SEQUENCER_ADDRESS:-$default_seq_addr}
 
   populate_mailbox_env
 }

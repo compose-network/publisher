@@ -450,6 +450,7 @@ def run(mode: str, session: Optional[int], block_window: int, since_logs: str) -
     stats_url = env.get("TOOLKIT_SP_STATS_URL") or "http://127.0.0.1:18081/stats"
 
     if mode == "check":
+        print(f"Wallet address: {wallet}")
         print("Balances:")
         for line in summarize_eth_balances(configs):
             print("  ", line)

@@ -40,6 +40,7 @@ services:
     environment:
       ROLLUP_CHAIN_ID: "${ROLLUP_A_CHAIN_ID:-77771}"
       WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      SEQUENCER_PRIVATE_KEY: "${SEQUENCER_PRIVATE_KEY:-0x1111111111111111111111111111111111111111111111111111111111111111}"
       SSV_CIRC_TIMEOUT_MS: "${SSV_CIRC_TIMEOUT_MS:-20000}"
     volumes:
       - rollup-a-geth:/data
@@ -85,8 +86,18 @@ services:
           echo '[*] initializing op-geth datadir'
           geth init --state.scheme=hash --datadir /data /config/genesis.json
           if [ ! -d /data/keystore ] || [ -z $$(ls -A /data/keystore 2>/dev/null) ]; then
-            printf '%s' "$${WALLET_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+            if [ -n "$$WALLET_PRIVATE_KEY" ]; then
+              printf '%s' "$${WALLET_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+            fi
+            if [ -n "$$SEQUENCER_PRIVATE_KEY" ] && [ "$$SEQUENCER_PRIVATE_KEY" != "$$WALLET_PRIVATE_KEY" ]; then
+              printf '%s' "$${SEQUENCER_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+            fi
           fi
+        fi
+        SEQUENCER_KEY=$${SEQUENCER_PRIVATE_KEY:-$${WALLET_PRIVATE_KEY:-}}
+        if [ -z "$$SEQUENCER_KEY" ]; then
+          echo "[error] SEQUENCER_PRIVATE_KEY is required" >&2
+          exit 1
         fi
         EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
         MAILBOX_A=$(get_mailbox_addr /config/contracts.json)
@@ -107,7 +118,7 @@ services:
           --sequencer.addrs=${ROLLUP_B_CHAIN_ID:-77772}:op-geth-b:9898 \
           --mailbox.addr-a=$${MAILBOX_A} \
           --mailbox.addr-b=$${MAILBOX_B} \
-          --sequencer.key=$${WALLET_PRIVATE_KEY} \
+          --sequencer.key=$${SEQUENCER_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}
 
@@ -129,7 +140,7 @@ services:
       OP_NODE_SEQUENCER_ENABLED: "true"
       OP_NODE_SEQUENCER_L1_CONFS: "5"
       OP_NODE_VERIFIER_L1_CONFS: "4"
-      OP_NODE_P2P_SEQUENCER_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_NODE_P2P_SEQUENCER_KEY: "${SEQUENCER_PRIVATE_KEY:-${WALLET_PRIVATE_KEY}}"
       OP_NODE_RPC_ADDR: "0.0.0.0"
       OP_NODE_RPC_PORT: "9545"
       OP_NODE_RPC_ENABLE_ADMIN: "true"
@@ -195,6 +206,7 @@ services:
     environment:
       ROLLUP_CHAIN_ID: "${ROLLUP_B_CHAIN_ID:-77772}"
       WALLET_PRIVATE_KEY: "${WALLET_PRIVATE_KEY}"
+      SEQUENCER_PRIVATE_KEY: "${SEQUENCER_PRIVATE_KEY:-0x1111111111111111111111111111111111111111111111111111111111111111}"
       SSV_CIRC_TIMEOUT_MS: "${SSV_CIRC_TIMEOUT_MS:-20000}"
     volumes:
       - rollup-b-geth:/data
@@ -240,8 +252,18 @@ services:
           echo '[*] initializing op-geth datadir'
           geth init --state.scheme=hash --datadir /data /config/genesis.json
           if [ ! -d /data/keystore ] || [ -z $$(ls -A /data/keystore 2>/dev/null) ]; then
-            printf '%s' "$${WALLET_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+            if [ -n "$$WALLET_PRIVATE_KEY" ]; then
+              printf '%s' "$${WALLET_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+            fi
+            if [ -n "$$SEQUENCER_PRIVATE_KEY" ] && [ "$$SEQUENCER_PRIVATE_KEY" != "$$WALLET_PRIVATE_KEY" ]; then
+              printf '%s' "$${SEQUENCER_PRIVATE_KEY}" | sed 's/^0x//' | geth account import --datadir /data --password /config/password.txt /dev/stdin >/dev/null
+            fi
           fi
+        fi
+        SEQUENCER_KEY=$${SEQUENCER_PRIVATE_KEY:-$${WALLET_PRIVATE_KEY:-}}
+        if [ -z "$$SEQUENCER_KEY" ]; then
+          echo "[error] SEQUENCER_PRIVATE_KEY is required" >&2
+          exit 1
         fi
         EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
         MAILBOX_A=$(get_mailbox_addr /config_a/contracts.json)
@@ -262,7 +284,7 @@ services:
           --sequencer.addrs=${ROLLUP_A_CHAIN_ID:-77771}:op-geth-a:9898 \
           --mailbox.addr-a=$${MAILBOX_A} \
           --mailbox.addr-b=$${MAILBOX_B} \
-          --sequencer.key=$${WALLET_PRIVATE_KEY} \
+          --sequencer.key=$${SEQUENCER_KEY} \
           --rollup.computependingblock=true \
           $${EXTRA_FLAGS}
 
@@ -284,7 +306,7 @@ services:
       OP_NODE_SEQUENCER_ENABLED: "true"
       OP_NODE_SEQUENCER_L1_CONFS: "5"
       OP_NODE_VERIFIER_L1_CONFS: "4"
-      OP_NODE_P2P_SEQUENCER_KEY: "${WALLET_PRIVATE_KEY}"
+      OP_NODE_P2P_SEQUENCER_KEY: "${SEQUENCER_PRIVATE_KEY:-${WALLET_PRIVATE_KEY}}"
       OP_NODE_RPC_ADDR: "0.0.0.0"
       OP_NODE_RPC_PORT: "9545"
       OP_NODE_RPC_ENABLE_ADMIN: "true"

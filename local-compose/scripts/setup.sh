@@ -6,6 +6,12 @@ source "$ROOT_DIR/scripts/lib.sh"
 
 load_env
 
+DEFAULT_SEQUENCER_PRIVATE_KEY=0x1111111111111111111111111111111111111111111111111111111111111111
+DEFAULT_SEQUENCER_ADDRESS=0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a
+SEQUENCER_PRIVATE_KEY=${SEQUENCER_PRIVATE_KEY:-$DEFAULT_SEQUENCER_PRIVATE_KEY}
+SEQUENCER_ADDRESS=${SEQUENCER_ADDRESS:-$DEFAULT_SEQUENCER_ADDRESS}
+export SEQUENCER_PRIVATE_KEY SEQUENCER_ADDRESS
+
 if [[ -n ${LOCAL_OP_GETH_PATH:-} && -z ${OP_GETH_PATH:-} ]]; then
   log "[WARN] LOCAL_OP_GETH_PATH is deprecated; use OP_GETH_PATH"
   OP_GETH_PATH="${LOCAL_OP_GETH_PATH}"
@@ -202,12 +208,32 @@ stop_compose_stack() {
 
 start_compose_stack() {
   log "Starting Compose stack (build + up)"
-  (cd "$ROOT_DIR" && docker compose up --build -d)
+  (
+    cd "$ROOT_DIR"
+    docker compose up --build -d \
+      rollup-shared-publisher \
+      op-geth-a op-geth-b \
+      op-node-a op-node-b \
+      op-batcher-a op-batcher-b \
+      op-proposer-a op-proposer-b
+  )
+}
+
+start_blockscout_services() {
+  log "Starting Blockscout services"
+  (
+    cd "$ROOT_DIR"
+    docker compose up -d \
+      blockscout-a blockscout-b \
+      blockscout-a-frontend blockscout-b-frontend \
+      blockscout-a-proxy blockscout-b-proxy
+  ) || log "[WARN] Blockscout services failed to start"
 }
 
 get_balance() {
   local url=$1
-  python3 - "$url" "$wallet_address_norm" <<'PY'
+  local addr=${2:-$wallet_address_norm}
+  python3 - "$url" "$addr" <<'PY'
 import json
 import sys
 import urllib.request
@@ -268,12 +294,13 @@ wait_for_balance() {
   local name=$1
   local url=$2
   local target=$3
+  local addr=${4:-$wallet_address_norm}
   local attempts=${ROLLUP_DEPOSIT_WAIT_ATTEMPTS:-120}
   local delay=${ROLLUP_DEPOSIT_WAIT_DELAY:-5}
   local i=0
   while (( i < attempts )); do
     local balance
-    balance=$(get_balance "$url")
+    balance=$(get_balance "$url" "$addr")
     if python3 - "$balance" "$target" <<'PY'
 import sys
 bal=int(sys.argv[1])
@@ -299,57 +326,74 @@ fund_rollup_account() {
   local deposit_amount=${ROLLUP_ACCOUNT_DEPOSIT_WEI:-0}
   local gas_limit=${ROLLUP_DEPOSIT_GAS_LIMIT:-200000}
 
-  local balance
-  balance=$(get_balance "$url")
-  if python3 - "$balance" "$min_balance" <<'PY'
+  local -a targets=()
+  local -a labels=()
+  if [[ -n "$wallet_address_norm" ]]; then
+    targets+=("$wallet_address_norm")
+    labels+=("wallet")
+  fi
+  if [[ -n "$sequencer_address_norm" && "$sequencer_address_norm" != "$wallet_address_norm" ]]; then
+    targets+=("$sequencer_address_norm")
+    labels+=("sequencer")
+  fi
+
+  local idx
+  for idx in "${!targets[@]}"; do
+    local addr=${targets[$idx]}
+    local label=${labels[$idx]}
+
+    local balance
+    balance=$(get_balance "$url" "$addr")
+    if python3 - "$balance" "$min_balance" <<'PY'
 import sys
 bal=int(sys.argv[1])
 target=int(sys.argv[2])
 sys.exit(0 if bal >= target else 1)
 PY
-  then
-    log "$name wallet already funded (balance: $balance wei)"
-    return
-  fi
+    then
+      log "$name $label already funded (balance: $balance wei)"
+      continue
+    fi
 
-  if python3 - "$deposit_amount" <<'PY'
+    if python3 - "$deposit_amount" <<'PY'
 import sys
 sys.exit(0 if int(sys.argv[1]) > 0 else 1)
 PY
-  then
-    :
-  else
-    log "Deposit amount for $name is 0; skipping L1 bridge"
-    return
-  fi
+    then
+      :
+    else
+      log "Deposit amount for $name $label is 0; skipping L1 bridge"
+      continue
+    fi
 
-  local portal
-  portal=$(load_portal_address "$addresses_file")
-  if [[ -z "$portal" ]]; then
-    log "[WARN] Could not determine OptimismPortal for $name (checked $addresses_file); skipping deposit"
-    return
-  fi
+    local portal
+    portal=$(load_portal_address "$addresses_file")
+    if [[ -z "$portal" ]]; then
+      log "[WARN] Could not determine OptimismPortal for $name (checked $addresses_file); skipping deposit"
+      continue
+    fi
 
-  log "Depositing $(printf '%s' "$deposit_amount") wei from L1 into $name via $portal"
-  if ! docker run --rm $DOCKER_USER_FLAG \
-    --entrypoint cast \
-    "$FOUNDRY_IMAGE" \
-    send --rpc-url "$HOODI_EL_RPC" \
-    --private-key "$forge_private_key_norm" \
-    "$portal" \
-    "depositTransaction(address,uint256,uint64,bool,bytes)" \
-    "$wallet_address_norm" \
-    "$deposit_amount" \
-    "$gas_limit" \
-    false \
-    0x; then
-    echo "Failed to deposit funds to $name" >&2
-    exit 1
-  fi
+    log "Depositing $(printf '%s' "$deposit_amount") wei from L1 into $name ($label) via $portal"
+    if ! docker run --rm $DOCKER_USER_FLAG \
+      --entrypoint cast \
+      "$FOUNDRY_IMAGE" \
+      send --rpc-url "$HOODI_EL_RPC" \
+      --private-key "$forge_private_key_norm" \
+      "$portal" \
+      "depositTransaction(address,uint256,uint64,bool,bytes)" \
+      "$addr" \
+      "$deposit_amount" \
+      "$gas_limit" \
+      false \
+      0x; then
+      echo "Failed to deposit funds to $name ($label)" >&2
+      exit 1
+    fi
 
-  if ! wait_for_balance "$name" "$url" "$min_balance"; then
-    exit 1
-  fi
+    if ! wait_for_balance "$name $label" "$url" "$min_balance" "$addr"; then
+      exit 1
+    fi
+  done
 }
 
 write_helper_config() {
@@ -391,13 +435,10 @@ EOF
   log "[setup] helper config written to $config_path"
 
   if [[ ${ROLLUP_RESTART_WITH_MAILBOX:-1} == 1 ]]; then
-    log "Restarting services with mailbox configuration"
+    log "Restarting core services with mailbox configuration"
     local -a restart_targets=(
       op-geth-a op-geth-b
       op-node-a op-node-b
-      blockscout-a blockscout-b
-      blockscout-a-frontend blockscout-b-frontend
-      blockscout-a-proxy blockscout-b-proxy
     )
     (
       cd "$ROOT_DIR"
@@ -495,8 +536,8 @@ deploy_contracts() {
     -e ROLLUP_B_CHAIN_ID="${ROLLUP_B_CHAIN_ID}"
     -e ROLLUP_A_RPC_URL="${rpc_a_container}"
     -e ROLLUP_B_RPC_URL="${rpc_b_container}"
-    -e DEPLOYER_ADDRESS="$wallet_address_norm"
-    -e DEPLOYER_PRIVATE_KEY="$forge_private_key_norm"
+    -e DEPLOYER_ADDRESS="$sequencer_address_norm"
+    -e DEPLOYER_PRIVATE_KEY="$sequencer_private_key_norm"
     -e HOME="$FOUNDRY_HOME_DIR"
     -e SVM_HOME="$FOUNDRY_HOME_DIR/.svm"
     -e FOUNDRY_DIR="$FOUNDRY_HOME_DIR/.foundry"
@@ -519,9 +560,9 @@ deploy_contracts() {
       log_file=$(mktemp)
       set +e
       if (( use_resume )); then
-        "${docker_common[@]}" "$script_path" --rpc-url "$rpc_url" --private-key "$forge_private_key_norm" --broadcast --force -vvv --resume "$@" 2>&1 | tee "$log_file"
+        "${docker_common[@]}" "$script_path" --rpc-url "$rpc_url" --private-key "$sequencer_private_key_norm" --broadcast --force -vvv --resume "$@" 2>&1 | tee "$log_file"
       else
-        "${docker_common[@]}" "$script_path" --rpc-url "$rpc_url" --private-key "$forge_private_key_norm" --broadcast --force -vvv "$@" 2>&1 | tee "$log_file"
+        "${docker_common[@]}" "$script_path" --rpc-url "$rpc_url" --private-key "$sequencer_private_key_norm" --broadcast --force -vvv "$@" 2>&1 | tee "$log_file"
       fi
       local status=${PIPESTATUS[0]}
       set -e
@@ -770,6 +811,17 @@ if [[ $forge_private_key_norm != 0x* ]]; then
 fi
 export WALLET_ADDRESS_NORM=$wallet_address_norm
 
+sequencer_address_norm=${SEQUENCER_ADDRESS,,}
+if [[ $sequencer_address_norm != 0x* ]]; then
+  sequencer_address_norm="0x${sequencer_address_norm}"
+fi
+sequencer_private_key_norm=${SEQUENCER_PRIVATE_KEY,,}
+if [[ $sequencer_private_key_norm != 0x* ]]; then
+  sequencer_private_key_norm="0x${sequencer_private_key_norm}"
+fi
+export SEQUENCER_ADDRESS_NORM=$sequencer_address_norm
+export SEQUENCER_PRIVATE_KEY_NORM=$sequencer_private_key_norm
+
 cat > "$STATE_DIR/intent.toml" <<EOF
 configType = "custom"
 l1ChainID = $HOODI_CHAIN_ID
@@ -786,7 +838,7 @@ l2ContractsLocator = "$L2_CONTRACTS_TAG"
   id = "$ROLLUP_A_ID_HEX"
   baseFeeVaultRecipient = "$wallet_address_norm"
   l1FeeVaultRecipient = "$wallet_address_norm"
-  sequencerFeeVaultRecipient = "$wallet_address_norm"
+  sequencerFeeVaultRecipient = "$sequencer_address_norm"
   eip1559DenominatorCanyon = 250
   eip1559Denominator = 50
   eip1559Elasticity = 6
@@ -807,7 +859,7 @@ l2ContractsLocator = "$L2_CONTRACTS_TAG"
   id = "$ROLLUP_B_ID_HEX"
   baseFeeVaultRecipient = "$wallet_address_norm"
   l1FeeVaultRecipient = "$wallet_address_norm"
-  sequencerFeeVaultRecipient = "$wallet_address_norm"
+  sequencerFeeVaultRecipient = "$sequencer_address_norm"
   eip1559DenominatorCanyon = 250
   eip1559Denominator = 50
   eip1559Elasticity = 6
@@ -845,6 +897,7 @@ import sys
 
 state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
 addr = os.environ.get('WALLET_ADDRESS_NORM', '').lower()
+seq_addr = os.environ.get('SEQUENCER_ADDRESS_NORM', '').lower()
 amount_raw = os.environ.get('ROLLUP_ACCOUNT_GENESIS_BALANCE_WEI', '0')
 
 try:
@@ -853,7 +906,13 @@ except ValueError:
     print(f"Invalid ROLLUP_ACCOUNT_GENESIS_BALANCE_WEI: {amount_raw}", file=sys.stderr)
     sys.exit(1)
 
-if amount > 0 and addr:
+addresses = []
+if addr:
+    addresses.append(addr)
+if seq_addr and seq_addr not in addresses:
+    addresses.append(seq_addr)
+
+if amount > 0 and addresses:
     with open(state_path) as f:
         state = json.load(f)
 
@@ -863,12 +922,13 @@ if amount > 0 and addr:
     for deployment in state.get('opChainDeployments', []):
         raw = base64.b64decode(deployment['allocs'])
         allocs = json.loads(gzip.decompress(raw))
-        if allocs.get(addr) != {'balance': allocs_hex}:
-            allocs[addr] = {'balance': allocs_hex}
-            deployment['allocs'] = base64.b64encode(
-                gzip.compress(json.dumps(allocs, separators=(',', ':')).encode('utf-8'))
-            ).decode('utf-8')
-            updated = True
+        for address in addresses:
+            if allocs.get(address) != {'balance': allocs_hex}:
+                allocs[address] = {'balance': allocs_hex}
+                deployment['allocs'] = base64.b64encode(
+                    gzip.compress(json.dumps(allocs, separators=(',', ':')).encode('utf-8'))
+                ).decode('utf-8')
+                updated = True
 
     if updated:
         with open(state_path, 'w') as f:
@@ -1268,6 +1328,9 @@ PYBLOCK
 start_compose_stack
 
 deploy_contracts
+
+# TODO: re-enable when it works
+# start_blockscout_services
 
 log "Setup complete"
 log "Rollup A RPC: $ROLLUP_A_RPC_URL"
