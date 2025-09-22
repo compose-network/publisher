@@ -349,7 +349,7 @@ cmd_cast() {
     net_args+=(--add-host=host.docker.internal:host-gateway)
   fi
 
-  if [[ ${#net_args[@]:-0} -gt 0 ]]; then
+  if (( ${#net_args[@]} > 0 )); then
     exec docker run --rm "${net_args[@]}" -e FOUNDRY_DISABLE_NIGHTLY_WARNING=1 --entrypoint cast "$image" "$@"
   else
     exec docker run --rm -e FOUNDRY_DISABLE_NIGHTLY_WARNING=1 --entrypoint cast "$image" "$@"

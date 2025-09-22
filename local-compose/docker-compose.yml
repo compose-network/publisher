@@ -58,6 +58,29 @@ services:
       - -c
       - |
         set -eu
+
+        get_mailbox_addr() {
+          local file="$1"
+          local addr=""
+          local attempts=0
+          while true; do
+            attempts=$$((attempts + 1))
+            if [ -s "$$file" ]; then
+              addr=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$$file" | head -n1 || true)
+              if [ -n "$$addr" ] && printf '%s\n' "$$addr" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then
+                printf '%s' "$$addr"
+                return 0
+              fi
+            fi
+            if [ $$attempts -ge 60 ]; then
+              echo "[error] mailbox address not available in $$file after $$attempts checks" >&2
+              exit 1
+            fi
+            echo "[wait] mailbox address unavailable in $$file (attempt $$attempts)" >&2
+            sleep 1
+          done
+        }
+
         if [ ! -f /data/geth/chaindata/CURRENT ]; then
           echo '[*] initializing op-geth datadir'
           geth init --state.scheme=hash --datadir /data /config/genesis.json
@@ -66,8 +89,8 @@ services:
           fi
         fi
         EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
-        MAILBOX_A=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config/contracts.json | head -n1)
-        MAILBOX_B=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config_b/contracts.json | head -n1)
+        MAILBOX_A=$(get_mailbox_addr /config/contracts.json)
+        MAILBOX_B=$(get_mailbox_addr /config_b/contracts.json)
         exec geth \
           --datadir /data \
           --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
@@ -190,6 +213,29 @@ services:
       - -c
       - |
         set -eu
+
+        get_mailbox_addr() {
+          local file="$1"
+          local addr=""
+          local attempts=0
+          while true; do
+            attempts=$$((attempts + 1))
+            if [ -s "$$file" ]; then
+              addr=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$$file" | head -n1 || true)
+              if [ -n "$$addr" ] && printf '%s\n' "$$addr" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then
+                printf '%s' "$$addr"
+                return 0
+              fi
+            fi
+            if [ $$attempts -ge 60 ]; then
+              echo "[error] mailbox address not available in $$file after $$attempts checks" >&2
+              exit 1
+            fi
+            echo "[wait] mailbox address unavailable in $$file (attempt $$attempts)" >&2
+            sleep 1
+          done
+        }
+
         if [ ! -f /data/geth/chaindata/CURRENT ]; then
           echo '[*] initializing op-geth datadir'
           geth init --state.scheme=hash --datadir /data /config/genesis.json
@@ -198,8 +244,8 @@ services:
           fi
         fi
         EXTRA_FLAGS=${EXTRA_OP_GETH_FLAGS:-}
-        MAILBOX_A=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config_a/contracts.json | head -n1)
-        MAILBOX_B=$(sed -n 's/.*"Mailbox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /config/contracts.json | head -n1)
+        MAILBOX_A=$(get_mailbox_addr /config_a/contracts.json)
+        MAILBOX_B=$(get_mailbox_addr /config/contracts.json)
         exec geth \
           --datadir /data \
           --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
