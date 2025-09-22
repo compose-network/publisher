@@ -109,6 +109,47 @@ PY
   fi
 }
 
+describe_source_path() {
+  local label=$1
+  local path=$2
+  [[ -z $path ]] && return
+  local resolved
+  if resolved=$(cd "$path" 2>/dev/null && pwd); then
+    path=$resolved
+  elif [[ $path != /* ]]; then
+    path="$ROOT_DIR/$path"
+  fi
+  if [[ -d $path ]]; then
+    log "${label} source: $path"
+  else
+    log "${label} source: $path (missing)"
+  fi
+}
+
+log_source_contexts() {
+  local target=${1:-all}
+  local op_geth_src="${OP_GETH_PATH:-$ROOT_DIR/services/op-geth}"
+  local rsp_src="${ROLLUP_SHARED_PUBLISHER_PATH:-$ROOT_DIR/services/rollup-shared-publisher}"
+  case "$target" in
+    op-geth)
+      describe_source_path "op-geth" "$op_geth_src"
+      ;;
+    publisher)
+      describe_source_path "rollup-shared-publisher" "$rsp_src"
+      ;;
+    all)
+      describe_source_path "op-geth" "$op_geth_src"
+      describe_source_path "rollup-shared-publisher" "$rsp_src"
+      ;;
+    blockscout)
+      ;;
+    *)
+      describe_source_path "op-geth" "$op_geth_src"
+      describe_source_path "rollup-shared-publisher" "$rsp_src"
+      ;;
+  esac
+}
+
 load_env() {
   local required=${1:-1}
   if [[ -f "${ROOT_DIR}/.env" ]]; then
@@ -641,6 +682,7 @@ print_status() {
 
 cmd_up() {
   load_env 1
+  log_source_contexts all
   local running
   running=$(running_services)
   if [[ -n $running ]]; then
@@ -983,6 +1025,7 @@ cmd_logs() {
 deploy_services() {
   local target=${1:-all}
   load_env 1
+  log_source_contexts "$target"
   local -a builds
   mapfile -t builds < <(build_targets "$target")
   if ((${#builds[@]} > 0)); then
