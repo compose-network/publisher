@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  namespace: argo-events
+spec:
+  entrypoint: main
+  serviceAccountName: operate-workflow-sa
+  templates:
+    - name: main
+      steps:
+        - - name: checkout-code
+            templateRef:
+              name: cwft-git
+              template: checkout-with-githubapp
+              clusterScope: true
+            arguments:
+              parameters:
+                - name: appName
+                  value: '{{workflow.parameters.appName}}'
+                - name: appOrg
+                  value: '{{workflow.parameters.appOrg}}'
+                - name: branch
+                  value: '{{workflow.parameters.branch}}'
+        - - name: publish-charts
+            templateRef:
+              name: cwft-helm
+              template: publish-charts
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: repo-source
+                  from: '{{steps.checkout-code.outputs.artifacts.repo-source}}'
+              parameters:
+                - name: appName
+                  value: '{{workflow.parameters.appName}}'
+                - name: chartDirs
+                  value: '{{workflow.parameters.chartDirs}}'
+        - - name: bump-chart-version
+            templateRef:
+              name: cwft-git
+              template: push-with-githubapp
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: repo-source
+                  from: '{{steps.publish-charts.outputs.artifacts.repo-source}}'
+              parameters:
+                - name: appName
+                  value: '{{workflow.parameters.appName}}'
+                - name: commitMessage
+                  value: 'Update charts version'
