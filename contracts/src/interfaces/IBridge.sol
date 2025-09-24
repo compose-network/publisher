@@ -7,7 +7,6 @@ interface IBridge {
     event TokensReceived(address token, uint256 amount);
 
     function send(
-        uint256 chainSrc,
         uint256 chainDest,
         address token,
         address sender,
@@ -19,7 +18,6 @@ interface IBridge {
 
     function receiveTokens(
         uint256 chainSrc,
-        uint256 chainDest,
         address sender,
         address receiver,
         uint256 sessionId,

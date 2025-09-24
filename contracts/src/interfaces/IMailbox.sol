@@ -23,7 +23,6 @@ interface IMailbox {
     function read(
         uint256 chainSrc,
         address sender,
-        address receiver,
         uint256 sessionId,
         bytes calldata label
     ) external view returns (bytes memory message);

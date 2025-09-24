@@ -3,18 +3,16 @@ pragma solidity 0.8.30;
 
 interface IPingPong {
     function ping(
-        uint256 chainSrc,
-        uint256 chainDest,
-        address sender,
-        address receiver,
+        uint256 otherChain,
+        address pongSender,
+        address pingReceiver,
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory message);
     function pong(
-        uint256 chainSrc,
-        uint256 chainDest,
-        address sender,
-        address receiver,
+        uint256 otherChain,
+        address pingSender,
+        address pongReceiver,
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory message);
