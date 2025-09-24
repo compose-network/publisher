@@ -26,7 +26,7 @@ func TestBuildPublishCalldataComputesHashWhenMissing(t *testing.T) {
 		Hash:       common.Hash{},
 	}
 
-	calldata, err := binding.BuildPublishWithProofCalldata(t.Context(), sb, []byte{0x01}, nil, "")
+	calldata, err := binding.BuildPublishWithProofCalldata(t.Context(), sb, []byte{0x01}, nil)
 	if err != nil {
 		t.Fatalf("calldata error: %v", err)
 	}
