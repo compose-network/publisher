@@ -58,8 +58,6 @@ contract Mailbox is IMailbox {
 
     /// @notice
     address public immutable COORDINATOR;
-    /// @notice The chain ID of this rollup.
-    uint256 public immutable CHAIN_ID;
     /// Chain-specific inbox and outbox roots
     /// @notice List of chain IDs with messages in the inbox
     uint256[] public chainIDsInbox;
@@ -87,23 +85,21 @@ contract Mailbox is IMailbox {
 
     /// @notice constructor to initialize the authorized coordinator and chain ID
     /// @param _coordinator the address of the coordinator
-    /// @param _chainId the ID of this chain/rollup
-    constructor(address _coordinator, uint256 _chainId) {
+    constructor(address _coordinator) {
         COORDINATOR = _coordinator;
-        CHAIN_ID = _chainId;
     }
 
     /// @notice creates the key for the inbox and outbox
-    /// @param chainSrc identifier of the source chain
-    /// @param chainDest identifier of the destination chain
+    /// @param chainMessageSender identifier of the source chain
+    /// @param chainMessageRecipient identifier of the destination chain
     /// @param sender address of the sender
     /// @param receiver address of the recipient
     /// @param sessionId identifier of the user session
     /// @param label label to be able to differentiate between different operations within a same session.
     /// @return key the key in the form of a hash
     function getKey(
-        uint256 chainSrc,
-        uint256 chainDest,
+        uint256 chainMessageSender,
+        uint256 chainMessageRecipient,
         address sender,
         address receiver,
         uint256 sessionId,
@@ -111,8 +107,8 @@ contract Mailbox is IMailbox {
     ) public pure returns (bytes32 key) {
         key = keccak256(
             abi.encodePacked(
-                chainSrc,
-                chainDest,
+                chainMessageSender,
+                chainMessageRecipient,
                 sender,
                 receiver,
                 sessionId,
@@ -123,24 +119,22 @@ contract Mailbox is IMailbox {
 
     /// @notice read messages from the inbox
     /// @dev messages from the inbox can be read by any contract any number of times.
-    /// @param chainSrc identifier of the source chain
+    /// @param chainMessageSender identifier of the chain that sent a message
     /// @param sender address of the sender on the source chain
-    /// @param receiver address of the recipient on the destination chain
     /// @param sessionId identifier of the user session
     /// @param label label to be able to differentiate between different operations within a same session.
     /// @return message the message data
     function read(
-        uint256 chainSrc,
+        uint256 chainMessageSender,
         address sender,
-        address receiver,
         uint256 sessionId,
         bytes calldata label
     ) external view returns (bytes memory message) {
         bytes32 key = getKey(
-            chainSrc,
-            CHAIN_ID,
+            chainMessageSender, // other chain is the sender
+            block.chainid, // this chain is receiver
             sender,
-            receiver,
+            msg.sender,
             sessionId,
             label
         );
@@ -154,21 +148,21 @@ contract Mailbox is IMailbox {
 
     /// @notice write messages to the outbox
     /// @dev any contract can write to the outbox; sender is populated automatically using msg.sender.
-    /// @param chainDest identifier of the destination chain
+    /// @param chainMessageRecipient identifier of the destination chain
     /// @param receiver address of the recipient on the destination chain
     /// @param sessionId identifier of the user session
     /// @param label label to be able to differentiate between different operations within a same session.
     /// @param data the data to write
     function write(
-        uint256 chainDest,
+        uint256 chainMessageRecipient,
         address receiver,
         uint256 sessionId,
         bytes calldata label,
         bytes calldata data
     ) external {
         bytes32 key = getKey(
-            CHAIN_ID,
-            chainDest,
+            block.chainid,  // this chain is the message sender
+            chainMessageRecipient, // other chain is the recipient
             msg.sender,
             receiver,
             sessionId,
@@ -178,8 +172,8 @@ contract Mailbox is IMailbox {
         createdKeys[key] = true;
         messageHeaderListOutbox.push(
             MessageHeader(
-                CHAIN_ID,
-                chainDest,
+                block.chainid,
+                chainMessageRecipient,
                 msg.sender,
                 receiver,
                 sessionId,
@@ -190,24 +184,24 @@ contract Mailbox is IMailbox {
         emit NewOutboxKey(messageHeaderListOutbox.length - 1, key);
 
         // Update chain-specific outbox root
-        if (outboxRootPerChain[chainDest] == bytes32(0)) {
-            chainIDsOutbox.push(chainDest);
+        if (outboxRootPerChain[chainMessageRecipient] == bytes32(0)) {
+            chainIDsOutbox.push(chainMessageRecipient);
         }
-        outboxRootPerChain[chainDest] = keccak256(
-            abi.encode(outboxRootPerChain[chainDest], key, data)
+        outboxRootPerChain[chainMessageRecipient] = keccak256(
+            abi.encode(outboxRootPerChain[chainMessageRecipient], key, data)
         );
     }
 
     /// @notice write messages to the inbox - onlyCoordinator
     /// @dev the inboxes are filled with the messages computed by the Coordinator.
-    /// @param chainSrc identifier of the source chain
+    /// @param chainMessageSender identifier of the source chain
     /// @param sender address of the sender on the source chain
     /// @param receiver address of the recipient on the destination chain
     /// @param sessionId identifier of the user session
     /// @param label label to be able to differentiate between different operations within a same session.
     /// @param data the data to write
     function putInbox(
-        uint256 chainSrc,
+        uint256 chainMessageSender,
         address sender,
         address receiver,
         uint256 sessionId,
@@ -215,8 +209,8 @@ contract Mailbox is IMailbox {
         bytes calldata data
     ) external onlyCoordinator {
         bytes32 key = getKey(
-            chainSrc,
-            CHAIN_ID,
+            chainMessageSender,  // message is incoming from another chain
+            block.chainid,  // this chain is the message recipient
             sender,
             receiver,
             sessionId,
@@ -225,17 +219,17 @@ contract Mailbox is IMailbox {
         inbox[key] = data;
         createdKeys[key] = true;
         messageHeaderListInbox.push(
-            MessageHeader(chainSrc, CHAIN_ID, sender, receiver, sessionId, label)
+            MessageHeader(chainMessageSender, block.chainid, sender, receiver, sessionId, label)
         );
 
         emit NewInboxKey(messageHeaderListInbox.length - 1, key);
 
         // Update chain-specific inbox root
-        if (inboxRootPerChain[chainSrc] == bytes32(0)) {
-            chainIDsInbox.push(chainSrc);
+        if (inboxRootPerChain[chainMessageSender] == bytes32(0)) {
+            chainIDsInbox.push(chainMessageSender);
         }
-        inboxRootPerChain[chainSrc] = keccak256(
-            abi.encode(inboxRootPerChain[chainSrc], key, data)
+        inboxRootPerChain[chainMessageSender] = keccak256(
+            abi.encode(inboxRootPerChain[chainMessageSender], key, data)
         );
     }
 
