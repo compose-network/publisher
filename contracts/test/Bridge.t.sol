@@ -4,8 +4,8 @@ pragma solidity 0.8.30;
 import { Setup } from "@ssv/test/Setup.t.sol";
 
 contract BridgeTest is Setup {
-    uint256 internal constant chainA = 1;
-    uint256 internal constant chainB = 2;
+    uint256 internal thisChain = block.chainid;
+    uint256 internal otherChain = 2;
 
     /// @dev Tests sending tokens from chain A to chain B (burning tokens on chain A and putting a message to outbox)
     function testSend() public {
@@ -17,8 +17,7 @@ contract BridgeTest is Setup {
 
         // send tokens to a bridge on chain B
         bridge.send(
-            chainA, // source chain id
-            chainB, // destination chain id
+            otherChain, // destination chain id
             address(myToken), // token address
             DEPLOYER, // sender of tokens
             COORDINATOR, // receiver of tokens on dest chain
@@ -30,10 +29,10 @@ contract BridgeTest is Setup {
 
         // compute the expected key for the outbox message
         bytes32 key = mailbox.getKey(
-            chainA, // source chain id
-            chainB, // dest chain id
+            thisChain, // source chain id
+            otherChain, // dest chain id
             address(bridge), // sender of the message is bridge contract
-            COORDINATOR, // receiver address
+            mockDestBridge, // receiver address
             1, // session ID
             "SEND" // label
         );
@@ -65,9 +64,9 @@ contract BridgeTest is Setup {
         // put the message in inbox (from chain B)
         vm.prank(COORDINATOR);
         mailbox.putInbox(
-            chainB, // source chain id
+            otherChain, // source chain id
             mockSrcBridge, // sender address is source bridge
-            receiver, // receiver address
+            address(bridge), // receiver address
             1, // session ID
             "SEND", // label
             data // data
@@ -77,8 +76,7 @@ contract BridgeTest is Setup {
 
         // receive tokens on chain A
         (address receivedToken, uint256 receivedAmount) = bridge.receiveTokens(
-            chainB, // source chain id (tokens incoming from chain B)
-            chainA, // dest chain id (tokens were send to chain A)
+            otherChain, // source chain id (tokens incoming from chain B)
             sender, // original sender of tokens
             receiver, // receiver address
             1, // session ID
@@ -97,10 +95,10 @@ contract BridgeTest is Setup {
 
         // compute ACK key in outbox to check OK response
         bytes32 ackKey = mailbox.getKey(
-            chainA, // source chain (now chain A because reporting status back to chain B)
-            chainB, // dest chain id (original source of tokens)
+            thisChain, // source chain (now chain A because reporting status back to chain B)
+            otherChain, // dest chain id (original source of tokens)
             address(bridge), // sender address (current bridge on chain A)
-            sender, // receiver for ACK (original sender from chain B)
+            mockSrcBridge, // receiver for ACK (original source bridge)
             1, // session id
             "ACK SEND" // label
         );
@@ -119,22 +117,20 @@ contract BridgeTest is Setup {
         vm.prank(COORDINATOR);
 
         // put a mock ACK message in inbox from some dest chain
-        mailbox.putInbox(
-            chainB, // source (dest chain for ACK)
+        mailbox.putInbox( // bridge on other chain sent OK status
+            otherChain, // source (dest chain for ACK)
             mockDestBridge, // sender (dest bridge)
-            DEPLOYER, // receiver (original sender)
+            address(bridge), // receiver (source bridge)
             1, // session id
             "ACK SEND", // label
             abi.encode("OK") // data
         );
 
+        vm.prank(DEPLOYER);
         bytes memory ack = bridge.checkAck(
-            chainA, // original source chain id
-            chainB, // original dest chain id
-            DEPLOYER, // original sender
-            COORDINATOR, // original receiver
-            1, // session ID
-            mockDestBridge // dest bridge
+            otherChain, // original source chain id
+            mockDestBridge, // original sender
+            1 // session ID
         );
 
         assertEq(ack, abi.encode("OK"), "ACK should match");
@@ -148,8 +144,7 @@ contract BridgeTest is Setup {
 
         vm.expectRevert("Should be the real sender");
         bridge.send(
-            chainA,
-            chainB,
+            otherChain,
             address(myToken),
             DEPLOYER,
             COORDINATOR,
@@ -168,8 +163,7 @@ contract BridgeTest is Setup {
 
         vm.expectRevert("Only receiver can claim");
         bridge.receiveTokens(
-            chainB,
-            chainA,
+            otherChain,
             DEPLOYER,
             COORDINATOR,
             1,
@@ -186,8 +180,7 @@ contract BridgeTest is Setup {
 
         vm.expectRevert();
         bridge.receiveTokens(
-            chainB,
-            chainA,
+            otherChain,
             DEPLOYER,
             COORDINATOR,
             1,
@@ -210,9 +203,9 @@ contract BridgeTest is Setup {
         );
 
         mailbox.putInbox(
-            chainB,
+            otherChain,
             mockSrcBridge,
-            COORDINATOR,
+            address(bridge),
             1,
             "SEND",
             wrongData
@@ -222,8 +215,7 @@ contract BridgeTest is Setup {
 
         vm.expectRevert("The sender should match");
         bridge.receiveTokens(
-            chainB,
-            chainA,
+            otherChain,
             DEPLOYER,
             COORDINATOR,
             1,

@@ -13,8 +13,7 @@ contract Bridge is IBridge {
     }
 
     /// Send some funds to some address on another chain
-    /// @param chainSrc identifier of the source chain
-    /// @param chainDest identifier of the destination chain
+    /// @param otherChainId identifier of the destination chain
     /// @param token address of the token to be transferred
     /// @param sender address of the sender of the tokens (on the source chain)
     /// @param receiver address of the recipient of the tokens (on the destination chain)
@@ -22,8 +21,7 @@ contract Bridge is IBridge {
     /// @param sessionId identifier of the user session
     /// @param destBridge address of the Bridge contract on the destination chain
     function send(
-        uint256 chainSrc, // Source chain ID
-        uint256 chainDest, // Destination chain ID
+        uint256 otherChainId, // Destination chain ID
         address token, // Token contract address
         address sender, // Sender's address on source
         address receiver, // Receiver's address on dest
@@ -38,14 +36,13 @@ contract Bridge is IBridge {
         bytes memory data = abi.encode(sender, receiver, token, amount);
 
         // Send the message to the dest chain
-        mailbox.write(chainDest, receiver, sessionId, "SEND", data);
+        mailbox.write(otherChainId, destBridge, sessionId, "SEND", data);
 
         emit DataWritten(data);
     }
 
     /// Process funds reception on the destination chain
-    /// @param chainSrc source chain identifier the funds are sent from
-    /// @param chainDest dest chain identifier the funds are sent to
+    /// @param otherChainId source chain identifier the funds are sent from
     /// @param sender address of the sender of the funds
     /// @param receiver address of the receiver of the funds
     /// @param sessionId identifier of the user session
@@ -53,8 +50,7 @@ contract Bridge is IBridge {
     /// @return token address of the token that was transferred
     /// @return amount amount of tokens transferred
     function receiveTokens(
-        uint256 chainSrc, // Source chain ID
-        uint256 chainDest, // Dest chain ID
+        uint256 otherChainId, // Source chain ID
         address sender, // Original sender
         address receiver, // Receiver on this chain
         uint256 sessionId, // Session ID
@@ -64,9 +60,8 @@ contract Bridge is IBridge {
 
         // Read the message from mailbox
         bytes memory m = mailbox.read(
-            chainSrc,
-            srcBridge,
-            receiver,
+            otherChainId,
+            srcBridge,  // sender is address from other chain, receiver is this bridge
             sessionId,
             "SEND"
         );
@@ -85,12 +80,12 @@ contract Bridge is IBridge {
         );
 
         require(readSender == sender, "The sender should match");
-        require(readReceiver == receiver, "The receiver should match");
+        require(readReceiver == receiver, "Receiver mismatch");
 
         IToken(token).mint(receiver, amount);
 
         m = abi.encode("OK");
-        mailbox.write(chainSrc, sender, sessionId, "ACK SEND", m);
+        mailbox.write(otherChainId, srcBridge, sessionId, "ACK SEND", m);
 
         emit TokensReceived(token, amount);
 
@@ -99,14 +94,12 @@ contract Bridge is IBridge {
 
     /// Function to check if ACK is there
     function checkAck(
-        uint256 chainSrc, // Source chain
         uint256 chainDest, // Dest chain
-        address sender, // Original sender
-        address receiver, // Original receiver
-        uint256 sessionId, // Session ID
-        address destBridge // Dest Bridge address
+        address destBridge, // Bridge on dest chain
+        uint256 sessionId // Session ID
     ) external view returns (bytes memory) {
+        // sender is a bridge from other chain, receiver is this bridge
         return
-            mailbox.read(chainDest, destBridge, sender, sessionId, "ACK SEND");
+            mailbox.read(chainDest, destBridge, sessionId, "ACK SEND");
     }
 }
