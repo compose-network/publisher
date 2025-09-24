@@ -8,7 +8,7 @@ This repository provisions two **Compose rollups** ("Rollup A" and "Rollup B") t
 
 The goal of this project is to make it trivial for protocol engineers to:
 1. Deploy or refresh two Compose rollups on Hoodi with minimal manual steps.
-2. Spin them up locally via the `./local` wrapper (which drives Docker Compose under the hood) and test changes to the op-geth fork or shared publisher quickly.
+2. Spin them up locally via the Typer CLI (`compose.py`, which drives Docker Compose under the hood) and test changes to the op-geth fork or shared publisher quickly.
 3. Iterate on the surrounding services while remaining self-contained.
 
 ## Quickstart — Using the Stack
@@ -58,16 +58,16 @@ External repositories **not committed** here (ignored via `.gitignore`):
    - Optional: set `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH` in `.env` to point at existing source checkouts; when provided, the setup flow skips syncing and Docker builds use those paths directly.
 
 2. **Deploy or refresh rollups**
-   - Run `./local up`. On the first invocation it wraps `scripts/setup.sh` (stops any existing stack, wipes `state/`, `networks/`, and `contracts/`, deploys both rollups, builds images, hotpatches op-geth, and leaves the services running). Subsequent runs simply start the stack if artifacts already exist.
+   - Run `.venv/bin/python compose.py up --fresh`. On the first invocation it wraps `scripts/setup.sh` (stops any existing stack, wipes `state/`, `networks/`, and `contracts/`, exports fresh rollup artifacts, and prepares Docker images). With `DEPLOYMENT_TARGET=calldata` the CLI skips launching containers so CI can gather artifacts without touching L1; export `COMPOSE_FORCE_SERVICES=1` if you truly need the stack online, but be aware that op-node/op-batcher/op-proposer expect live Hoodi state (use `DEPLOYMENT_TARGET=live` for sustained runs). Subsequent runs can omit `--fresh` to reuse existing artifacts.
      - We currently pin the helper contracts to the legacy bundle under `../old-contracts` (see `.env: CONTRACTS_SOURCE`). The op-geth hotpatch, CLI samples, and tracer ABIs assume that layout; keep the folder in sync when editing contracts.
-   - To avoid sending L1 transactions (e.g., CI or dry run), export `DEPLOYMENT_TARGET=calldata` before running `./local up`. Artifacts will still be generated using calldata output.
+   - To avoid sending L1 transactions (e.g., CI or dry run), export `DEPLOYMENT_TARGET=calldata` before running the command above. Artifacts will still be generated using calldata output; containers remain stopped unless you also set `COMPOSE_FORCE_SERVICES=1`.
    - The setup pre-funds the `.env` wallet inside the L2 genesis allocs, can top up the account via OptimismPortal deposits, and deploys the Compose helper contracts from `./contracts` once the rollup RPCs are reachable. It wipes `state/`, `networks/`, and `contracts/` automatically each run.
    - `ROLLUP_PRAGUE_TIMESTAMP` / `ROLLUP_ISTHMUS_TIMESTAMP` control when Prague/Isthmus activate; defaults bake them in at genesis so op-node immediately speaks the V4 engine API. The setup also recomputes the execution genesis hash and patches `rollup.json` so the driver and engine always agree on the chain root (Go module/cache persisted under `.cache/genesis-go`, override via `GENESIS_HASH_CACHE_DIR`).
    - After contract deployment, helper addresses (Mailbox, PingPong, MyToken, Bridge) are written back into op-geth’s tracer and sample CLIs. The setup logs `[setup] helper contract hotpatch: updated` when it applies the patch. This is temporary until the upstream repos expose proper configuration hooks.
    - Deposits (if enabled) ride the live Hoodi L1. Expect several minutes for balances to update; adjust `ROLLUP_DEPOSIT_WAIT_*` if you need a longer polling window.
 
 3. **Operate the local stack**
-   - Use `./local status` to confirm container health, publisher readiness, and the latest L2 block numbers (1–2 s timeouts so failures return quickly).
+   - Use `.venv/bin/python compose.py status` to confirm container health, publisher readiness, and the latest L2 block numbers (1–2 s timeouts so failures return quickly). In calldata mode without `COMPOSE_FORCE_SERVICES`, the command reports that services are intentionally disabled.
    - Endpoints:
      - Shared publisher: TCP `18080`, HTTP `18081`.
      - Rollup A: HTTP `18545`, WS `18546`, auth `18551`, compose mailbox `19898`, op-node RPC `19545`, batcher `18548`, proposer `18560`.
@@ -76,13 +76,13 @@ External repositories **not committed** here (ignored via `.gitignore`):
 
 4. **Iterate on op-geth or other services**
    - Modify code under `services/op-geth/`, `services/rollup-shared-publisher/`, or `services/optimism/` (or the directories pointed to by `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH`).
-   - Rebuild and restart targeted services with `./local deploy op-geth`, `./local deploy publisher`, `./local deploy blockscout`, or `./local deploy all` (uses short RPC waits to confirm readiness).
-   - Need to redeploy contracts after changing them? Update the sources and rerun `./local up` (or invoke `scripts/setup.sh` directly) to broadcast the new bytecode.
+   - Rebuild and restart targeted services with `.venv/bin/python compose.py deploy op-geth`, `.venv/bin/python compose.py deploy publisher`, `.venv/bin/python compose.py deploy blockscout`, or `.venv/bin/python compose.py deploy` (uses short RPC waits to confirm readiness).
+   - Need to redeploy contracts after changing them? Update the sources and rerun `.venv/bin/python compose.py up --fresh` (or invoke `scripts/setup.sh` directly) to broadcast the new bytecode.
 
 5. **Resetting the environment**
-   - Run `./local down` to stop containers while keeping volumes.
-   - Use `./local purge --force` for a clean slate (removes `state/`, `networks/`, `.cache/genesis-go`, and the generated subfolders under `contracts/`). Follow with `./local up` to redeploy.
-   - The shared publisher keeps no persistent volume; `./local deploy publisher` is enough to pick up source changes.
+   - Run `.venv/bin/python compose.py down` to stop containers while keeping volumes.
+   - Use `.venv/bin/python compose.py purge --force` for a clean slate (removes `state/`, `networks/`, `.cache/genesis-go`, and the generated subfolders under `contracts/`). Follow with `.venv/bin/python compose.py up --fresh` to redeploy.
+   - The shared publisher keeps no persistent volume; `.venv/bin/python compose.py deploy publisher` is enough to pick up source changes.
 
 ## Testing & Verification Tips
 - **Rollup liveness**: query `eth_blockNumber` on ports `18545` and `28545`. Block numbers should advance every few seconds; `docker logs op-node-{a,b}` also shows rollup progress.
@@ -105,10 +105,10 @@ External repositories **not committed** here (ignored via `.gitignore`):
 ## Support Checklist for New Agents
 1. Confirm `.env` has valid Hoodi endpoints and a funded private key.
 2. Ensure the service checkouts exist (`services/optimism`, `services/op-geth`, `services/rollup-shared-publisher`); `scripts/setup.sh` will populate them automatically when they are missing.
-3. Run `./local up` (set `DEPLOYMENT_TARGET=calldata` in the environment if L1 access is unavailable).
-4. Confirm the stack is healthy via `./local status` (should report advancing blocks and a `200` publisher health code).
+3. Run `.venv/bin/python compose.py up --fresh` (set `DEPLOYMENT_TARGET=calldata` in the environment if L1 access is unavailable).
+4. Confirm the stack is healthy via `.venv/bin/python compose.py status` (should report advancing blocks and a `200` publisher health code).
 5. Inspect `networks/rollup-*/contracts.json` for the deployed helper addresses. Both rollups receive the exact same Mailbox, PingPong, MyToken, and Bridge addresses.
-6. Iterate on code and rebuild targeted services with `./local deploy <target>`.
+6. Iterate on code and rebuild targeted services with `.venv/bin/python compose.py deploy <target>`.
 7. Share updates by amending README/AGENTS with any notable changes.
 
 ## Workflow Toolkit

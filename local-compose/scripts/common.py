@@ -1,0 +1,285 @@
+from __future__ import annotations
+
+import json
+import logging
+import os
+import shutil
+import subprocess
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Dict, Iterable, Mapping, Optional, Sequence
+
+from dotenv import dotenv_values
+from rich.console import Console
+from rich.logging import RichHandler
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_COMPOSE_TARGETS = (
+    "rollup-shared-publisher",
+    "op-geth-a",
+    "op-geth-b",
+    "op-node-a",
+    "op-node-b",
+    "op-batcher-a",
+    "op-batcher-b",
+    "op-proposer-a",
+    "op-proposer-b",
+)
+
+console = Console()
+_logger_configured = False
+
+
+def configure_logging(verbose: bool = False) -> None:
+    global _logger_configured
+    if _logger_configured:
+        return
+    level = logging.DEBUG if verbose else logging.INFO
+    handler = RichHandler(console=console, show_time=False, show_path=False)
+    logging.basicConfig(level=level, handlers=[handler])
+    _logger_configured = True
+
+
+def get_logger(name: str | None = None) -> logging.Logger:
+    configure_logging()
+    return logging.getLogger(name or "compose")
+
+
+def ensure_executable(binary: str) -> None:
+    if shutil.which(binary) is None:
+        raise RuntimeError(f"Required executable '{binary}' not found in PATH")
+
+
+def run(
+    args: Sequence[str],
+    *,
+    env: Optional[Mapping[str, str]] = None,
+    cwd: Optional[Path] = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    get_logger().debug("running %s", " ".join(args))
+    return subprocess.run(
+        list(args),
+        cwd=cwd or ROOT_DIR,
+        env=_merged_env(env),
+        check=check,
+        text=True,
+    )
+
+
+def capture(
+    args: Sequence[str],
+    *,
+    env: Optional[Mapping[str, str]] = None,
+    cwd: Optional[Path] = None,
+    check: bool = True,
+) -> str:
+    get_logger().debug("capturing %s", " ".join(args))
+    result = subprocess.run(
+        list(args),
+        cwd=cwd or ROOT_DIR,
+        env=_merged_env(env),
+        check=check,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout
+
+
+def docker_compose(
+    *compose_args: str,
+    env: Optional[Mapping[str, str]] = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    ensure_executable("docker")
+    ensure_executable("docker-compose") if shutil.which("docker-compose") else None
+    return run(("docker", "compose", *compose_args), env=env, check=check)
+
+
+def load_env(required: bool = True) -> Dict[str, str]:
+    env_path = ROOT_DIR / ".env"
+    toolkit_path = ROOT_DIR / "toolkit.env"
+
+    if not env_path.exists():
+        if required:
+            raise FileNotFoundError("Missing .env file")
+        return {}
+
+    env: Dict[str, str] = {
+        key: value
+        for key, value in dotenv_values(env_path).items()
+        if value is not None
+    }
+
+    # Allow environment variables to override .env entries for ad-hoc runs.
+    for key, value in os.environ.items():
+        if key in env:
+            env[key] = value
+
+    if toolkit_path.exists():
+        env.update({
+            key: value
+            for key, value in dotenv_values(toolkit_path).items()
+            if value is not None
+        })
+
+    return env
+
+
+def _merged_env(extra: Optional[Mapping[str, str]]) -> Dict[str, str]:
+    merged = dict(os.environ)
+    if extra:
+        merged.update(extra)
+    return merged
+
+
+def is_bootstrapped() -> bool:
+    rollup_dir = ROOT_DIR / "networks"
+    return (
+        rollup_dir.joinpath("rollup-a", "rollup.json").exists()
+        and rollup_dir.joinpath("rollup-b", "rollup.json").exists()
+    )
+
+
+def existing_services() -> Iterable[str]:
+    result = capture(("docker", "compose", "ps", "--all", "--services"), check=False)
+    return tuple(line.strip() for line in result.splitlines() if line.strip())
+
+
+def running_services() -> Iterable[str]:
+    result = capture(("docker", "compose", "ps", "--status", "running", "--services"), check=False)
+    return tuple(line.strip() for line in result.splitlines() if line.strip())
+
+
+def remove_paths(*paths: Path) -> None:
+    for path in paths:
+        if path.exists():
+            get_logger().debug("removing %s", path)
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+            except PermissionError:
+                _remove_with_docker(path)
+            except OSError as exc:
+                get_logger().warning("Failed to remove %s: %s", path, exc)
+
+
+def _remove_with_docker(path: Path) -> None:
+    get_logger().debug("Attempting docker-assisted removal of %s", path)
+    parent = path.parent
+    target = path.name
+    if not parent.exists():
+        return
+    cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{parent}:/workspace",
+        "alpine:3",
+        "sh",
+        "-c",
+        f"rm -rf /workspace/{target}",
+    ]
+    try:
+        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as exc:  # noqa: BLE001
+        get_logger().warning("Docker-assisted removal failed for %s: %s", path, exc)
+
+
+def summary_table(title: str, rows: Iterable[Sequence[str]]) -> str:
+    rows_list = [tuple(str(column) for column in columns) for columns in rows]
+    if not rows_list:
+        return f"{title}\n"
+
+    column_count = max(len(row) for row in rows_list)
+    widths = [0] * column_count
+    for row in rows_list:
+        for idx in range(column_count):
+            value = row[idx] if idx < len(row) else ""
+            widths[idx] = max(widths[idx], len(value))
+
+    def border(left: str, fill: str, junction: str, right: str) -> str:
+        parts = [fill * (w + 2) for w in widths]
+        return left + junction.join(parts) + right
+
+    def data_row(row: Sequence[str]) -> str:
+        cells = []
+        for idx in range(column_count):
+            value = row[idx] if idx < len(row) else ""
+            cells.append(f" {value.ljust(widths[idx])} ")
+        return "┃" + "│".join(cells) + "┃"
+
+    top = border("┏", "━", "┳", "┓")
+    middle = border("┣", "━", "╋", "┫")
+    bottom = border("┗", "━", "┻", "┛")
+
+    lines = [title, top]
+    first = True
+    for row in rows_list:
+        if not first:
+            lines.append(middle)
+        lines.append(data_row(row))
+        first = False
+    lines.append(bottom)
+
+    return "\n".join(lines) + "\n"
+
+
+def eth_block_number(url: str, timeout: float = 2.0) -> Optional[int]:
+    payload = json.dumps(
+        {"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber", "params": []}
+    ).encode()
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.load(response)
+    except (OSError, ValueError, urllib.error.URLError):
+        return None
+    result = data.get("result")
+    if isinstance(result, str) and result.startswith("0x"):
+        try:
+            return int(result, 16)
+        except ValueError:
+            return None
+    return None
+
+
+def http_status(url: str, timeout: float = 2.0) -> Optional[int]:
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except (OSError, urllib.error.URLError):
+        return None
+
+
+__all__ = [
+    "ROOT_DIR",
+    "DEFAULT_COMPOSE_TARGETS",
+    "console",
+    "configure_logging",
+    "get_logger",
+    "ensure_executable",
+    "run",
+    "capture",
+    "docker_compose",
+    "load_env",
+    "is_bootstrapped",
+    "existing_services",
+    "running_services",
+    "remove_paths",
+    "summary_table",
+    "eth_block_number",
+    "http_status",
+]

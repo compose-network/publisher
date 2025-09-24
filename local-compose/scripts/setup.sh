@@ -6,6 +6,108 @@ source "$ROOT_DIR/scripts/lib.sh"
 
 load_env
 
+SCRIPT_START_TS=$(date +%s)
+declare -a TIMING_LOG=()
+
+format_duration() {
+  local total=${1:-0}
+  if (( total < 0 )); then
+    total=0
+  fi
+  local hours=$((total / 3600))
+  local mins=$(((total % 3600) / 60))
+  local secs=$((total % 60))
+  if (( hours > 0 )); then
+    printf '%02d:%02d:%02d' "$hours" "$mins" "$secs"
+  else
+    printf '%02d:%02d' "$mins" "$secs"
+  fi
+}
+
+record_timing() {
+  local label=$1
+  local seconds=$2
+  local status=$3
+  TIMING_LOG+=("$label|$seconds|$status")
+}
+
+with_step() {
+  local label=$1
+  shift
+  local start_ts
+  start_ts=$(date +%s)
+  log "[timer][start] $label"
+  if ! "$@"; then
+    local status=$?
+    local end_ts
+    end_ts=$(date +%s)
+    local duration=$((end_ts - start_ts))
+    local formatted
+    formatted=$(format_duration "$duration")
+    log "[timer][fail] $label (${formatted} | ${duration}s)"
+    record_timing "$label" "$duration" "fail"
+    return $status
+  fi
+  local end_ts
+  end_ts=$(date +%s)
+  local duration=$((end_ts - start_ts))
+  local formatted
+  formatted=$(format_duration "$duration")
+  log "[timer][done] $label (${formatted} | ${duration}s)"
+  record_timing "$label" "$duration" "ok"
+  return 0
+}
+
+with_step_capture() {
+  local var_name=$1
+  shift
+  local label=$1
+  shift
+  local start_ts
+  start_ts=$(date +%s)
+  log "[timer][start] $label"
+  local output
+  if ! output=$("$@" 2>&1); then
+    local status=$?
+    local end_ts
+    end_ts=$(date +%s)
+    local duration=$((end_ts - start_ts))
+    local formatted
+    formatted=$(format_duration "$duration")
+    log "[timer][fail] $label (${formatted} | ${duration}s)"
+    printf '%s' "$output" >&2
+    record_timing "$label" "$duration" "fail"
+    return $status
+  fi
+  local end_ts
+  end_ts=$(date +%s)
+  local duration=$((end_ts - start_ts))
+  local formatted
+  formatted=$(format_duration "$duration")
+  printf -v "$var_name" '%s' "$output"
+  log "[timer][done] $label (${formatted} | ${duration}s)"
+  record_timing "$label" "$duration" "ok"
+  return 0
+}
+
+print_timing_summary() {
+  local end_ts
+  end_ts=$(date +%s)
+  local total_duration=$((end_ts - SCRIPT_START_TS))
+  local formatted_total
+  formatted_total=$(format_duration "$total_duration")
+  log "[timer][summary] total (${formatted_total} | ${total_duration}s)"
+  local entry
+  for entry in "${TIMING_LOG[@]}"; do
+    IFS='|' read -r label seconds status <<<"$entry"
+    local formatted
+    formatted=$(format_duration "$seconds")
+    log "[timer][summary] ${status^^} - $label (${formatted} | ${seconds}s)"
+  done
+}
+
+trap print_timing_summary EXIT
+
 DEFAULT_SEQUENCER_PRIVATE_KEY=0x1111111111111111111111111111111111111111111111111111111111111111
 DEFAULT_SEQUENCER_ADDRESS=0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a
 SEQUENCER_PRIVATE_KEY=${SEQUENCER_PRIVATE_KEY:-$DEFAULT_SEQUENCER_PRIVATE_KEY}
@@ -740,6 +842,466 @@ PYCOMPARE
   fi
 
   log "Contract deployment finished"
+}
+
+augment_op_deployer_allocs() {
+  python3 - <<'PYGENESIS'
+import base64
+import gzip
+import json
+import os
+import sys
+
+state_path = os.path.join(os.environ['STATE_DIR'], 'state.json')
+addr = os.environ.get('WALLET_ADDRESS_NORM', '').lower()
+seq_addr = os.environ.get('SEQUENCER_ADDRESS_NORM', '').lower()
+amount_raw = os.environ.get('ROLLUP_ACCOUNT_GENESIS_BALANCE_WEI', '0')
+
+try:
+    amount = int(amount_raw, 0)
+except ValueError:
+    print(f"Invalid ROLLUP_ACCOUNT_GENESIS_BALANCE_WEI: {amount_raw}", file=sys.stderr)
+    sys.exit(1)
+
+addresses = []
+if addr:
+    addresses.append(addr)
+if seq_addr and seq_addr not in addresses:
+    addresses.append(seq_addr)
+
+if amount > 0 and addresses:
+    with open(state_path) as f:
+        state = json.load(f)
+
+    allocs_hex = hex(amount)
+    updated = False
+
+    for deployment in state.get('opChainDeployments', []):
+        raw = base64.b64decode(deployment['allocs'])
+        allocs = json.loads(gzip.decompress(raw))
+        for address in addresses:
+            if allocs.get(address) != {'balance': allocs_hex}:
+                allocs[address] = {'balance': allocs_hex}
+                deployment['allocs'] = base64.b64encode(
+                    gzip.compress(json.dumps(allocs, separators=(',', ':')).encode('utf-8'))
+                ).decode('utf-8')
+                updated = True
+
+    if updated:
+        with open(state_path, 'w') as f:
+            json.dump(state, f, indent=2)
+PYGENESIS
+}
+
+export_chain_addresses() {
+  python3 - <<'PYADDR'
+import json
+import os
+from pathlib import Path
+
+state_path = Path(os.environ['STATE_DIR']) / 'state.json'
+try:
+    state = json.loads(state_path.read_text())
+except FileNotFoundError:
+    state = {}
+chains = {}
+for chain in state.get('opChainDeployments') or []:
+    chains[chain['id'].lower()] = chain
+
+rollups = {
+    os.environ['ROLLUP_A_ID_HEX'].lower(): Path(os.environ['ROLLUP_A_DIR']),
+    os.environ['ROLLUP_B_ID_HEX'].lower(): Path(os.environ['ROLLUP_B_DIR']),
+}
+
+patch_genesis_file() {
+  local path=$1
+  python3 - <<'PYGENFILE' "$path"
+import json
+import os
+import sys
+
+path = sys.argv[1]
+addr = os.environ.get('WALLET_ADDRESS_NORM', '').lower()
+amount_raw = os.environ.get('ROLLUP_ACCOUNT_GENESIS_BALANCE_WEI', '0')
+
+try:
+    amount = int(amount_raw, 0)
+except ValueError:
+    print(f"Invalid ROLLUP_ACCOUNT_GENESIS_BALANCE_WEI: {amount_raw}", file=sys.stderr)
+    sys.exit(1)
+
+if amount <= 0 or not addr:
+    sys.exit(0)
+
+with open(path) as f:
+    genesis = json.load(f)
+
+alloc = genesis.setdefault('alloc', {})
+entry = alloc.setdefault(addr.lower(), {})
+entry['balance'] = hex(amount)
+
+def parse_timestamp(env_name, fallback):
+    raw = os.environ.get(env_name, str(fallback))
+    try:
+        return int(raw, 0)
+    except ValueError as exc:
+        print(f"Invalid {env_name}: {raw}", file=sys.stderr)
+        raise exc
+
+prague_ts = parse_timestamp('ROLLUP_PRAGUE_TIMESTAMP', 0)
+isthmus_ts = parse_timestamp('ROLLUP_ISTHMUS_TIMESTAMP', prague_ts)
+
+config = genesis.setdefault('config', {})
+config['pragueTime'] = prague_ts
+config['isthmusTime'] = isthmus_ts
+
+with open(path, 'w') as f:
+    json.dump(genesis, f, indent=2)
+PYGENFILE
+}
+
+patch_rollup_file() {
+  local path=$1
+  local genesis_hash=$2
+  GENESIS_HASH="$genesis_hash" python3 - <<'PYROLLUP' "$path"
+import json
+import os
+import sys
+
+path = sys.argv[1]
+
+def parse_timestamp(env_name, fallback):
+    raw = os.environ.get(env_name, str(fallback))
+    try:
+        return int(raw, 0)
+    except ValueError as exc:
+        print(f"Invalid {env_name}: {raw}", file=sys.stderr)
+        raise exc
+
+prague_ts = parse_timestamp('ROLLUP_PRAGUE_TIMESTAMP', 0)
+isthmus_ts = parse_timestamp('ROLLUP_ISTHMUS_TIMESTAMP', prague_ts)
+
+with open(path) as f:
+    rollup = json.load(f)
+
+rollup['isthmus_time'] = isthmus_ts
+genesis = rollup.setdefault('genesis', {})
+l2 = genesis.setdefault('l2', {})
+hash_from_env = os.environ.get('GENESIS_HASH')
+if hash_from_env:
+    l2['hash'] = hash_from_env
+
+with open(path, 'w') as f:
+    json.dump(rollup, f, indent=2)
+PYROLLUP
+}
+
+ensure_auth_files() {
+  local target_dir=$1
+  if [[ ! -f "${target_dir}/jwt.txt" ]]; then
+    python3 - <<'PYJWT' > "${target_dir}/jwt.txt"
+import secrets
+print(secrets.token_hex(32))
+PYJWT
+  fi
+
+  if [[ ! -f "${target_dir}/password.txt" ]]; then
+    printf '\n' > "${target_dir}/password.txt"
+  fi
+}
+
+prepare_chain_artifacts() {
+  local label=$1
+  local chain_id=$2
+  local target_dir=$3
+
+  with_step "op-deployer inspect genesis (${label})" docker run --rm $DOCKER_USER_FLAG \
+    -v "${STATE_DIR}:/work" \
+    -w /work \
+    -e HOME=/work \
+    -e DEPLOYER_CACHE_DIR=/work/.cache \
+    "${OP_DEPLOYER_IMAGE}" \
+    inspect genesis "${chain_id}" > "${target_dir}/genesis.json"
+
+  with_step "Patch rollup genesis (${label})" patch_genesis_file "${target_dir}/genesis.json"
+
+  local genesis_rel_path
+  genesis_rel_path=$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$target_dir" "$ROOT_DIR")
+  mkdir -p "${GENESIS_HASH_CACHE_DIR}/mod" "${GENESIS_HASH_CACHE_DIR}/build"
+
+  local genesis_hash
+  with_step_capture genesis_hash "Compute execution genesis hash (${label})" docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -v "${OP_GETH_DIR}:/op-geth" \
+    -v "${GENESIS_HASH_CACHE_DIR}/mod:/go/pkg/mod" \
+    -v "${GENESIS_HASH_CACHE_DIR}/build:/root/.cache/go-build" \
+    -w /workspace/scripts/genesis_hash \
+    -e HOME=/tmp/home \
+    -e GOMODCACHE=/go/pkg/mod \
+    -e GOCACHE=/root/.cache/go-build \
+    golang:1.24-alpine \
+    sh -c "set -e; apk add --no-cache git >/dev/null; mkdir -p /tmp/home; go run . /workspace/${genesis_rel_path}/genesis.json"
+  genesis_hash=${genesis_hash//$'\n'/}
+
+  with_step "op-deployer inspect rollup (${label})" docker run --rm $DOCKER_USER_FLAG \
+    -v "${STATE_DIR}:/work" \
+    -w /work \
+    -e HOME=/work \
+    -e DEPLOYER_CACHE_DIR=/work/.cache \
+    "${OP_DEPLOYER_IMAGE}" \
+    inspect rollup "${chain_id}" > "${target_dir}/rollup.json"
+
+  with_step "Patch rollup config (${label})" patch_rollup_file "${target_dir}/rollup.json" "$genesis_hash"
+
+  with_step "Ensure auth artifacts (${label})" ensure_auth_files "$target_dir"
+}
+
+generate_blockscout_configs() {
+  ROOT_DIR="$ROOT_DIR" \
+  ROLLUP_A_RPC_URL_CONTAINER="${ROLLUP_A_RPC_URL_CONTAINER:-}" \
+  ROLLUP_B_RPC_URL_CONTAINER="${ROLLUP_B_RPC_URL_CONTAINER:-}" \
+  ROLLUP_A_WS_URL_CONTAINER="${ROLLUP_A_WS_URL_CONTAINER:-}" \
+  ROLLUP_B_WS_URL_CONTAINER="${ROLLUP_B_WS_URL_CONTAINER:-}" \
+  HOODI_EL_RPC="$HOODI_EL_RPC" \
+  python3 - <<'PYBLOCK'
+import json
+import os
+import secrets
+from pathlib import Path
+from urllib.parse import urlparse, urlunparse
+
+root = Path(os.environ["ROOT_DIR"])
+
+def load_json(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+
+def compute_ws(http_url):
+    if not http_url:
+        return ""
+    parsed = urlparse(http_url)
+    if not parsed.scheme or not parsed.hostname:
+        return ""
+    scheme = "ws" if parsed.scheme == "http" else ("wss" if parsed.scheme == "https" else parsed.scheme)
+    if parsed.port in (None, 80, 443, 8545):
+        ws_port = 8546
+    else:
+        ws_port = parsed.port
+    netloc = parsed.hostname if ws_port in (None, 80, 443) else f"{parsed.hostname}:{ws_port}"
+    return urlunparse(parsed._replace(scheme=scheme, netloc=netloc))
+
+chains = [
+    {
+        "key": "rollup-a",
+        "label": "Rollup A",
+        "suffix": "a",
+        "rpc_http": os.environ.get("ROLLUP_A_RPC_URL_CONTAINER", "http://op-geth-a:8545"),
+        "rpc_ws_env": "ROLLUP_A_WS_URL_CONTAINER",
+    },
+    {
+        "key": "rollup-b",
+        "label": "Rollup B",
+        "suffix": "b",
+        "rpc_http": os.environ.get("ROLLUP_B_RPC_URL_CONTAINER", "http://op-geth-b:8545"),
+        "rpc_ws_env": "ROLLUP_B_WS_URL_CONTAINER",
+    },
+]
+
+l1_rpc = os.environ.get("HOODI_EL_RPC", "")
+
+for chain in chains:
+    base_dir = root / "networks" / chain["key"]
+    rollup_path = base_dir / "rollup.json"
+    if not rollup_path.exists():
+        continue
+
+    addresses_path = base_dir / "addresses.json"
+    addresses = load_json(addresses_path)
+    rollup = load_json(rollup_path)
+
+    chain_id = rollup.get("l2_chain_id")
+    if chain_id is None:
+        continue
+
+    rpc_http = chain["rpc_http"]
+    ws_override = os.environ.get(chain.get("rpc_ws_env", ""))
+    rpc_ws = ws_override or compute_ws(rpc_http)
+
+    system_config = addresses.get("SYSTEM_CONFIG") or rollup.get("l1_system_config_address")
+    output_oracle = addresses.get("L2_OUTPUT_ORACLE") or ""
+
+    env_path = base_dir / "blockscout.env"
+    existing_values = {}
+    if env_path.exists():
+        for raw_line in env_path.read_text().splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            existing_values[key.strip()] = value.strip()
+
+    secret_key = existing_values.get("SECRET_KEY_BASE") or secrets.token_hex(32)
+
+    env_lines = [
+        "# Autogenerated by scripts/setup.sh",
+        f"CHAIN_ID={chain_id}",
+        f"CHAIN_NAME={chain['label']} Compose",
+        f"NETWORK={chain['label']}",
+        "SUBNETWORK=Compose Rollups",
+        "CHAIN_TYPE=optimism",
+        "ETHEREUM_JSONRPC_VARIANT=geth",
+        "ETHEREUM_JSONRPC_TRANSPORT=http",
+        f"ETHEREUM_JSONRPC_HTTP_URL={rpc_http}",
+        f"ETHEREUM_JSONRPC_TRACE_URL={rpc_http}",
+        f"ETHEREUM_JSONRPC_WS_URL={rpc_ws}",
+        f"DATABASE_URL=postgresql://blockscout:blockscout@blockscout-{chain['suffix']}-db:5432/blockscout",
+        f"REDIS_URL=redis://blockscout-{chain['suffix']}-redis:6379/0",
+        f"SECRET_KEY_BASE={secret_key}",
+        "PORT=4000",
+        "POOL_SIZE=40",
+        "POOL_SIZE_API=10",
+        "ECTO_USE_SSL=false",
+        "COIN=ETH",
+        "COIN_NAME=Ether",
+        "API_V1_READ_METHODS_DISABLED=false",
+        "API_V1_WRITE_METHODS_DISABLED=false",
+        "API_RATE_LIMIT_DISABLED=true",
+        "ADMIN_PANEL_ENABLED=false",
+        "DISABLE_WEBAPP=false",
+        "INDEXER_OPTIMISM_L1_DEPOSITS_BATCH_SIZE=500",
+        "INDEXER_OPTIMISM_L1_DEPOSITS_TRANSACTION_TYPE=126",
+        "INDEXER_OPTIMISM_L1_BATCH_BLOCKS_CHUNK_SIZE=4",
+        "INDEXER_OPTIMISM_L2_BATCH_GENESIS_BLOCK_NUMBER=0",
+        "INDEXER_OPTIMISM_L2_WITHDRAWALS_START_BLOCK=1",
+        "INDEXER_OPTIMISM_L2_MESSAGE_PASSER_CONTRACT=0x4200000000000000000000000000000000000016",
+    ]
+
+    if l1_rpc:
+        env_lines.append(f"INDEXER_OPTIMISM_L1_RPC={l1_rpc}")
+    if system_config:
+        env_lines.append(f"INDEXER_OPTIMISM_L1_SYSTEM_CONFIG_CONTRACT={system_config}")
+    if output_oracle:
+        env_lines.append(f"INDEXER_OPTIMISM_L1_OUTPUT_ORACLE_CONTRACT={output_oracle}")
+
+    env_path.write_text("\n".join(env_lines) + "\n")
+    try:
+        rel_path = env_path.relative_to(root)
+    except ValueError:
+        rel_path = env_path
+    print(f"[setup] blockscout env updated: {rel_path}")
+
+    frontend_env_path = base_dir / "blockscout-frontend.env"
+    app_port = "19000" if chain["suffix"] == "a" else "29000"
+    app_host = f"localhost:{app_port}"
+    api_host = app_host
+    frontend_lines = [
+        "# Autogenerated by scripts/setup.sh",
+        f"NEXT_PUBLIC_API_PROTOCOL=http",
+        f"NEXT_PUBLIC_API_HOST={api_host}",
+        "NEXT_PUBLIC_API_BASE_PATH=",
+        "NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL=ws",
+        f"NEXT_PUBLIC_NETWORK_NAME={chain['label']} Compose",
+        f"NEXT_PUBLIC_NETWORK_SHORT_NAME={chain['label']}",
+        f"NEXT_PUBLIC_NETWORK_ID={chain_id}",
+        "NEXT_PUBLIC_NETWORK_CURRENCY_NAME=Ether",
+        "NEXT_PUBLIC_NETWORK_CURRENCY_SYMBOL=ETH",
+        "NEXT_PUBLIC_NETWORK_CURRENCY_DECIMALS=18",
+        f"NEXT_PUBLIC_APP_PROTOCOL=http",
+        f"NEXT_PUBLIC_APP_HOST={app_host}",
+        "NEXT_PUBLIC_IS_TESTNET=true",
+        "NEXT_PUBLIC_HOMEPAGE_CHARTS=['daily_txs']",
+        "NEXT_PUBLIC_API_SPEC_URL=https://raw.githubusercontent.com/blockscout/blockscout-api-v2-swagger/main/swagger.yaml",
+    ]
+    frontend_env_path.write_text("\n".join(frontend_lines) + "\n")
+    try:
+        rel_front = frontend_env_path.relative_to(root)
+    except ValueError:
+        rel_front = frontend_env_path
+    print(f"[setup] blockscout frontend env updated: {rel_front}")
+
+    nginx_conf_path = base_dir / "blockscout-nginx.conf"
+    backend_host = f"blockscout-{chain['suffix']}:4000"
+    frontend_host = f"blockscout-{chain['suffix']}-frontend:3000"
+    nginx_conf = f"""
+map $http_upgrade $connection_upgrade {{
+  default upgrade;
+  ''      close;
+}}
+
+server {{
+  listen 80;
+  listen [::]:80;
+  server_name _;
+  proxy_http_version 1.1;
+
+  location ~ ^/(api(?!-docs$)|socket|sitemap.xml|auth/auth0|auth/auth0/callback|auth/logout) {{
+    proxy_pass http://{backend_host};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_cache_bypass $http_upgrade;
+  }}
+
+  location / {{
+    proxy_pass http://{frontend_host};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_cache_bypass $http_upgrade;
+  }}
+}}
+"""
+    nginx_conf_path.write_text(nginx_conf.strip() + "\n")
+    try:
+        rel_nginx = nginx_conf_path.relative_to(root)
+    except ValueError:
+        rel_nginx = nginx_conf_path
+    print(f"[setup] blockscout proxy config updated: {rel_nginx}")
+PYBLOCK
+}
+for chain_id_hex, target_dir in rollups.items():
+    chain = chains.get(chain_id_hex)
+    if not chain:
+        continue
+    interesting_keys = {
+        'L2OutputOracleProxyAddress': 'L2_OUTPUT_ORACLE',
+        'systemConfigProxyAddress': 'SYSTEM_CONFIG',
+        'SystemConfigProxyAddress': 'SYSTEM_CONFIG',
+        'optimismPortalProxyAddress': 'OPTIMISM_PORTAL',
+        'l1StandardBridgeProxyAddress': 'L1_STANDARD_BRIDGE',
+        'disputeGameFactoryProxyAddress': 'DISPUTE_GAME_FACTORY',
+    }
+
+    addresses = {}
+    for key, label in interesting_keys.items():
+        if key in chain and chain[key]:
+            addresses[label] = chain[key]
+
+    if addresses:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / 'addresses.json').write_text(json.dumps(addresses, indent=2))
+        env_lines = []
+        if addresses.get('L2_OUTPUT_ORACLE'):
+            env_lines.append(f"L2OO_ADDRESS={addresses['L2_OUTPUT_ORACLE']}")
+            env_lines.append(f"OP_PROPOSER_L2OO_ADDRESS={addresses['L2_OUTPUT_ORACLE']}")
+        if addresses.get('DISPUTE_GAME_FACTORY'):
+            env_lines.append(f"DISPUTE_GAME_FACTORY_ADDRESS={addresses['DISPUTE_GAME_FACTORY']}")
+            env_lines.append(f"OP_PROPOSER_GAME_FACTORY_ADDRESS={addresses['DISPUTE_GAME_FACTORY']}")
+        if addresses.get('SYSTEM_CONFIG'):
+            env_lines.append(f"SYSTEM_CONFIG_PROXY={addresses['SYSTEM_CONFIG']}")
+        if env_lines:
+            (target_dir / 'runtime.env').write_text('\n'.join(env_lines) + '\n')
+PYADDR
 }
 
 stop_compose_stack
