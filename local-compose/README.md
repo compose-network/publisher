@@ -4,33 +4,27 @@ This project spins up two **Compose** rollups ("Rollup A" and "Rollup B") that
 
 ## Setup
 
-**Prerequisites**
+### Prerequisites
 - Docker 27+ with Compose v2
 - Python 3
 - Git
 - A funded Hoodi L1 wallet and EL & CL RPC endpoints
 
-**Steps**
+### Steps
 1. Copy `.env.example` to `.env` and fill in:
    - `HOODI_EL_RPC`
    - `HOODI_CL_RPC`
    - `WALLET_PRIVATE_KEY` / `WALLET_ADDRESS`
-2. Create a virtual environment (the `./compose` wrapper will install Typer/PrettyTable/python-dotenv automatically the first time it runs):
-   ```sh
-   python3 -m venv .venv
-   ```
-3. Bootstrap the stack with the convenience script (live Hoodi target by default):
+2. Bootstrap the stack on Hoodi:
    ```sh
    ./compose up --fresh
    ```
-   The first run wipes any existing artifacts, clones/updates `optimism` and `op-geth` into `services/`, mirrors the shared publisher from `ROLLUP_SP_SOURCE` (defaults to `../rollup-shared-publisher`) into `services/rollup-shared-publisher`, exports fresh rollup artifacts, deploys contracts to both rollups, and starts the Docker stack. Expect roughly 3–4 minutes end-to-end on a warm machine (op-deployer + contract deployments dominate). Subsequent runs can omit `--fresh` to reuse the generated artifacts and simply restart containers.
-4. Confirm the stack is healthy with `./compose status`. You should see advancing block numbers for both rollups, a `200` shared publisher health check, and live Blockscout explorers for each chain.
-
-> Need an offline or CI-friendly run? Set `DEPLOYMENT_TARGET=calldata` before calling `compose.py up`; the pipeline will regenerate all artifacts without sending L1 transactions and **will not** start the rollup services. Use this for deterministic artifact generation in CI—not for operating a live testnet. To bring up Docker anyway, export `COMPOSE_FORCE_SERVICES=1` as well, but those services will only stay healthy once you return to `DEPLOYMENT_TARGET=live`.
+   First setup takes about 5 minutes.
+3. Check `./compose status` to confirm Rollup A/B and the publisher are healthy.
 
 ## Iterate on Code Changes
 
-- Rebuild and restart specific components with `./compose deploy <service...>` (omit arguments to rebuild the default set). When running in calldata mode you must set `COMPOSE_FORCE_SERVICES=1` to have services online.
+- Rebuild and restart specific components with `./compose deploy <service...>` (omit arguments to rebuild the default set).
 - Set `OP_GETH_PATH` or `ROLLUP_SHARED_PUBLISHER_PATH` in `.env` if you want to build from external checkouts instead of the defaults (`./services/op-geth` and `./services/rollup-shared-publisher`).
 - After the stack is running, `./toolkit.sh check-bridge` gives a quick health snapshot (balances, block heights, publisher status).
 
