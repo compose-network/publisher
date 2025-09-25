@@ -9,7 +9,7 @@ services:
       SERVER_LISTEN_ADDR: ":8080"
       METRICS_ENABLED: "true"
       METRICS_PORT: "8081"
-      LOG_LEVEL: "info"
+      LOG_LEVEL: "debug"
       LOG_PRETTY: "true"
       AUTH_ENABLED: "false"
       PROOFS_ENABLED: "false"
@@ -103,6 +103,7 @@ services:
         MAILBOX_A=$(get_mailbox_addr /config/contracts.json)
         MAILBOX_B=$(get_mailbox_addr /config_b/contracts.json)
         exec geth \
+          --verbosity=4 \
           --datadir /data \
           --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
           --http.api=web3,debug,eth,txpool,net,engine,compose \
@@ -273,6 +274,7 @@ services:
         MAILBOX_A=$(get_mailbox_addr /config_a/contracts.json)
         MAILBOX_B=$(get_mailbox_addr /config/contracts.json)
         exec geth \
+          --verbosity=4 \
           --datadir /data \
           --http --http.addr=0.0.0.0 --http.port=8545 --http.corsdomain='*' --http.vhosts='*' \
           --http.api=web3,debug,eth,txpool,net,engine,compose \

@@ -65,18 +65,18 @@ def status_command(
         services_disabled=services_disabled,
     )
     if publisher_table:
-        sections.append(("publisher", publisher_table))
+        sections.append(("Publisher", publisher_table))
 
     services_table = _render_services_section(
         compose_status,
         services_disabled=services_disabled,
     )
     if services_table:
-        sections.append(("services", services_table))
+        sections.append(("Services", services_table))
 
     contracts_table = _render_contracts_section()
     if contracts_table:
-        sections.append(("contracts", contracts_table))
+        sections.append(("Contracts", contracts_table))
 
     if not sections:
         if services_disabled:

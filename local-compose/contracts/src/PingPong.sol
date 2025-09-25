@@ -18,7 +18,7 @@ import { IMailbox } from "@ssv/src/interfaces/IMailbox.sol";
  * ** AUTHORS **
  * *************
  * @author
- * Riccardo Persiani
+ * SSV Labs
  */
 contract PingPong is IPingPong {
     /// @notice the CIRC Mailbox contract
@@ -35,33 +35,21 @@ contract PingPong is IPingPong {
 
     /// @notice sends a PING message and reads a PONG
     /// @dev messages from the inbox can be read by any contract any number of times.
-    /// @param chainSrc identifier of the source chain
-    /// @param chainDest identifier of the destination chain
-    /// @param sender address of the sender of the tokens (on the source chain)
-    /// @param receiver address of the recipient of the tokens (on the destination chain)
+    /// @param otherChain identifier of the destination chain
     /// @param sessionId identifier of the user session
     /// @param data the data to write
     /// @return pongMessage the message data
     function ping(
-        uint256 chainSrc,  // 11111
-        uint256 chainDest, // 22222
-        address sender,
-        address receiver,
+        uint256 otherChain,
+        address pongSender,
+        address pingReceiver,
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory pongMessage) {
-        IMailbox(mailbox).write(
-            chainSrc,
-            chainDest,
-            receiver,
-            sessionId,
-            data,
-            "PING"
-        );
+        IMailbox(mailbox).write(otherChain, pingReceiver, sessionId, "PING", data);
         pongMessage = IMailbox(mailbox).read(
-            chainDest,
-            chainSrc,
-            receiver,
+            otherChain,
+            pongSender, // read message from sender addr to this contract
             sessionId,
             "PONG"
         );
@@ -72,38 +60,27 @@ contract PingPong is IPingPong {
 
     /// @notice sends a PONG message and reads a PING
     /// @dev any contract can write to the outbox but the source is populated automatically using msg.sender.
-    /// @param chainSrc identifier of the source chain
-    /// @param chainDest identifier of the destination chain
-    /// @param sender address of the sender of the tokens (on the source chain)
-    /// @param receiver address of the recipient of the tokens (on the destination chain)
+    /// @param otherChain identifier of the source chain
     /// @param sessionId identifier of the user session
     /// @param data the data to write
     /// @return pingMessage the message data
     function pong(
-        uint256 chainSrc,  // 11111
-        uint256 chainDest, // 22222
-        address sender,
-        address receiver,
+        uint256 otherChain,
+        address pingSender,
+        address pongReceiver,
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory pingMessage) {
         pingMessage = IMailbox(mailbox).read(
-            chainSrc,
-            chainDest,
-            receiver,
+            otherChain,
+            pingSender,  // read message from sender addr to this contract
             sessionId,
             "PING"
         );
         if (pingMessage.length == 0) {
             revert PingMessageEmpty();
         }
-        IMailbox(mailbox).write(
-            chainDest,
-            chainSrc,
-            receiver,
-            sessionId,
-            data,
-            "PONG"
-        );
+        // write message to other chain, sender is this address
+        IMailbox(mailbox).write(otherChain, pongReceiver, sessionId, "PONG", data);
     }
 }

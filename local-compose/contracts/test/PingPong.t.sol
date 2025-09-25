@@ -5,27 +5,33 @@ import { Setup } from "@ssv/test/Setup.t.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
 
 contract PingPongTest is Setup {
+
+    uint256 internal thisChain = block.chainid;
+    uint256 internal otherChain = 2;
+
     function testWritePingToInbox() public returns (bytes32 key) {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, DEPLOYER, 1, "first ping", "PING");
-        key = mailbox.getKey(1, 2, DEPLOYER, 1, "PING");
+        mailbox.putInbox(otherChain, DEPLOYER, address(pingPong), 1, "PING", "first ping");
+        key = mailbox.getKey(otherChain, thisChain, DEPLOYER, address(pingPong), 1, "PING");
         assertEq(mailbox.inbox(key), "first ping", "The message should match");
     }
     function testWritePongToInbox() public returns (bytes32 key) {
         vm.prank(COORDINATOR);
-        mailbox.putInbox(1, 2, DEPLOYER, 1, "first pong", "PONG");
-        key = mailbox.getKey(1, 2, DEPLOYER, 1, "PONG");
+        mailbox.putInbox(otherChain, DEPLOYER, address(pingPong), 1, "PONG", "first pong");
+        key = mailbox.getKey(otherChain, thisChain, DEPLOYER, address(pingPong), 1, "PONG");
         assertEq(mailbox.inbox(key), "first pong", "The message should match");
     }
 
     function testPing() public {
-        vm.prank(address(DEPLOYER));
+        vm.prank(COORDINATOR);
+        // ping message from pingPong on dest chain to pingPong on this chain
+        mailbox.putInbox(otherChain, DEPLOYER, address(pingPong), 1, "PONG", "");
+        vm.prank(DEPLOYER);
         vm.expectRevert(
             abi.encodeWithSelector(PingPong.PongMessageEmpty.selector)
         );
         bytes memory pong = pingPong.ping(
-            1,
-            2,
+            otherChain,
             DEPLOYER,
             DEPLOYER,
             1,
@@ -35,12 +41,15 @@ contract PingPongTest is Setup {
     }
 
     function testPong() public {
+        vm.prank(COORDINATOR);
+        // message from pingPong on other chain to pingPong on this chain
+        mailbox.putInbox(otherChain, DEPLOYER, address(pingPong), 1, "PING", "");
+        vm.prank(DEPLOYER);
         vm.expectRevert(
             abi.encodeWithSelector(PingPong.PingMessageEmpty.selector)
         );
         bytes memory ping = pingPong.pong(
-            1,
-            2,
+            otherChain,
             DEPLOYER,
             DEPLOYER,
             1,
@@ -52,9 +61,8 @@ contract PingPongTest is Setup {
     function testPongAfterPing() public {
         testWritePingToInbox();
         bytes memory ping = pingPong.pong(
-            1,
-            2,
-            COORDINATOR,
+            otherChain,
+            DEPLOYER,
             DEPLOYER,
             1,
             "first pong"
@@ -65,9 +73,8 @@ contract PingPongTest is Setup {
     function testPingAfterPong() public {
         testWritePongToInbox();
         bytes memory pong = pingPong.ping(
-            1,
-            2,
-            COORDINATOR,
+            otherChain,
+            DEPLOYER,
             DEPLOYER,
             1,
             "first ping"

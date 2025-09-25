@@ -4,11 +4,10 @@ pragma solidity 0.8.30;
 import { Script } from "forge-std/Script.sol";
 import { DeployAll } from "./DeployAll.sol";
 
-contract DeployAllRollupB is Script, DeployAll {
+contract DeployAllRollup is Script, DeployAll {
     function run() external {
-        uint256 expectedChainId = vm.envOr("ROLLUP_B_CHAIN_ID", uint256(22222));
-        if (block.chainid != expectedChainId) {
-            revert("Incorrect Rollup B chain ID");
+        if (block.chainid != 88888) {
+            revert("This script is only for Rollup B with L1 Hoodi");
         }
 
         string memory finalJson = _deployAll();

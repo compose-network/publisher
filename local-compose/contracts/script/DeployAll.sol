@@ -17,10 +17,44 @@ contract DeployAll is Script {
 
         address coordinator = vm.envAddress("DEPLOYER_ADDRESS");
 
-        Mailbox mailbox = new Mailbox(coordinator);
-        PingPong pingPong = new PingPong(address(mailbox));
-        MyToken myToken = new MyToken();
-        Bridge bridge = new Bridge(address(mailbox));
+
+        // mailbox address
+        address mailboxAddr = _deployCreate2(
+            keccak256("MAILBOX_v1"),
+            abi.encodePacked(
+                type(Mailbox).creationCode,
+                abi.encode(coordinator)
+            )
+        );
+        Mailbox mailbox = Mailbox(mailboxAddr);
+
+
+        // pingpong address
+        address pingPongAddr = _deployCreate2(
+            keccak256("PINGPONG_v1"),
+            abi.encodePacked(
+                type(PingPong).creationCode,
+                abi.encode(address(mailbox))
+            )
+        );
+        PingPong pingPong = PingPong(pingPongAddr);
+
+        // bridge address
+        address bridgeAddr = _deployCreate2(
+            keccak256("BRIDGE_v1"),
+            abi.encodePacked(
+                type(Bridge).creationCode,
+                abi.encode(address(mailbox))
+            )
+        );
+        Bridge bridge = Bridge(bridgeAddr);
+
+        // token address
+        address tokenAddr = _deployCreate2(
+            keccak256("MYTOKEN_v1"),
+            type(MyToken).creationCode // no constructor args
+        );
+        MyToken myToken = MyToken(tokenAddr);
 
         vm.stopBroadcast();
 
@@ -30,15 +64,15 @@ contract DeployAll is Script {
         console.log("MyToken:  ", address(myToken));
         console.log("Bridge:  ", address(bridge));
 
-        return saveToJson(mailbox, pingPong, coordinator, myToken, bridge);
+        return saveToJson(coordinator, bridge, pingPong, mailbox, myToken);
     }
 
     function saveToJson(
-        Mailbox mailbox,
-        PingPong pingPong,
         address coordinator,
-        MyToken myToken,
-        Bridge bridge
+        Bridge bridge,
+        PingPong pingPong,
+        Mailbox mailbox,
+        MyToken myToken
     ) internal returns (string memory) {
         string memory parent = "parent";
 
@@ -68,5 +102,12 @@ contract DeployAll is Script {
             deployed_addresses_output
         );
         return vm.serializeString(parent, chain_info, chain_info_output);
+    }
+
+    function _deployCreate2(bytes32 salt, bytes memory code) internal returns (address addr) {
+        assembly {
+            addr := create2(0, add(code, 0x20), mload(code), salt)
+            if iszero(extcodesize(addr)) { revert(0, 0) }
+        }
     }
 }

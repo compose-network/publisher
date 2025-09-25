@@ -6,7 +6,6 @@ import { Mailbox } from "@ssv/src/Mailbox.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
 import { MyToken } from "@ssv/src/Token.sol";
 import { Bridge } from "@ssv/src/Bridge.sol";
-import { console } from "forge-std/console.sol";
 
 contract Setup is Test {
     Mailbox public mailbox;
@@ -36,7 +35,5 @@ contract Setup is Test {
         vm.label(address(pingPong), "PingPong");
         vm.label(address(myToken), "MyToken");
         vm.label(address(bridge), "Bridge");
-
-        console.logAddress(address(myToken));
     }
 }

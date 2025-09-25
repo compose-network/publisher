@@ -6,9 +6,8 @@ import { DeployAll } from "./DeployAll.sol";
 
 contract DeployAllRollup is Script, DeployAll {
     function run() external {
-        uint256 expectedChainId = vm.envOr("ROLLUP_A_CHAIN_ID", uint256(11111));
-        if (block.chainid != expectedChainId) {
-            revert("Incorrect Rollup A chain ID");
+        if (block.chainid != 77777) {
+            revert("This script is only for Rollup A with L1 Hoodi");
         }
 
         string memory finalJson = _deployAll();
