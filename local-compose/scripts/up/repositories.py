@@ -13,7 +13,9 @@ from . import BootstrapContext
 DEFAULT_OPTIMISM_REPO = "https://github.com/ethereum-optimism/optimism.git"
 DEFAULT_OPTIMISM_REF = "op-node/v1.13.4"
 DEFAULT_OP_GETH_REPO = "https://github.com/ssvlabs/op-geth.git"
-DEFAULT_OP_GETH_BRANCH = "feat/configurable-addresses"
+DEFAULT_OP_GETH_BRANCH = "stage"
+DEFAULT_PUBLISHER_REPO = "git@github.com:ssvlabs/rollup-shared-publisher.git"
+DEFAULT_PUBLISHER_BRANCH = "stage"
 
 
 def run(ctx: BootstrapContext) -> None:
@@ -31,17 +33,19 @@ def run(ctx: BootstrapContext) -> None:
     optimism_ref = ctx.env.get("OPTIMISM_REF", DEFAULT_OPTIMISM_REF)
     op_geth_repo = ctx.env.get("OP_GETH_REPO", DEFAULT_OP_GETH_REPO)
     op_geth_branch = ctx.env.get("OP_GETH_BRANCH", DEFAULT_OP_GETH_BRANCH)
+    publisher_repo = ctx.env.get("ROLLUP_SHARED_PUBLISHER_REPO", DEFAULT_PUBLISHER_REPO)
+    publisher_branch = ctx.env.get("ROLLUP_SHARED_PUBLISHER_BRANCH", DEFAULT_PUBLISHER_BRANCH)
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         futures = {
             pool.submit(_ensure_repo, op_geth_repo, op_geth_branch, ctx.op_geth_dir): "op_geth",
             pool.submit(_ensure_repo, optimism_repo, optimism_ref, ctx.optimism_dir): "optimism",
+            pool.submit(_ensure_repo, publisher_repo, publisher_branch, ctx.publisher_dir): "publisher",
         }
         for future, key in futures.items():
             if future.result():
                 ctx.mark_changed(key)
 
-    _ensure_publisher(ctx)
     _ensure_contract_bundle(ctx)
 
     _seed_placeholder_contracts(ctx)
@@ -76,30 +80,6 @@ def _ensure_repo(repo: str, ref: str | None, dest: Path) -> bool:
         else:
             raise
     return True
-
-
-def _ensure_publisher(ctx: BootstrapContext) -> None:
-    log = common.get_logger(__name__)
-    dest = ctx.publisher_dir
-    if dest.exists():
-        log.info("Using shared publisher at %s", dest)
-        return
-
-    source_hint = ctx.env.get("ROLLUP_SP_SOURCE")
-    if not source_hint:
-        log.warning("Shared publisher directory missing and ROLLUP_SP_SOURCE not set; skipping copy")
-        return
-
-    source = Path(source_hint)
-    if not source.is_absolute():
-        source = (ctx.root_dir / source).resolve()
-    if not source.exists():
-        log.warning("Shared publisher source %s does not exist", source)
-        return
-
-    log.info("Copying shared publisher from %s", source)
-    shutil.copytree(source, dest)
-    ctx.mark_changed("publisher")
 
 
 def _ensure_contract_bundle(ctx: BootstrapContext) -> None:

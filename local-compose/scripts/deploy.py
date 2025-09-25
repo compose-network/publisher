@@ -8,18 +8,13 @@ import typer
 from . import common
 
 app = typer.Typer(help="Rebuild images and restart services.")
-
-
-def _targets(services: List[str] | None) -> List[str]:
-    if services:
-        return services
-    return list(common.DEFAULT_COMPOSE_TARGETS)
-
-
 @app.callback(invoke_without_command=True)
 def deploy_command(
     ctx: typer.Context,
-    services: List[str] = typer.Argument(None, help="Services to rebuild/restart."),
+    services: List[str] = typer.Argument(
+        None,
+        help="Service names or selectors (e.g. op-geth, blockscout) to rebuild/restart.",
+    ),
     no_build: bool = typer.Option(False, "--no-build", help="Skip docker image rebuild."),
     no_restart: bool = typer.Option(False, "--no-restart", help="Skip restarting services after build."),
     verbose: bool = typer.Option(False, "--verbose", help="Enable debug logging."),
@@ -28,7 +23,10 @@ def deploy_command(
         return
     common.configure_logging(verbose)
     log = common.get_logger(__name__)
-    targets = _targets(services)
+    targets = common.resolve_services(
+        services,
+        default=common.DEFAULT_COMPOSE_TARGETS,
+    )
 
     if not no_build:
         log.info("Building images for %s", ", ".join(targets))

@@ -13,7 +13,10 @@ app = typer.Typer(help="Stream logs from docker compose services.")
 @app.callback(invoke_without_command=True)
 def logs_command(
     ctx: typer.Context,
-    services: List[str] = typer.Argument(None, help="Service names to filter."),
+    services: List[str] = typer.Argument(
+        None,
+        help="Service names or selectors (e.g. op-geth, blockscout) to filter.",
+    ),
     follow: bool = typer.Option(False, "-f", "--follow", help="Follow log output."),
     tail: Optional[int] = typer.Option(
         None,
@@ -45,8 +48,9 @@ def logs_command(
         args.extend(["--since", since])
     if until:
         args.extend(["--until", until])
-    if services:
-        args.extend(services)
+    targets = common.resolve_services(services, default=None)
+    if targets:
+        args.extend(targets)
     try:
         subprocess.run(args, cwd=common.ROOT_DIR, check=False)
     except KeyboardInterrupt:  # graceful exit

@@ -8,8 +8,8 @@ gas_reports = ["*"]
 fs_permissions = [{ access = "read", path = "./script/config/"}, { access = "read-write", path = "./artifacts/"}]
 
 [rpc_endpoints]
-rollupA = "${ROLLUP_A_RPC_URL}"
-rollupB = "${ROLLUP_B_RPC_URL}"
+rollupA = "http://localhost:18545"
+rollupB = "http://localhost:28545"
 
 
 [fmt]

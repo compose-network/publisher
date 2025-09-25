@@ -10,23 +10,23 @@ from . import common
 app = typer.Typer(help="Restart docker compose services.")
 
 
-def _resolve_targets(targets: List[str] | None) -> List[str]:
-    if targets:
-        return targets
-    return list(common.DEFAULT_COMPOSE_TARGETS)
-
-
 @app.callback(invoke_without_command=True)
 def restart_command(
     ctx: typer.Context,
-    services: List[str] = typer.Argument(None, help="Services to restart."),
+    services: List[str] = typer.Argument(
+        None,
+        help="Service names or selectors (e.g. op-geth, blockscout) to restart.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", help="Enable debug logging."),
 ) -> None:
     if ctx.invoked_subcommand is not None:
         return
     common.configure_logging(verbose)
     log = common.get_logger(__name__)
-    targets = _resolve_targets(services)
+    targets = common.resolve_services(
+        services,
+        default=common.DEFAULT_COMPOSE_TARGETS,
+    )
     log.info("Restarting %s", ", ".join(targets))
     try:
         common.docker_compose("restart", *targets)

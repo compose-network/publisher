@@ -24,6 +24,28 @@ DEFAULT_COMPOSE_TARGETS = (
     "op-proposer-b",
 )
 
+SERVICE_SELECTORS = {
+    "op-geth": (
+        "op-geth-a",
+        "op-geth-b",
+    ),
+    "blockscout": (
+        "blockscout-a-db",
+        "blockscout-a-redis",
+        "blockscout-a",
+        "blockscout-a-frontend",
+        "blockscout-a-proxy",
+        "blockscout-b-db",
+        "blockscout-b-redis",
+        "blockscout-b",
+        "blockscout-b-frontend",
+        "blockscout-b-proxy",
+    ),
+    "publisher": (
+        "rollup-shared-publisher",
+    ),
+}
+
 class _PlainConsole:
     def print(self, *objects: object, **kwargs: object) -> None:
         style = kwargs.pop("style", None)
@@ -60,6 +82,33 @@ def get_logger(name: str | None = None) -> logging.Logger:
 def ensure_executable(binary: str) -> None:
     if shutil.which(binary) is None:
         raise RuntimeError(f"Required executable '{binary}' not found in PATH")
+
+
+def resolve_services(
+    requested: Iterable[str] | None,
+    *,
+    default: Iterable[str] | None,
+) -> list[str]:
+    """Expand selector aliases to concrete docker-compose service names."""
+
+    if requested:
+        queue: Iterable[str] = requested
+    elif default is not None:
+        queue = default
+    else:
+        return []
+
+    resolved: list[str] = []
+    seen: set[str] = set()
+
+    for name in queue:
+        expanded = SERVICE_SELECTORS.get(name, (name,))
+        for target in expanded:
+            if target not in seen:
+                resolved.append(target)
+                seen.add(target)
+
+    return resolved
 
 
 def run(

@@ -8,8 +8,8 @@ import { PingPong } from "../src/PingPong.sol";
 contract SimulatePingPong is Script {
     address internal coordinator = vm.envAddress("DEPLOYER_ADDRESS");
     uint256 internal privateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-    string internal rpcA = vm.envString("ROLLUP_A_RPC_URL");
-    string internal rpcB = vm.envString("ROLLUP_B_RPC_URL");
+    string internal rpcA = vm.envOr("ROLLUP_A_RPC_URL", string("http://localhost:18545"));
+    string internal rpcB = vm.envOr("ROLLUP_B_RPC_URL", string("http://localhost:28545"));
     address internal mailboxA = vm.envAddress("MAILBOX_ADDRESS");
     address internal pingPongA = vm.envAddress("PINGPONG_ADDRESS");
     address internal mailboxB = vm.envAddress("MAILBOX_ADDRESS");

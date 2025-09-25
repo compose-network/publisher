@@ -17,7 +17,7 @@ Refer to [README.md](./README.md) for end-user instructions on prerequisites, th
 ## Repository Layout & Responsibilities
 ```
 AGENTS.md                # You are here – workflow primer for contributors
-README.md                # User-facing setup and usage instructions (.env, setup script, compose)
+README.md                # User-facing setup and usage instructions (.env, compose CLI)
 .env                     # Example environment values (funded Hoodi wallet, RPC URLs, chain IDs)
 docker-compose.yml       # Defines the dual-rollup topology (two Compose rollups + shared publisher)
 
@@ -27,9 +27,7 @@ docker/
   op-batcher.Dockerfile  # Builds op-batcher from services/optimism
   op-proposer.Dockerfile # Builds op-proposer from services/optimism
 
-scripts/
-  lib.sh                 # Shared shell helpers (env loading, logging)
-  setup.sh               # Full deployment + artifact export pipeline
+scripts/                 # Typer command modules that power ./compose (bootstrap, deploy, status, etc.)
 
 services/
   op-geth/               # Local checkout of ssvlabs/op-geth (cloned automatically when missing)
@@ -41,29 +39,26 @@ docs/optimism-guide.md   # Upstream tutorial used as inspiration/reference
 
 External repositories **not committed** here (ignored via `.gitignore`):
 - `services/op-geth/` — cloned automatically from `https://github.com/ssvlabs/op-geth` (stage branch).
-- `services/rollup-shared-publisher/` — populated from `ROLLUP_SP_SOURCE` (defaults to `../rollup-shared-publisher`).
+- `services/rollup-shared-publisher/` — cloned automatically from `git@github.com:ssvlabs/rollup-shared-publisher.git` (stage branch).
 - `services/optimism/` — local checkout of the `ethereum-optimism/optimism` monorepo for op-node/op-batcher/op-proposer builds.
-`setup.sh` will populate `services/` automatically when these directories are missing.
+`./compose up --fresh` populates `services/` automatically when these directories are missing.
 
 ## Development Workflow
 1. **Prepare dependencies**
    - Ensure Docker Engine + Compose v2, Python 3, and Git are available.
-   - Clone `optimism` at the desired revision into `services/optimism` (or let `scripts/setup.sh` clone it on first run).
-   - Make the private `rollup-shared-publisher` repository available at the path referenced by `ROLLUP_SP_SOURCE` (defaults to `../rollup-shared-publisher`); the setup script mirrors it into `services/rollup-shared-publisher`.
-  - Populate `.env` with valid Hoodi RPC endpoints and a funded wallet. The same key/address are reused for mailbox signing and the shared publisher unless you override them explicitly.
-    `.env` is strictly user-facing—treat it as the knobs an environment owner adjusts. If you
-    need dev-only overrides, add them via `setup.sh`/scripts or source changes rather than
-    stuffing extra variables into `.env`.
-   - Keep the Compose helper contracts bundle accessible (default `../old-contracts`). The setup script copies it into `./contracts` so Foundry can build and deploy from a writable path.
-   - Optional: set `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH` in `.env` to point at existing source checkouts; when provided, the setup flow skips syncing and Docker builds use those paths directly.
+   - Clone `optimism` at the desired revision into `services/optimism` (or let `./compose up --fresh` fetch it on first run).
+   - Ensure your SSH access to `git@github.com:ssvlabs/rollup-shared-publisher.git` works (stage branch is cloned automatically).
+   - Populate `.env` with valid Hoodi RPC endpoints and a funded wallet. The same key/address are reused for mailbox signing and the shared publisher unless you override them explicitly. `.env` is strictly user-facing—treat it as the knobs an environment owner adjusts. For dev-only tweaks, patch the Python helpers or export overrides for the command instead of stuffing extra variables into `.env`.
+   - Keep the Compose helper contracts bundle accessible (default `../old-contracts`). `./compose up --fresh` copies it into `./contracts` so Foundry can build and deploy from a writable path.
+   - Optional: set `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH` in `.env` to point at existing source checkouts; when provided, the bootstrap flow skips syncing and Docker builds use those paths directly.
 
 2. **Deploy or refresh rollups**
-   - Run `./compose up --fresh`. On the first invocation it wraps `scripts/setup.sh` (stops any existing stack, wipes `state/`, `networks/`, and `contracts/`, exports fresh rollup artifacts, and prepares Docker images). **Use `DEPLOYMENT_TARGET=live` when you want a functional testnet.** `DEPLOYMENT_TARGET=calldata` is only for generating artifacts without touching Hoodi L1 (e.g., CI); containers remain stopped unless you also set `COMPOSE_FORCE_SERVICES=1`, and will exit quickly until you return to live mode. Subsequent runs can omit `--fresh` to reuse existing artifacts.
+   - Run `./compose up --fresh`. The command stops any existing stack, wipes `state/`, `networks/`, and `contracts/`, exports fresh rollup artifacts, rebuilds Docker images, and leaves services running when `DEPLOYMENT_TARGET=live`. **Use `DEPLOYMENT_TARGET=live` when you want a functional testnet.** `DEPLOYMENT_TARGET=calldata` is only for generating artifacts without touching Hoodi L1 (e.g., CI); containers remain stopped unless you also set `COMPOSE_FORCE_SERVICES=1`, and will exit quickly until you return to live mode. Subsequent runs can omit `--fresh` to reuse existing artifacts.
      - We currently pin the helper contracts to the legacy bundle under `../old-contracts` (see `.env: CONTRACTS_SOURCE`). The op-geth hotpatch, CLI samples, and tracer ABIs assume that layout; keep the folder in sync when editing contracts.
    - To avoid sending L1 transactions (e.g., CI or dry run), export `DEPLOYMENT_TARGET=calldata` before running the command above. Artifacts will still be generated using calldata output; containers remain stopped unless you also set `COMPOSE_FORCE_SERVICES=1`.
-   - The setup pre-funds the `.env` wallet inside the L2 genesis allocs, can top up the account via OptimismPortal deposits, and deploys the Compose helper contracts from `./contracts` once the rollup RPCs are reachable. It wipes `state/`, `networks/`, and `contracts/` automatically each run.
-   - `ROLLUP_PRAGUE_TIMESTAMP` / `ROLLUP_ISTHMUS_TIMESTAMP` control when Prague/Isthmus activate; defaults bake them in at genesis so op-node immediately speaks the V4 engine API. The setup also recomputes the execution genesis hash and patches `rollup.json` so the driver and engine always agree on the chain root (Go module/cache persisted under `.cache/genesis-go`, override via `GENESIS_HASH_CACHE_DIR`).
-   - After contract deployment, helper addresses (Mailbox, PingPong, MyToken, Bridge) are written back into op-geth’s tracer and sample CLIs. The setup logs `[setup] helper contract hotpatch: updated` when it applies the patch. This is temporary until the upstream repos expose proper configuration hooks.
+   - Bootstrap pre-funds the `.env` wallet inside the L2 genesis allocs, tops up the account via OptimismPortal deposits when enabled, and deploys the Compose helper contracts from `./contracts` once the rollup RPCs are reachable. It wipes `state/`, `networks/`, and `contracts/` automatically each run.
+   - `ROLLUP_PRAGUE_TIMESTAMP` / `ROLLUP_ISTHMUS_TIMESTAMP` control when Prague/Isthmus activate; defaults bake them in at genesis so op-node immediately speaks the V4 engine API. Bootstrap also recomputes the execution genesis hash and patches `rollup.json` so the driver and engine always agree on the chain root (Go module/cache persisted under `.cache/genesis-go`, override via `GENESIS_HASH_CACHE_DIR`).
+   - After contract deployment, helper addresses (Mailbox, PingPong, MyToken, Bridge) are written back into op-geth’s tracer and sample CLIs. This is temporary until the upstream repos expose proper configuration hooks.
    - Deposits (if enabled) ride the live Hoodi L1. Expect several minutes for balances to update; adjust `ROLLUP_DEPOSIT_WAIT_*` if you need a longer polling window.
 
 3. **Operate the local stack**
@@ -77,7 +72,8 @@ External repositories **not committed** here (ignored via `.gitignore`):
 4. **Iterate on op-geth or other services**
    - Modify code under `services/op-geth/`, `services/rollup-shared-publisher/`, or `services/optimism/` (or the directories pointed to by `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH`).
    - Rebuild and restart targeted services with `./compose deploy op-geth`, `./compose deploy publisher`, `./compose deploy blockscout`, or `./compose deploy` (uses short RPC waits to confirm readiness).
-   - Need to redeploy contracts after changing them? Update the sources and rerun `./compose up --fresh` (or invoke `scripts/setup.sh` directly) to broadcast the new bytecode.
+   - Service selectors keep the CLI terse: `op-geth` expands to both rollup execution stacks, `blockscout` bundles the explorers plus their helpers, and `publisher` resolves to `rollup-shared-publisher`. They work with `deploy`, `restart`, and `logs`.
+   - Need to redeploy contracts after changing them? Update the sources and rerun `./compose up --fresh` to broadcast the new bytecode.
 
 5. **Resetting the environment**
    - Run `./compose down` to stop containers while keeping volumes.
@@ -95,7 +91,7 @@ External repositories **not committed** here (ignored via `.gitignore`):
 - **op-deployer cache**: stored in `state/op-deployer/.cache`. Safe to delete between runs if you need to refresh artifacts.
 
 ## Extending the Repository
-- **Scripts**: add shared shell helpers to `scripts/lib.sh`; hook into `setup.sh` for deployment changes.
+- **Scripts**: extend the Typer commands under `scripts/` when you need to adjust bootstrap or deployment flows.
 - **Docker images**: update the Dockerfiles under `docker/` when you need different build flags or upstream revisions. They consume the local `services/optimism` checkout, so align branches accordingly.
 - **Compose topology**: modify `docker-compose.yml` to introduce additional services (explorers, RPC proxies, etc.). Keep port assignments documented.
 - **Shared publisher**: tweak runtime behaviour by adjusting the `rollup-shared-publisher` service env vars. For deeper changes, edit the copied sources under `services/rollup-shared-publisher` and rebuild the image.
@@ -104,7 +100,7 @@ External repositories **not committed** here (ignored via `.gitignore`):
 
 ## Support Checklist for New Agents
 1. Confirm `.env` has valid Hoodi endpoints and a funded private key.
-2. Ensure the service checkouts exist (`services/optimism`, `services/op-geth`, `services/rollup-shared-publisher`); `scripts/setup.sh` will populate them automatically when they are missing.
+2. Ensure the service checkouts exist (`services/optimism`, `services/op-geth`, `services/rollup-shared-publisher`); `./compose up --fresh` fetches them automatically when they are missing.
 3. Run `./compose up --fresh` (set `DEPLOYMENT_TARGET=calldata` in the environment if L1 access is unavailable).
 4. Confirm the stack is healthy via `./compose status` (should report advancing blocks and a `200` publisher health code).
 5. Inspect `networks/rollup-*/contracts.json` for the deployed helper addresses. Both rollups receive the exact same Mailbox, PingPong, MyToken, and Bridge addresses.
@@ -122,6 +118,6 @@ External repositories **not committed** here (ignored via `.gitignore`):
   `set -a; source .env; set +a; ./toolkit.sh cast send --rpc-url http://localhost:18545 --private-key "$WALLET_PRIVATE_KEY" 0x281bc484c01A3A524DfcBc92049d796f9A946A72 'mint(address,uint256)' "$WALLET_ADDRESS" 1000000000000000000`.
 - `toolkit.env` can override RPC endpoints or stats URLs; keep an up-to-date helper bundle in `./contracts` (refreshed via `CONTRACTS_SOURCE`) when iterating on helper contracts.
 - Configuration: the scripts read `.env` first and then (optionally) `toolkit.env` for overrides. Drop custom RPC endpoints or stats URLs in `toolkit.env` so they survive `.env` refreshes from upstream.
-- Prerequisites: Python 3 is already required for `setup.sh`. The toolkit only depends on the standard library plus Docker/Compose and Foundry’s `cast` container (pulled automatically when invoked).
+- Prerequisites: Python 3 is already required for `./compose`. The toolkit only depends on the standard library plus Docker/Compose and Foundry’s `cast` container (pulled automatically when invoked).
 
 Welcome aboard—this handbook should give you enough context to resume work instantly. Dive into `README.md` next for end-user execution details, and happy hacking!
