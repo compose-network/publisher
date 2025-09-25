@@ -25,7 +25,7 @@ def restart_command(
     log = common.get_logger(__name__)
     targets = common.resolve_services(
         services,
-        default=common.DEFAULT_COMPOSE_TARGETS,
+        default=common.default_compose_targets(),
     )
     log.info("Restarting %s", ", ".join(targets))
     try:

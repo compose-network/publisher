@@ -76,6 +76,13 @@ def bootstrap(*, fresh: bool, skip_contracts: bool, verbose: bool, timeout_secon
     log.info("Stage environment: %.1fs", env_elapsed)
     check("environment setup")
 
+    marker_path = ctx.networks_dir / "bootstrap-complete"
+    try:
+        if marker_path.exists():
+            marker_path.unlink()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Failed to clear bootstrap marker: %s", exc)
+
     if ctx.needs_bootstrap:
         log.info("Bootstrapping required (fresh=%s)", fresh)
         log.info("Stopping any existing docker compose services and removing volumes")
@@ -138,6 +145,11 @@ def bootstrap(*, fresh: bool, skip_contracts: bool, verbose: bool, timeout_secon
 
     total_elapsed = time.monotonic() - start
     log.info("Bootstrap completed in %.1fs", total_elapsed)
+
+    try:
+        marker_path.touch(exist_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Failed to write bootstrap marker: %s", exc)
 
     return ctx
 

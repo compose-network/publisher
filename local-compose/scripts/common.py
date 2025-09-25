@@ -24,6 +24,9 @@ DEFAULT_COMPOSE_TARGETS = (
     "op-proposer-b",
 )
 
+BLOCKSCOUT_MARKER = ROOT_DIR / "networks" / "blockscout.enabled"
+BOOTSTRAP_MARKER = ROOT_DIR / "networks" / "bootstrap-complete"
+
 SERVICE_SELECTORS = {
     "op-geth": (
         "op-geth-a",
@@ -109,6 +112,31 @@ def resolve_services(
                 seen.add(target)
 
     return resolved
+
+
+def default_compose_targets() -> list[str]:
+    targets = list(DEFAULT_COMPOSE_TARGETS)
+    if blockscout_enabled():
+        for service in SERVICE_SELECTORS["blockscout"]:
+            if service not in targets:
+                targets.append(service)
+    return targets
+
+
+def blockscout_marker_path() -> Path:
+    return BLOCKSCOUT_MARKER
+
+
+def blockscout_enabled() -> bool:
+    return BLOCKSCOUT_MARKER.exists()
+
+
+def bootstrap_marker_path() -> Path:
+    return BOOTSTRAP_MARKER
+
+
+def bootstrap_completed() -> bool:
+    return BOOTSTRAP_MARKER.exists()
 
 
 def run(
@@ -289,6 +317,11 @@ def http_status(url: str, timeout: float = 2.0) -> Optional[int]:
 __all__ = [
     "ROOT_DIR",
     "DEFAULT_COMPOSE_TARGETS",
+    "default_compose_targets",
+    "blockscout_marker_path",
+    "blockscout_enabled",
+    "bootstrap_marker_path",
+    "bootstrap_completed",
     "console",
     "configure_logging",
     "get_logger",

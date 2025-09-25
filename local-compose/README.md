@@ -17,9 +17,9 @@ This project spins up two **Compose** rollups ("Rollup A" and "Rollup B") that
    - `WALLET_PRIVATE_KEY` / `WALLET_ADDRESS`
 2. Bootstrap the stack on Hoodi:
    ```sh
-   ./compose up --fresh
+   ./compose up
    ```
-   First setup takes about 5 minutes and clones both `ssvlabs/op-geth` and `ssvlabs/rollup-shared-publisher` (stage) into `./services/` unless you override their paths in `.env`.
+   First setup takes about 5 minutes.
 3. Check `./compose status` to confirm Rollup A/B and the publisher are healthy.
 
 ## Iterate on Code Changes
@@ -56,3 +56,5 @@ The stack now ships a Blockscout instance per rollup:
 - Rollup B explorer: `http://localhost:29000`
 
 Each explorer is pre-configured with the rollup RPC, Hoodi L1 RPC, and the appropriate SystemConfig / helper contracts via `networks/rollup-*/blockscout.env`. The UI is served by an Nginx proxy that also forwards `/api` to the backend, so the REST API stays available at the same base URL. Logs for all explorer components live behind the `blockscout` alias (`./compose logs blockscout`).
+
+Blockscout is opt-in: after a successful `./compose up`, run `./compose blockscout` once to build the explorer images, start the containers, and automatically verify the helper contracts on both rollups. Subsequent lifecycle commands (`./compose up`, `./compose restart`, etc.) will keep the explorers running. Use `./compose blockscout --skip-verification` if you only need the explorers without submitting sources.

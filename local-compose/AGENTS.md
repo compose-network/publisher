@@ -30,16 +30,16 @@ docker/
 scripts/                 # Typer command modules that power ./compose (bootstrap, deploy, status, etc.)
 
 services/
-  op-geth/               # Local checkout of ssvlabs/op-geth (cloned automatically when missing)
+  op-geth/               # Local checkout of ssvlabs/op-geth
   optimism/              # Local checkout of ethereum-optimism/optimism
-  rollup-shared-publisher/ # Local copy of the shared publisher (synced from ../rollup-shared-publisher by default)
+  rollup-shared-publisher/ # Local copy of the shared publisher
 
 docs/optimism-guide.md   # Upstream tutorial used as inspiration/reference
 ```
 
 External repositories **not committed** here (ignored via `.gitignore`):
-- `services/op-geth/` — cloned automatically from `https://github.com/ssvlabs/op-geth` (stage branch).
-- `services/rollup-shared-publisher/` — cloned automatically from `git@github.com:ssvlabs/rollup-shared-publisher.git` (stage branch).
+- `services/op-geth/` — cloned automatically from `https://github.com/ssvlabs/op-geth`.
+- `services/rollup-shared-publisher/` — cloned automatically from `git@github.com:ssvlabs/rollup-shared-publisher.git`.
 - `services/optimism/` — local checkout of the `ethereum-optimism/optimism` monorepo for op-node/op-batcher/op-proposer builds.
 `./compose up --fresh` populates `services/` automatically when these directories are missing.
 

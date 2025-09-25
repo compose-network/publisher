@@ -25,7 +25,7 @@ def deploy_command(
     log = common.get_logger(__name__)
     targets = common.resolve_services(
         services,
-        default=common.DEFAULT_COMPOSE_TARGETS,
+        default=common.default_compose_targets(),
     )
 
     if not no_build:

@@ -22,11 +22,17 @@ CORE_TARGETS = (
 def run(ctx: BootstrapContext) -> None:
     log = common.get_logger(__name__)
 
+    targets = list(CORE_TARGETS)
+    if common.blockscout_enabled():
+        for service in common.SERVICE_SELECTORS["blockscout"]:
+            if service not in targets:
+                targets.append(service)
+
     should_build = ctx.needs_bootstrap or ctx.changed.intersection({"op_geth", "optimism", "publisher"})
     if should_build:
         log.info("Building Docker images")
         try:
-            common.docker_compose("build", "--parallel", *CORE_TARGETS)
+            common.docker_compose("build", "--parallel", *targets)
         except subprocess.CalledProcessError as exc:
             log.error("docker compose build failed")
             raise
@@ -35,7 +41,7 @@ def run(ctx: BootstrapContext) -> None:
 
     log.info("Starting docker compose services")
     try:
-        common.docker_compose("up", "-d", *CORE_TARGETS)
+        common.docker_compose("up", "-d", *targets)
     except subprocess.CalledProcessError:
         log.error("docker compose up failed")
         raise

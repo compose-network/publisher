@@ -345,9 +345,9 @@ def _write_blockscout_configs(
         frontend_env = base_dir / "blockscout-frontend.env"
         nginx_conf = base_dir / "blockscout-nginx.conf"
 
-        http_url = ROLLUP_A_RPC_URL if suffix == "a" else ROLLUP_B_RPC_URL
-        ws_port = 18546 if suffix == "a" else 28546
-        ws_url = f"ws://localhost:{ws_port}"
+        http_rpc_host = "op-geth-a" if suffix == "a" else "op-geth-b"
+        http_url = f"http://{http_rpc_host}:8545"
+        ws_url = f"ws://{http_rpc_host}:8546"
         redis_url = f"redis://blockscout-{suffix}-redis:6379/0"
         db_url = f"postgresql://blockscout:blockscout@blockscout-{suffix}-db:5432/blockscout"
         blockscout_env.write_text(
@@ -365,6 +365,8 @@ def _write_blockscout_configs(
                     f"ETHEREUM_JSONRPC_TRACE_URL={http_url}",
                     f"ETHEREUM_JSONRPC_WS_URL={ws_url}",
                     f"DATABASE_URL={db_url}",
+                    "DATABASE_SSL=false",
+                    "ECTO_USE_SSL=false",
                     f"REDIS_URL={redis_url}",
                     "SECRET_KEY_BASE=development",
                     "PORT=4000",
