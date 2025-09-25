@@ -990,24 +990,35 @@ func (c *Coordinator) publishSuperblockTx(
 	proof []byte,
 	outputs *proofs.SuperblockAggOutputs,
 ) error {
-	if len(proof) == 0 {
-		return fmt.Errorf("proof is required for superblock submission")
-	}
+	var (
+		recorded *tx.Transaction
+		err      error
+	)
 
-	recorded, err := c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof, outputs)
+	if len(proof) > 0 {
+		recorded, err = c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof, outputs)
+	} else {
+		if c.config.Proofs.RequireProof {
+			return fmt.Errorf("proof is required for superblock submission")
+		}
+	}
 	if err != nil {
 		return err
 	}
 
 	sb.Status = store.SuperblockStatusSubmitted
-	sb.L1TransactionHash = common.BytesToHash(recorded.Hash)
+	if recorded != nil {
+		sb.L1TransactionHash = common.BytesToHash(recorded.Hash)
+	}
 	if err := c.superblockStore.StoreSuperblock(ctx, sb); err != nil {
 		c.log.Warn().Err(err).Uint64("number", sb.Number).Msg("Failed to persist superblock post-publish")
 	}
 
-	c.l1TrackMu.Lock()
-	c.l1Tracked[sb.Number] = append([]byte(nil), recorded.Hash...)
-	c.l1TrackMu.Unlock()
+	if recorded != nil {
+		c.l1TrackMu.Lock()
+		c.l1Tracked[sb.Number] = append([]byte(nil), recorded.Hash...)
+		c.l1TrackMu.Unlock()
+	}
 
 	return nil
 }
