@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Determine project root
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT="$SCRIPT_DIR"
+VENV_DIR="$PROJECT_ROOT/.venv"
+PYTHON_BIN="python3"
+
+# Ensure python3 exists
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "[compose] python3 not found in PATH" >&2
+  exit 1
+fi
+
+# Create virtual environment if missing
+if [ ! -d "$VENV_DIR" ]; then
+  echo "[compose] creating virtual environment in .venv" >&2
+  "$PYTHON_BIN" -m venv "$VENV_DIR"
+  NEED_INSTALL=1
+else
+  NEED_INSTALL=0
+fi
+
+VENV_PY="$VENV_DIR/bin/python"
+VENV_PIP="$VENV_DIR/bin/pip"
+
+if [ ! -x "$VENV_PY" ]; then
+  echo "[compose] virtual environment missing python interpreter" >&2
+  exit 1
+fi
+
+# Install minimal dependencies if needed
+if [ "$NEED_INSTALL" -eq 1 ]; then
+  echo "[compose] installing CLI dependencies (typer, prettytable, python-dotenv)" >&2
+  "$VENV_PIP" install --quiet typer prettytable python-dotenv
+fi
+
+exec "$VENV_PY" "$PROJECT_ROOT/compose.py" "$@"

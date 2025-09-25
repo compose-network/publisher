@@ -11,9 +11,6 @@ from pathlib import Path
 from typing import Dict, Iterable, Mapping, Optional, Sequence
 
 from dotenv import dotenv_values
-from rich.console import Console
-from rich.logging import RichHandler
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_COMPOSE_TARGETS = (
     "rollup-shared-publisher",
@@ -27,7 +24,22 @@ DEFAULT_COMPOSE_TARGETS = (
     "op-proposer-b",
 )
 
-console = Console()
+class _PlainConsole:
+    def print(self, *objects: object, **kwargs: object) -> None:
+        style = kwargs.pop("style", None)
+        end = kwargs.pop("end", "\n")
+        sep = kwargs.pop("sep", " ")
+        if kwargs:
+            unsupported = ", ".join(sorted(kwargs))
+            raise TypeError(f"Unsupported console.print kwargs: {unsupported}")
+        if style:
+            # Styles are ignored in plain console mode.
+            pass
+        output = sep.join(str(obj) for obj in objects)
+        print(output, end=end)
+
+
+console = _PlainConsole()
 _logger_configured = False
 
 
@@ -36,8 +48,7 @@ def configure_logging(verbose: bool = False) -> None:
     if _logger_configured:
         return
     level = logging.DEBUG if verbose else logging.INFO
-    handler = RichHandler(console=console, show_time=False, show_path=False)
-    logging.basicConfig(level=level, handlers=[handler])
+    logging.basicConfig(level=level)
     _logger_configured = True
 
 
@@ -190,44 +201,6 @@ def _remove_with_docker(path: Path) -> None:
         get_logger().warning("Docker-assisted removal failed for %s: %s", path, exc)
 
 
-def summary_table(title: str, rows: Iterable[Sequence[str]]) -> str:
-    rows_list = [tuple(str(column) for column in columns) for columns in rows]
-    if not rows_list:
-        return f"{title}\n"
-
-    column_count = max(len(row) for row in rows_list)
-    widths = [0] * column_count
-    for row in rows_list:
-        for idx in range(column_count):
-            value = row[idx] if idx < len(row) else ""
-            widths[idx] = max(widths[idx], len(value))
-
-    def border(left: str, fill: str, junction: str, right: str) -> str:
-        parts = [fill * (w + 2) for w in widths]
-        return left + junction.join(parts) + right
-
-    def data_row(row: Sequence[str]) -> str:
-        cells = []
-        for idx in range(column_count):
-            value = row[idx] if idx < len(row) else ""
-            cells.append(f" {value.ljust(widths[idx])} ")
-        return "┃" + "│".join(cells) + "┃"
-
-    top = border("┏", "━", "┳", "┓")
-    middle = border("┣", "━", "╋", "┫")
-    bottom = border("┗", "━", "┻", "┛")
-
-    lines = [title, top]
-    first = True
-    for row in rows_list:
-        if not first:
-            lines.append(middle)
-        lines.append(data_row(row))
-        first = False
-    lines.append(bottom)
-
-    return "\n".join(lines) + "\n"
-
 
 def eth_block_number(url: str, timeout: float = 2.0) -> Optional[int]:
     payload = json.dumps(
@@ -279,7 +252,6 @@ __all__ = [
     "existing_services",
     "running_services",
     "remove_paths",
-    "summary_table",
     "eth_block_number",
     "http_status",
 ]
