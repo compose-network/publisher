@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import json
 
@@ -31,10 +32,14 @@ def run(ctx: BootstrapContext) -> None:
     op_geth_repo = ctx.env.get("OP_GETH_REPO", DEFAULT_OP_GETH_REPO)
     op_geth_branch = ctx.env.get("OP_GETH_BRANCH", DEFAULT_OP_GETH_BRANCH)
 
-    if _ensure_repo(op_geth_repo, op_geth_branch, ctx.op_geth_dir):
-        ctx.mark_changed("op_geth")
-    if _ensure_repo(optimism_repo, optimism_ref, ctx.optimism_dir):
-        ctx.mark_changed("optimism")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = {
+            pool.submit(_ensure_repo, op_geth_repo, op_geth_branch, ctx.op_geth_dir): "op_geth",
+            pool.submit(_ensure_repo, optimism_repo, optimism_ref, ctx.optimism_dir): "optimism",
+        }
+        for future, key in futures.items():
+            if future.result():
+                ctx.mark_changed(key)
 
     _ensure_publisher(ctx)
     _ensure_contract_bundle(ctx)

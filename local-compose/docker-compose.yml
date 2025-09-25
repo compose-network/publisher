@@ -125,7 +125,8 @@ services:
   op-node-a:
     build:
       context: .
-      dockerfile: docker/op-node.Dockerfile
+      dockerfile: docker/optimism.Dockerfile
+      target: op-node
     image: local/op-node:dev
     container_name: op-node-a
     depends_on:
@@ -155,7 +156,8 @@ services:
   op-batcher-a:
     build:
       context: .
-      dockerfile: docker/op-batcher.Dockerfile
+      dockerfile: docker/optimism.Dockerfile
+      target: op-batcher
     image: local/op-batcher:dev
     container_name: op-batcher-a
     depends_on:
@@ -178,7 +180,8 @@ services:
   op-proposer-a:
     build:
       context: .
-      dockerfile: docker/op-proposer.Dockerfile
+      dockerfile: docker/optimism.Dockerfile
+      target: op-proposer
     image: local/op-proposer:dev
     container_name: op-proposer-a
     depends_on:
@@ -292,7 +295,8 @@ services:
   op-node-b:
     build:
       context: .
-      dockerfile: docker/op-node.Dockerfile
+      dockerfile: docker/optimism.Dockerfile
+      target: op-node
     image: local/op-node:dev
     container_name: op-node-b
     depends_on:
@@ -322,7 +326,8 @@ services:
   op-batcher-b:
     build:
       context: .
-      dockerfile: docker/op-batcher.Dockerfile
+      dockerfile: docker/optimism.Dockerfile
+      target: op-batcher
     image: local/op-batcher:dev
     container_name: op-batcher-b
     depends_on:
@@ -345,7 +350,8 @@ services:
   op-proposer-b:
     build:
       context: .
-      dockerfile: docker/op-proposer.Dockerfile
+      dockerfile: docker/optimism.Dockerfile
+      target: op-proposer
     image: local/op-proposer:dev
     container_name: op-proposer-b
     depends_on:

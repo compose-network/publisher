@@ -70,7 +70,10 @@ def bootstrap(*, fresh: bool, skip_contracts: bool, verbose: bool, timeout_secon
         if elapsed > timeout_seconds:
             raise TimeoutError(f"Bootstrap exceeded timeout after {elapsed:.1f}s during {stage}")
 
+    env_start = time.monotonic()
     ctx = environment.run(fresh=fresh, skip_contracts=skip_contracts)
+    env_elapsed = time.monotonic() - env_start
+    log.info("Stage environment: %.1fs", env_elapsed)
     check("environment setup")
 
     if ctx.needs_bootstrap:
@@ -83,7 +86,10 @@ def bootstrap(*, fresh: bool, skip_contracts: bool, verbose: bool, timeout_secon
     else:
         log.info("Bootstrap artifacts already present; use --fresh to rebuild")
 
+    repo_start = time.monotonic()
     repositories.run(ctx)
+    repo_elapsed = time.monotonic() - repo_start
+    log.info("Stage repositories: %.1fs", repo_elapsed)
     check("repository sync")
 
     try:
@@ -99,18 +105,27 @@ def bootstrap(*, fresh: bool, skip_contracts: bool, verbose: bool, timeout_secon
         log.debug("Failed to write bootstrap metadata: %s", exc)
 
     if ctx.needs_bootstrap:
+        op_start = time.monotonic()
         op_deployer.run(ctx)
+        op_elapsed = time.monotonic() - op_start
+        log.info("Stage op-deployer: %.1fs", op_elapsed)
     else:
         log.info("Skipping op-deployer; artifacts already exist")
     check("op-deployer")
 
     if ctx.start_services:
+        docker_start = time.monotonic()
         docker.run(ctx)
+        docker_elapsed = time.monotonic() - docker_start
+        log.info("Stage docker: %.1fs", docker_elapsed)
         check("docker startup")
 
         if ctx.deploy_contracts:
             if ctx.needs_bootstrap:
+                contracts_start = time.monotonic()
                 contracts.run(ctx)
+                contracts_elapsed = time.monotonic() - contracts_start
+                log.info("Stage contracts: %.1fs", contracts_elapsed)
             else:
                 log.info("Contracts already deployed; skipping (use --fresh to redeploy)")
             check("contracts deployment")
@@ -120,6 +135,9 @@ def bootstrap(*, fresh: bool, skip_contracts: bool, verbose: bool, timeout_secon
         log.info("Deployment target %s skips service startup; docker compose not invoked", ctx.deployment_target)
         if ctx.deploy_contracts:
             log.info("Contract deployment requires running rollup RPCs; skipping because services are disabled")
+
+    total_elapsed = time.monotonic() - start
+    log.info("Bootstrap completed in %.1fs", total_elapsed)
 
     return ctx
 

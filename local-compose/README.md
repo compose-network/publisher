@@ -20,15 +20,14 @@ This project spins up two **Compose** rollups ("Rollup A" and "Rollup B") that
    python3 -m venv .venv
    .venv/bin/pip install typer rich python-dotenv
    ```
-3. Bootstrap the stack with Typer:
+3. Bootstrap the stack with Typer (live Hoodi target by default):
    ```sh
-   DEPLOYMENT_TARGET=calldata .venv/bin/python compose.py up --fresh
+   .venv/bin/python compose.py up --fresh
    ```
-   The first run wipes any existing artifacts, clones/updates `optimism` and `op-geth` into `services/`, mirrors the shared publisher from `ROLLUP_SP_SOURCE` (defaults to `../rollup-shared-publisher`) into `services/rollup-shared-publisher`, and exports fresh rollup artifacts. With `DEPLOYMENT_TARGET=calldata` the CLI skips starting Docker services (no L1 transactions are broadcast), so this command is safe to run from CI.
-   Subsequent runs can omit `--fresh` to reuse generated artifacts.
+   The first run wipes any existing artifacts, clones/updates `optimism` and `op-geth` into `services/`, mirrors the shared publisher from `ROLLUP_SP_SOURCE` (defaults to `../rollup-shared-publisher`) into `services/rollup-shared-publisher`, exports fresh rollup artifacts, deploys contracts to both rollups, and starts the Docker stack. Expect roughly 3–4 minutes end-to-end on a warm machine (op-deployer + contract deployments dominate). Subsequent runs can omit `--fresh` to reuse the generated artifacts and simply restart containers.
 4. Confirm the stack is healthy with `.venv/bin/python compose.py status`. You should see advancing block numbers for both rollups, a `200` shared publisher health check, and live Blockscout explorers for each chain.
 
-> Need an offline or CI-friendly run? Set `DEPLOYMENT_TARGET=calldata` before calling `compose.py up`; artifacts are produced without sending L1 transactions and Docker stays idle. To bring up containers anyway, export `COMPOSE_FORCE_SERVICES=1` alongside `DEPLOYMENT_TARGET=calldata`—but expect op-node/op-batcher/op-proposer to require live Hoodi state (consider `DEPLOYMENT_TARGET=live` when you actually want the stack running).
+> Need an offline or CI-friendly run? Set `DEPLOYMENT_TARGET=calldata` before calling `compose.py up`; the pipeline will regenerate all artifacts without sending L1 transactions and **will not** start the rollup services. Use this for deterministic artifact generation in CI—not for operating a live testnet. To bring up Docker anyway, export `COMPOSE_FORCE_SERVICES=1` as well, but those services will only stay healthy once you return to `DEPLOYMENT_TARGET=live`.
 
 ## Iterate on Code Changes
 
