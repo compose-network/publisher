@@ -15,7 +15,7 @@ DEFAULT_OPTIMISM_REF = "op-node/v1.13.4"
 DEFAULT_OP_GETH_REPO = "https://github.com/ssvlabs/op-geth.git"
 DEFAULT_OP_GETH_BRANCH = "stage"
 DEFAULT_PUBLISHER_REPO = "git@github.com:ssvlabs/rollup-shared-publisher.git"
-DEFAULT_PUBLISHER_BRANCH = "stage"
+DEFAULT_PUBLISHER_BRANCH = "fix/require-proofs"
 
 
 def run(ctx: BootstrapContext) -> None:
