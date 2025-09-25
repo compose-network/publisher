@@ -76,12 +76,18 @@ def run(ctx: BootstrapContext) -> None:
     _write_contract_json(ctx.rollup_a_dir / "contracts.json", addresses_a, ctx.rollup_a_chain_id)
     _write_contract_json(ctx.rollup_b_dir / "contracts.json", addresses_b, ctx.rollup_b_chain_id)
 
-    log.info("Restarting op-geth/op-node with helper configuration")
+    log.info("Restarting publisher and op-geth to apply helper configuration")
+    common.docker_compose(
+        "restart",
+        "rollup-shared-publisher",
+        "op-geth-a",
+        "op-geth-b",
+    )
+
+    log.info("Ensuring op-node services remain up")
     common.docker_compose(
         "up",
         "-d",
-        "op-geth-a",
-        "op-geth-b",
         "op-node-a",
         "op-node-b",
     )

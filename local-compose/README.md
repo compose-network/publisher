@@ -44,7 +44,7 @@ All additional knobs live in `.env`. Notable toggles:
 - `DEPLOY_CONTRACTS=0` to skip helper contract deployment.
 - `ROLLUP_ACCOUNT_DEPOSIT_WEI` and friends to control automatic L1 deposits.
 - `OP_GETH_PATH` / `ROLLUP_SHARED_PUBLISHER_PATH` / `CONTRACTS_SOURCE` to point at existing checkouts so the CLI skips cloning into `./services`.
-- `ROLLUP_A_CHAIN_ID` / `ROLLUP_B_CHAIN_ID` if you need different test chain IDs (defaults are 77771/77772).
+- `ROLLUP_A_CHAIN_ID` / `ROLLUP_B_CHAIN_ID` if you need different test chain IDs (defaults are 77777/88888).
 
 For deeper operational notes, consult `AGENTS.md` (contributor workflow) and `docs/optimism-guide.md` (background reference).
 
