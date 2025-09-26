@@ -114,9 +114,7 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// proofBytes := req.Proof.Clone()
-	// TODO: this is mock proof, remove it once op-succinct will start in non-mock mode
-	proofBytes := aggProof1100Bin
+	proofBytes := req.Proof.Clone()
 
 	aggVK := append(json.RawMessage(nil), req.AggVK...)
 	sub := proofs.Submission{
