@@ -19,6 +19,7 @@ ARG BUILD_TIME=unknown
 ARG GIT_COMMIT=unknown
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -trimpath \
     -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
     -o rollup-shared-publisher \
     shared-publisher-leader-app/main.go shared-publisher-leader-app/app.go shared-publisher-leader-app/version.go
