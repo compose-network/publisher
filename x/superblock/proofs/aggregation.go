@@ -39,7 +39,44 @@ type AggregationOutputs struct {
 
 // ToAggregationOutputs converts op-succinct format to internal format
 func (o OpSuccinctAggregationOutputs) ToAggregationOutputs() AggregationOutputs {
-	return AggregationOutputs(o)
+	return AggregationOutputs{
+		L1Head:           o.L1Head,
+		L2PreRoot:        o.L2PreRoot,
+		L2PostRoot:       o.L2PostRoot,
+		L2BlockNumber:    o.L2BlockNumber,
+		RollupConfigHash: o.RollupConfigHash,
+		MailboxRoot:      o.MailboxRoot,
+		MultiBlockVKey:   o.MultiBlockVKey,
+		ProverAddress:    o.ProverAddress,
+	}
+}
+
+// ABIEncode encodes AggregationOutputs into the 8*32 byte form expected by the prover.
+// Encodes all fields: l1Head, l2PreRoot, l2PostRoot, l2BlockNumber, rollupConfigHash, mailboxRoot, multiBlockVKey, proverAddress
+func (a AggregationOutputs) ABIEncode() []byte {
+	buf := make([]byte, 0, 8*32)
+	buf = append(buf, a.L1Head.Bytes()...)
+	buf = append(buf, a.L2PreRoot.Bytes()...)
+	buf = append(buf, a.L2PostRoot.Bytes()...)
+
+	// Encode L2BlockNumber as big-endian in 32 bytes
+	var number [32]byte
+	bn := a.L2BlockNumber
+	for i := 0; i < 8; i++ {
+		number[31-i] = byte(bn)
+		bn >>= 8
+	}
+	buf = append(buf, number[:]...)
+	buf = append(buf, a.RollupConfigHash.Bytes()...)
+	buf = append(buf, a.MailboxRoot.Bytes()...)
+	buf = append(buf, a.MultiBlockVKey.Bytes()...)
+
+	// Encode ProverAddress (20 bytes) left-padded to 32 bytes
+	var address [32]byte
+	copy(address[12:], a.ProverAddress.Bytes())
+	buf = append(buf, address[:]...)
+
+	return buf
 }
 
 // AggregationOutputsWithChainID associates per-rollup outputs with a chain identifier.

@@ -83,7 +83,7 @@ HTTP endpoints exposed by `http/handler.go`:
 | POST   | `/v1/proofs/op-succinct`     | Submit a `Submission` payload.            |
 | GET    | `/v1/proofs/status/{sbHash}` | Fetch the current `Status` for a superblock hash. |
 
-`AggregationOutputs` matches the op-succinct JSON schema and exposes `ABIEncode()` to produce the `7*32` byte blob required by the prover.
+`AggregationOutputs` matches the op-succinct JSON schema and exposes `ABIEncode()` to produce the `8*32` byte blob required by the prover.
 
 ### Prover API
 

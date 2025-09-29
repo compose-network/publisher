@@ -58,10 +58,8 @@ func TestProofBytes_Clone(t *testing.T) {
 }
 
 func TestAggregationOutputsABIEncode(t *testing.T) {
-	// Create a left-padded prover address (32 bytes with address in last 20 bytes)
-	var proverAddress common.Hash
-	addressBytes := common.FromHex("0x0123456789abcdef0123456789abcdef01234567")
-	copy(proverAddress[12:], addressBytes) // Put address in last 20 bytes
+	// Create a prover address (20 bytes)
+	proverAddress := common.HexToAddress("0x0123456789abcdef0123456789abcdef01234567")
 
 	outputs := AggregationOutputs{
 		L1Head:           common.HexToHash("0x" + strings.Repeat("11", 32)),
@@ -69,12 +67,20 @@ func TestAggregationOutputsABIEncode(t *testing.T) {
 		L2PostRoot:       common.HexToHash("0x" + strings.Repeat("33", 32)),
 		L2BlockNumber:    0x1234,
 		RollupConfigHash: common.HexToHash("0x" + strings.Repeat("44", 32)),
+		MailboxRoot:      common.HexToHash("0x" + strings.Repeat("55", 32)),
+		MultiBlockVKey:   common.HexToHash("0x" + strings.Repeat("66", 32)),
+		ProverAddress:    proverAddress,
 	}
 	encoded := outputs.ABIEncode()
-	require.Len(t, encoded, 160)
-	// l2 block number encoded big-endian in final 8 bytes of 4th field
+	require.Len(t, encoded, 256) // 8*32 bytes
+	// l2 block number encoded big-endian in final 8 bytes of 4th field (l2BlockNumber)
 	require.Equal(t, byte(0x12), encoded[3*32+30])
 	require.Equal(t, byte(0x34), encoded[3*32+31])
+
+	// Verify prover address is properly padded (last field, 20 bytes in last 20 bytes of 32-byte slot)
+	expectedAddress := proverAddress.Bytes()
+	actualAddress := encoded[7*32+12:] // Last field, skip first 12 bytes (padding)
+	require.Equal(t, expectedAddress, actualAddress)
 }
 
 func TestPublicValueBytes_MarshalAsArray(t *testing.T) {
