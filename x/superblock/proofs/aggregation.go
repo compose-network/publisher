@@ -15,26 +15,26 @@ type MailboxInfoStruct struct {
 
 // OpSuccinctAggregationOutputs received from op-succinct
 type OpSuccinctAggregationOutputs struct {
-	L1Head           common.Hash `json:"l1Head"`
-	L2PreRoot        common.Hash `json:"l2PreRoot"`
-	L2PostRoot       common.Hash `json:"l2PostRoot"`
-	L2BlockNumber    uint64      `json:"l2BlockNumber"`
-	RollupConfigHash common.Hash `json:"rollupConfigHash"`
-	MailboxRoot      common.Hash `json:"mailboxRoot"`
-	MultiBlockVKey   common.Hash `json:"multi_block_vkey"`
-	ProverAddress    common.Hash `json:"prover_address"`
+	L1Head           common.Hash    `json:"l1Head"`
+	L2PreRoot        common.Hash    `json:"l2PreRoot"`
+	L2PostRoot       common.Hash    `json:"l2PostRoot"`
+	L2BlockNumber    uint64         `json:"l2BlockNumber"`
+	RollupConfigHash common.Hash    `json:"rollupConfigHash"`
+	MailboxRoot      common.Hash    `json:"mailboxRoot"`
+	MultiBlockVKey   common.Hash    `json:"multiBlockVKey"`
+	ProverAddress    common.Address `json:"proverAddress"`
 }
 
 // AggregationOutputs sent to superblock prover
 type AggregationOutputs struct {
-	L1Head           common.Hash `json:"l1_head"`
-	L2PreRoot        common.Hash `json:"l2_pre_root"`
-	L2PostRoot       common.Hash `json:"l2_post_root"`
-	L2BlockNumber    uint64      `json:"l2_block_number"`
-	RollupConfigHash common.Hash `json:"rollup_config_hash"`
-	MailboxRoot      common.Hash `json:"mailboxRoot"`
-	MultiBlockVKey   common.Hash `json:"multi_block_vkey"`
-	ProverAddress    common.Hash `json:"prover_address"`
+	L1Head           common.Hash    `json:"l1_head"`
+	L2PreRoot        common.Hash    `json:"l2_pre_root"`
+	L2PostRoot       common.Hash    `json:"l2_post_root"`
+	L2BlockNumber    uint64         `json:"l2_block_number"`
+	RollupConfigHash common.Hash    `json:"rollup_config_hash"`
+	MailboxRoot      common.Hash    `json:"mailbox_root"`
+	MultiBlockVKey   common.Hash    `json:"multi_block_vkey"`
+	ProverAddress    common.Address `json:"prover_address"`
 }
 
 // ToAggregationOutputs converts op-succinct format to internal format
