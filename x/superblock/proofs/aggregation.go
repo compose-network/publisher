@@ -91,6 +91,6 @@ type AggregationProofData struct {
 	ChainID            uint32             `json:"chain_id"`
 	AggregationOutputs AggregationOutputs `json:"aggregation_outputs"`
 	CompressedProof    PublicValueBytes   `json:"compressed_proof"`
-	AggVKey            common.Hash        `json:"agg_vkey"`
+	AggVKey            [8]int             `json:"agg_vkey"`
 	MailboxInfo        MailboxInfoStruct  `json:"mailbox_info"`
 }

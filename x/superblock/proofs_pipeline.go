@@ -330,6 +330,7 @@ func (p *proofPipeline) buildProofJobInput(
 			ChainID:            s.ChainID,
 			AggregationOutputs: s.Aggregation,
 			CompressedProof:    proofBytes,
+			AggVKey:            [8]int{0, 0, 0, 0, 0, 0, 0, 0},
 			MailboxInfo:        s.MailboxInfo,
 		})
 	}
