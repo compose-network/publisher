@@ -125,6 +125,7 @@ func (h *Handler) handleSubmitAggregation(w http.ResponseWriter, r *http.Request
 		Aggregation:      aggregation,
 		L2StartBlock:     req.L2StartBlock,
 		AggVerifyingKey:  aggVK,
+		MailboxInfo:      req.MailboxInfo,
 		Proof:            proofBytes,
 		ReceivedAt:       time.Now(),
 	}
