@@ -39,20 +39,14 @@ type AggregationOutputs struct {
 
 // ToAggregationOutputs converts op-succinct format to internal format
 func (o OpSuccinctAggregationOutputs) ToAggregationOutputs() AggregationOutputs {
-	return AggregationOutputs{
-		L1Head:           o.L1Head,
-		L2PreRoot:        o.L2PreRoot,
-		L2PostRoot:       o.L2PostRoot,
-		L2BlockNumber:    o.L2BlockNumber,
-		RollupConfigHash: o.RollupConfigHash,
-		MailboxRoot:      o.MailboxRoot,
-		MultiBlockVKey:   o.MultiBlockVKey,
-		ProverAddress:    o.ProverAddress,
-	}
+	return AggregationOutputs(o)
 }
 
 // ABIEncode encodes AggregationOutputs into the 8*32 byte form expected by the prover.
-// Encodes all fields: l1Head, l2PreRoot, l2PostRoot, l2BlockNumber, rollupConfigHash, mailboxRoot, multiBlockVKey, proverAddress
+//
+// Encodes all fields:
+// l1Head, l2PreRoot, l2PostRoot, l2BlockNumber, rollupConfigHash, mailboxRoot,
+// multiBlockVKey, proverAddress
 func (a AggregationOutputs) ABIEncode() []byte {
 	buf := make([]byte, 0, 8*32)
 	buf = append(buf, a.L1Head.Bytes()...)
