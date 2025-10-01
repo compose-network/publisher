@@ -14,6 +14,7 @@ type submitReq struct {
 	L1Head           string                              `json:"l1_head"` // 0x-hex
 	Aggregation      proofs.OpSuccinctAggregationOutputs `json:"aggregation_outputs"`
 	L2StartBlock     uint64                              `json:"l2_start_block"`
+	MailboxInfo      proofs.MailboxInfoStruct            `json:"mailbox_info"`
 	AggVK            json.RawMessage                     `json:"agg_vk"`
 	Proof            proofs.ProofBytes                   `json:"proof,omitempty"`
 }

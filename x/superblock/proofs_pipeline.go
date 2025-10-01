@@ -103,7 +103,7 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 	// Initialize superblock status if it doesn't exist (collector now handles this automatically)
 
 	// TODO: For testing, can bypass missing proofs by creating dummy submissions
-	subs, err := p.collector.ListSubmissions(ctx, sb.Hash)
+	proofSubs, err := p.collector.ListSubmissions(ctx, sb.Hash)
 	if err != nil {
 		p.log.Warn().Err(err).Uint64("superblock", sb.Number).Msg("No submissions yet for superblock")
 		return err
@@ -112,7 +112,7 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 	p.log.Info().
 		Uint64("superblock_number", sb.Number).
 		Str("superblock_hash", sb.Hash.Hex()).
-		Int("submissions_found", len(subs)).
+		Int("submissions_found", len(proofSubs)).
 		Msg("Checking submissions for superblock")
 
 	// TODO: Get ALL submissions from collector regardless of superblock hash
@@ -120,7 +120,7 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 	allSubs := p.collector.GetStats()
 	totalSubmissions := allSubs["total_submissions"].(int)
 
-	if len(subs) == 0 && totalSubmissions > 0 {
+	if len(proofSubs) == 0 && totalSubmissions > 0 {
 		p.log.Info().
 			Uint64("current_superblock", sb.Number).
 			Int("total_submissions_in_collector", totalSubmissions).
@@ -143,18 +143,18 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 					otherSubs[i].SuperblockNumber = sb.Number
 					otherSubs[i].SuperblockHash = sb.Hash
 				}
-				subs = otherSubs
+				proofSubs = otherSubs
 				break
 			}
 		}
 	}
 
-	if len(subs) == 0 {
+	if len(proofSubs) == 0 {
 		p.log.Info().Uint64("superblock", sb.Number).Msg("No proof submissions available")
 		return nil
 	}
 
-	for i, sub := range subs {
+	for i, sub := range proofSubs {
 		p.log.Info().
 			Int("submission_index", i).
 			Uint64("submission_superblock_number", sub.SuperblockNumber).
@@ -163,23 +163,23 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 			Msg("Found proof submission")
 	}
 
-	required := p.requiredChainIDs(subs)
-	ready := p.isReady(required, subs)
+	required := p.requiredChainIDs(proofSubs)
+	ready := p.isReady(required, proofSubs)
 
 	p.log.Info().
 		Uint64("superblock", sb.Number).
 		Interface("required_chain_ids", required).
-		Int("submissions_count", len(subs)).
+		Int("submissions_count", len(proofSubs)).
 		Bool("ready_for_prover", ready).
 		Bool("require_all_chains", p.cfg.Collector.RequireAllChains).
 		Msg("Evaluated proof readiness")
 
 	if !ready {
-		missing := p.missingChains(required, subs)
+		missing := p.missingChains(required, proofSubs)
 		p.log.Info().
 			Uint64("superblock", sb.Number).
 			Ints("missing_chains", missing).
-			Int("received", len(subs)).
+			Int("received", len(proofSubs)).
 			Interface("required_chain_ids", required).
 			Msg("Not ready - waiting for remaining chain proofs")
 		_ = p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
@@ -211,7 +211,7 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 		return nil
 	}
 
-	job := p.buildProofJobInput(ctx, sb, subs)
+	job := p.buildProofJobInput(ctx, sb, proofSubs)
 
 	jobID, err := p.prover.RequestProof(ctx, job)
 	if err != nil {
@@ -274,22 +274,21 @@ func (p *proofPipeline) isReady(required []uint32, subs []proofs.Submission) boo
 func (p *proofPipeline) buildProofJobInput(
 	ctx context.Context,
 	sb *store.Superblock,
-	subs []proofs.Submission,
+	proofSubs []proofs.Submission,
 ) proofs.ProofJobInput {
-	// Create rollup state transitions from submissions
-	rollupStateTransitions := make([]proofs.RollupStateTransition, 0, len(subs))
-	for _, s := range subs {
+	rollupStateTransitions := make([]proofs.RollupStateTransition, 0, len(proofSubs))
+	for _, ps := range proofSubs {
 		l2BlockNumberBytes := make([]byte, 32)
-		blockNumber := s.Aggregation.L2BlockNumber
+		blockNumber := ps.Aggregation.L2BlockNumber
 		for i := 0; i < 8; i++ {
 			l2BlockNumberBytes[31-i] = byte(blockNumber)
 			blockNumber >>= 8
 		}
 
 		rollupStateTransitions = append(rollupStateTransitions, proofs.RollupStateTransition{
-			RollupConfigHash: bytesToInts(s.Aggregation.RollupConfigHash.Bytes()),
-			L2PreRoot:        bytesToInts(s.Aggregation.L2PreRoot.Bytes()),
-			L2PostRoot:       bytesToInts(s.Aggregation.L2PostRoot.Bytes()),
+			RollupConfigHash: bytesToInts(ps.Aggregation.RollupConfigHash.Bytes()),
+			L2PreRoot:        bytesToInts(ps.Aggregation.L2PreRoot.Bytes()),
+			L2PostRoot:       bytesToInts(ps.Aggregation.L2PostRoot.Bytes()),
 			L2BlockNumber:    bytesToInts(l2BlockNumberBytes),
 		})
 	}
@@ -322,37 +321,17 @@ func (p *proofPipeline) buildProofJobInput(
 		RollupSt:                  rollupStateTransitions,
 	}
 
-	// Create aggregation proofs
-	aggProofs := make([]proofs.AggregationProofData, 0, len(subs))
-	for _, s := range subs {
-		// TODO: revert, now mocking
-		// raw := s.Aggregation.ABIEncode()
-		raw := rawPublicValues
+	aggProofs := make([]proofs.AggregationProofData, 0, len(proofSubs))
+	for _, s := range proofSubs {
 		proofBytes := make([]byte, len(s.Proof))
 		copy(proofBytes, s.Proof)
 
-		// Create mailbox info from chain ID
-		mailboxInfo := []proofs.MailboxInfo{
-			{
-				ChainID:    s.ChainID,
-				InboxRoot:  make([]byte, 32), // TODO: Get actual inbox root
-				OutboxRoot: make([]byte, 32), // TODO: Get actual outbox root
-			},
-		}
-
-		// Convert vkey to [8]uint32 format expected by Rust
-		// TODO: Parse actual vkey data instead of using defaults
-		aggVKey := [8]uint32{
-			1267174729, 1284041170, 746450416, 924179179,
-			1558739647, 1619913785, 1738485538, 449972493,
-		}
-
 		aggProofs = append(aggProofs, proofs.AggregationProofData{
+			ChainID:            s.ChainID,
 			AggregationOutputs: s.Aggregation,
-			RawPublicValues:    raw,
 			CompressedProof:    proofBytes,
-			AggVKey:            aggVKey,
-			MailboxInfo:        mailboxInfo,
+			AggVKey:            [8]int{0, 0, 0, 0, 0, 0, 0, 0},
+			MailboxInfo:        s.MailboxInfo,
 		})
 	}
 
