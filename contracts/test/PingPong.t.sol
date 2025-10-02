@@ -51,7 +51,6 @@ contract PingPongTest is Setup {
         bytes memory ping = pingPong.pong(
             otherChain,
             DEPLOYER,
-            DEPLOYER,
             1,
             "pong outbox1"
         );
@@ -62,7 +61,6 @@ contract PingPongTest is Setup {
         testWritePingToInbox();
         bytes memory ping = pingPong.pong(
             otherChain,
-            DEPLOYER,
             DEPLOYER,
             1,
             "first pong"

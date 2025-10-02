@@ -12,7 +12,6 @@ interface IPingPong {
     function pong(
         uint256 otherChain,
         address pingSender,
-        address pongReceiver,
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory message);

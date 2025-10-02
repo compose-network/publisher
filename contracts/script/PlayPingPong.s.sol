@@ -31,7 +31,7 @@ contract SimulatePingPong is Script {
 
         vm.startBroadcast(privateKey);
         mailboxRollupB.putInbox(ROLLUP_A, pingPongA, pingPongB, SESSION_ID, "PING", pingData);
-        pingPongRollupB.pong(ROLLUP_A, pingPongA, pingPongA, SESSION_ID, pongData);
+        pingPongRollupB.pong(ROLLUP_A, pingPongA, SESSION_ID, pongData);
         vm.stopBroadcast();
 
         vm.startBroadcast(privateKey);

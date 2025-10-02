@@ -67,7 +67,6 @@ contract PingPong is IPingPong {
     function pong(
         uint256 otherChain,
         address pingSender,
-        address pongReceiver,
         uint256 sessionId,
         bytes calldata data
     ) external returns (bytes memory pingMessage) {
@@ -81,6 +80,6 @@ contract PingPong is IPingPong {
             revert PingMessageEmpty();
         }
         // write message to other chain, sender is this address
-        IMailbox(mailbox).write(otherChain, pongReceiver, sessionId, "PONG", data);
+        IMailbox(mailbox).write(otherChain, address(this), sessionId, "PONG", data);
     }
 }
