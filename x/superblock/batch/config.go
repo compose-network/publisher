@@ -7,8 +7,8 @@ import (
 
 // Config holds all batch synchronization configuration
 type Config struct {
-	// L1 Listener configuration
-	L1Listener ListenerConfig `mapstructure:"l1_listener" yaml:"l1_listener"`
+	// Epoch Tracker configuration (time-based)
+	EpochTracker EpochTrackerConfig `mapstructure:"epoch_tracker" yaml:"epoch_tracker"`
 
 	// Batch Manager configuration
 	BatchManager ManagerConfig `mapstructure:"batch_manager" yaml:"batch_manager"`
@@ -27,7 +27,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Enabled:      true,
-		L1Listener:   DefaultListenerConfig(),
+		EpochTracker: DefaultEpochTrackerConfig(),
 		BatchManager: DefaultManagerConfig(),
 		Pipeline:     DefaultPipelineConfig(),
 		Integration:  DefaultIntegrationConfig(),
@@ -40,15 +40,15 @@ func (c *Config) Validate() error {
 		return nil // Skip validation if disabled
 	}
 
-	// Validate L1 Listener
-	if c.L1Listener.L1RPC == "" {
-		return fmt.Errorf("l1_listener.l1_rpc is required when batch sync is enabled")
+	// Validate Epoch Tracker
+	if c.EpochTracker.GenesisTime.IsZero() {
+		return fmt.Errorf("epoch_tracker.genesis_time is required when batch sync is enabled")
 	}
-	if c.L1Listener.BatchFactor == 0 {
-		return fmt.Errorf("l1_listener.batch_factor must be greater than 0")
+	if c.EpochTracker.BatchFactor == 0 {
+		return fmt.Errorf("epoch_tracker.batch_factor must be greater than 0")
 	}
-	if c.L1Listener.PollInterval <= 0 {
-		return fmt.Errorf("l1_listener.poll_interval must be greater than 0")
+	if c.EpochTracker.PollInterval <= 0 {
+		return fmt.Errorf("epoch_tracker.poll_interval must be greater than 0")
 	}
 
 	// Validate Batch Manager
@@ -99,10 +99,10 @@ func (c *Config) GetSummary() map[string]interface{} {
 
 	return map[string]interface{}{
 		"enabled": true,
-		"l1_listener": map[string]interface{}{
-			"batch_factor":  c.L1Listener.BatchFactor,
-			"poll_interval": c.L1Listener.PollInterval.String(),
-			"has_rpc_url":   c.L1Listener.L1RPC != "",
+		"epoch_tracker": map[string]interface{}{
+			"genesis_time":  c.EpochTracker.GenesisTime.Format(time.RFC3339),
+			"batch_factor":  c.EpochTracker.BatchFactor,
+			"poll_interval": c.EpochTracker.PollInterval.String(),
 		},
 		"batch_manager": map[string]interface{}{
 			"chain_id":       c.BatchManager.ChainID,
@@ -124,12 +124,15 @@ func (c *Config) GetSummary() map[string]interface{} {
 
 // ApplyDefaults fills in any missing configuration with defaults
 func (c *Config) ApplyDefaults() {
-	// L1 Listener defaults
-	if c.L1Listener.BatchFactor == 0 {
-		c.L1Listener.BatchFactor = DefaultListenerConfig().BatchFactor
+	// Epoch Tracker defaults
+	if c.EpochTracker.GenesisTime.IsZero() {
+		c.EpochTracker.GenesisTime = DefaultEpochTrackerConfig().GenesisTime
 	}
-	if c.L1Listener.PollInterval == 0 {
-		c.L1Listener.PollInterval = DefaultListenerConfig().PollInterval
+	if c.EpochTracker.BatchFactor == 0 {
+		c.EpochTracker.BatchFactor = DefaultEpochTrackerConfig().BatchFactor
+	}
+	if c.EpochTracker.PollInterval == 0 {
+		c.EpochTracker.PollInterval = DefaultEpochTrackerConfig().PollInterval
 	}
 
 	// Batch Manager defaults
@@ -163,14 +166,14 @@ func (c *Config) SetChainID(chainID uint32) {
 	c.Integration.ChainID = chainID
 }
 
-// SetL1RPC sets the L1 RPC URL for the listener
-func (c *Config) SetL1RPC(rpcURL string) {
-	c.L1Listener.L1RPC = rpcURL
+// SetGenesisTime sets the genesis time for epoch calculation
+func (c *Config) SetGenesisTime(genesisTime time.Time) {
+	c.EpochTracker.GenesisTime = genesisTime
 }
 
-// SetBatchFactor sets the L1 epoch batch factor
+// SetBatchFactor sets the epoch batch factor
 func (c *Config) SetBatchFactor(factor uint64) {
-	c.L1Listener.BatchFactor = factor
+	c.EpochTracker.BatchFactor = factor
 }
 
 // DisableBatchSync disables batch synchronization
@@ -195,15 +198,19 @@ func (c *Config) IsProductionReady() (bool, []string) {
 
 	var issues []string
 
-	// Check L1 RPC
-	if c.L1Listener.L1RPC == "" ||
-		c.L1Listener.L1RPC == "https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY" {
-		issues = append(issues, "L1 RPC URL must be configured with a real endpoint")
+	// Check genesis time
+	if c.EpochTracker.GenesisTime.IsZero() {
+		issues = append(issues, "genesis time must be configured")
+	}
+
+	// Check batch factor
+	if c.EpochTracker.BatchFactor != 10 {
+		issues = append(issues, "batch factor should be 10 for production (per spec)")
 	}
 
 	// Check polling interval
-	if c.L1Listener.PollInterval < 10*time.Second {
-		issues = append(issues, "L1 poll interval should be at least 10 seconds for production")
+	if c.EpochTracker.PollInterval < 10*time.Second {
+		issues = append(issues, "poll interval should be at least 10 seconds for production")
 	}
 
 	// Check batch timeout
@@ -225,19 +232,22 @@ func (c *Config) IsProductionReady() (bool, []string) {
 }
 
 // GetRecommendedProductionConfig returns a production-ready configuration
-func GetRecommendedProductionConfig(chainID uint32, l1RPC string) Config {
+func GetRecommendedProductionConfig(chainID uint32) Config {
+	// Ethereum Mainnet genesis: 2020-12-01 12:00:23 UTC
+	ethereumGenesisTime := time.Unix(1606824023, 0).UTC()
+
 	cfg := Config{
 		Enabled: true,
 
-		L1Listener: ListenerConfig{
-			L1RPC:        l1RPC,
-			BatchFactor:  10,               // Every 10 Ethereum epochs
+		EpochTracker: EpochTrackerConfig{
+			GenesisTime:  ethereumGenesisTime,
+			BatchFactor:  10,               // Every 10 Ethereum epochs (spec requirement)
 			PollInterval: 12 * time.Second, // Match Ethereum slot time
 		},
 
 		BatchManager: ManagerConfig{
 			ChainID:      chainID,
-			MaxBatchSize: 320,              // ~64 minutes of blocks
+			MaxBatchSize: 320,              // 10 epochs * 32 slots = ~64 minutes of blocks
 			BatchTimeout: 90 * time.Minute, // Allow time for proof generation
 		},
 
@@ -260,18 +270,21 @@ func GetRecommendedProductionConfig(chainID uint32, l1RPC string) Config {
 
 // GetTestConfig returns a configuration suitable for testing
 func GetTestConfig(chainID uint32) Config {
+	// Use Ethereum Mainnet genesis for consistency
+	ethereumGenesisTime := time.Unix(1606824023, 0).UTC()
+
 	cfg := Config{
 		Enabled: true,
 
-		L1Listener: ListenerConfig{
-			L1RPC:        "http://localhost:8545", // Local test node
-			BatchFactor:  2,                       // Faster batching for tests
-			PollInterval: 2 * time.Second,         // Faster polling
+		EpochTracker: EpochTrackerConfig{
+			GenesisTime:  ethereumGenesisTime,
+			BatchFactor:  2,               // Faster batching for tests (every 2 epochs)
+			PollInterval: 2 * time.Second, // Faster polling
 		},
 
 		BatchManager: ManagerConfig{
 			ChainID:      chainID,
-			MaxBatchSize: 10,              // Small batches for tests
+			MaxBatchSize: 64,              // 2 epochs * 32 slots = smaller batches for tests
 			BatchTimeout: 5 * time.Minute, // Quick timeout
 		},
 

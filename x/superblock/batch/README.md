@@ -1,6 +1,6 @@
 # Batch Synchronization Package
 
-This package implements synchronized batch proving across sequencers as specified in the Superblock Construction Protocol (SBCP) and Settlement Layer documentation.
+This package implements synchronized batch proving across sequencers.
 
 ## Overview
 
@@ -13,11 +13,11 @@ The batch synchronization system ensures that:
 
 ## Components
 
-### L1 Listener (`listener.go`)
-- Connects to Ethereum L1 via RPC
+### Epoch Tracker (`epoch_tracker.go`)
+- **Time-based epoch calculation**
+- Uses formula: `epoch = (time.Now() - genesisTime) / 12 seconds / 32 slots`
 - Monitors for new epochs (every ~6.4 minutes)
 - Triggers batch events when `epoch_number % batch_factor == 0`
-- Provides epoch events and batch triggers via channels
 
 ### Batch Manager (`manager.go`)
 - Manages batch lifecycle (collecting → proving → completed/failed)
@@ -55,20 +55,25 @@ import "github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch"
 // Create configuration
 cfg := batch.DefaultConfig()
 cfg.SetChainID(1001)
-cfg.SetL1RPC("https://mainnet.infura.io/v3/YOUR_KEY")
+// Genesis time is already set to Ethereum Mainnet genesis in DefaultConfig()
+// No RPC URLs needed!
 
 // Validate configuration
 if err := cfg.Validate(); err != nil {
     log.Fatal("Invalid config:", err)
 }
 
-// Create components (assuming you have slot manager, collector, prover client)
-l1Listener, err := batch.NewL1Listener(cfg.L1Listener, log)
+// Create components
+// IMPORTANT: Use the same genesis time for slot manager and epoch tracker
+genesisTime := cfg.EpochTracker.GenesisTime
+slotManager := slot.NewManager(genesisTime, 12*time.Second, 2.0/3.0)
+
+epochTracker, err := batch.NewEpochTracker(cfg.EpochTracker, log)
 if err != nil {
-    log.Fatal("Failed to create L1 listener:", err)
+    log.Fatal("Failed to create epoch tracker:", err)
 }
 
-batchManager, err := batch.NewManager(cfg.BatchManager, slotManager, l1Listener, log)
+batchManager, err := batch.NewManager(cfg.BatchManager, slotManager, epochTracker, log)
 if err != nil {
     log.Fatal("Failed to create batch manager:", err)
 }
@@ -80,7 +85,7 @@ if err != nil {
 
 // Start all components
 ctx := context.Background()
-go l1Listener.Start(ctx)
+go epochTracker.Start(ctx)
 go batchManager.Start(ctx)
 go pipeline.Start(ctx)
 ```
@@ -94,7 +99,7 @@ integration, err := batch.NewSequencerIntegration(
     sequencerCoordinator,
     batchManager,
     pipeline,
-    l1Listener,
+    epochTracker,
     log,
 )
 
@@ -141,10 +146,10 @@ go func() {
 Configuration supports environment variable overrides:
 
 ```bash
-# L1 Configuration
-export BATCH_L1_LISTENER_L1_RPC="https://mainnet.infura.io/v3/YOUR_KEY"
-export BATCH_L1_LISTENER_BATCH_FACTOR=10
-export BATCH_L1_LISTENER_POLL_INTERVAL=12s
+# Epoch Tracker Configuration
+export BATCH_EPOCH_TRACKER_GENESIS_TIME="2020-12-01T12:00:23Z"  # Ethereum Mainnet genesis
+export BATCH_EPOCH_TRACKER_BATCH_FACTOR=10
+export BATCH_EPOCH_TRACKER_POLL_INTERVAL=12s
 
 # Batch Manager
 export BATCH_BATCH_MANAGER_CHAIN_ID=1001
@@ -163,14 +168,14 @@ export BATCH_PIPELINE_MAX_RETRIES=3
 batch:
   enabled: true
 
-  l1_listener:
-    l1_rpc: "https://mainnet.infura.io/v3/YOUR_KEY"
-    batch_factor: 10
-    poll_interval: 12s
+  epoch_tracker:
+    genesis_time: "2020-12-01T12:00:23Z"  # Ethereum Mainnet genesis
+    batch_factor: 10                       # Trigger batch every 10 epochs (spec requirement)
+    poll_interval: 12s                     # Match Ethereum slot time
 
   batch_manager:
     chain_id: 1001
-    max_batch_size: 320
+    max_batch_size: 320                    # 10 epochs * 32 slots
     batch_timeout: 90m
 
   pipeline:
@@ -189,84 +194,9 @@ batch:
 
 ### Batch Lifecycle
 
-1. **L1 Listener** detects epoch divisible by `batch_factor`
-2. **Batch Manager** starts new batch, begins collecting blocks
-3. **Sequencer Integration** reports produced blocks to batch manager
-4. **Batch Manager** finalizes batch when next trigger occurs or size limit reached
-5. **Pipeline** processes batch through proof generation stages
+1. **Epoch Tracker** calculates current epoch from time (no RPC calls)
+2. **Epoch Tracker** detects when `epoch % batch_factor == 0`
+3. **Batch Manager** finalizes previous batch and starts new batch
+4. **Sequencer Integration** reports produced blocks to batch manager
+5. **Pipeline** processes completed batch through proof generation stages
 6. **Pipeline** submits completed proof to Shared Publisher
-
-### Proof Generation Pipeline
-
-1. **Range Proof**: op-succinct range program validates L2 block sequence
-2. **Aggregation**: op-succinct aggregation program creates batch proof
-3. **Network Aggregation**: superblock-prover creates final superblock proof
-4. **Submission**: Final proof submitted to SP for L1 settlement
-
-### Synchronization
-
-- All sequencers listen to same L1 epochs
-- Batch boundaries synchronized across all rollups
-- 12-second block time aligned with Ethereum slots
-- Batch factor of 10 epochs = ~64 minutes per batch
-
-## Error Handling
-
-- **L1 Connection Failures**: Automatic reconnection with exponential backoff
-- **Proof Generation Failures**: Configurable retries with delays
-- **Batch Timeouts**: Automatic batch finalization after timeout period
-- **Resource Limits**: Concurrent job limits to prevent overload
-
-## Metrics and Monitoring
-
-Components expose metrics for:
-- Batch collection rates
-- Proof generation times
-- Success/failure rates
-- L1 synchronization status
-- Resource utilization
-
-## Testing
-
-The package includes comprehensive test configurations:
-
-```go
-// Get test configuration
-testCfg := batch.GetTestConfig(1001)
-
-// Use with local test network
-testCfg.L1Listener.L1RPC = "http://localhost:8545"
-testCfg.L1Listener.BatchFactor = 2  // Faster batching
-```
-
-## Integration Points
-
-### With Existing Systems
-
-- **Slot Manager**: Uses existing 12-second slot timing
-- **Proof Collector**: Extends existing op-succinct integration
-- **Prover Client**: Uses existing superblock-prover HTTP client
-- **Sequencer Coordinator**: Integrates with existing SBCP implementation
-
-### With Shared Publisher
-
-- Submits batch proofs via proof collector
-- Coordinates with SP for superblock construction
-- Provides batch metadata for L1 settlement
-
-## Production Considerations
-
-- Configure appropriate L1 RPC endpoints with high availability
-- Set conservative timeouts for proof generation
-- Monitor batch success rates and adjust parameters
-- Implement alerting for batch failures
-- Consider rate limiting for L1 API calls
-- Ensure sufficient compute resources for proof generation
-
-## Future Enhancements
-
-- Dynamic batch sizing based on network conditions
-- Improved error recovery and state reconstruction
-- Integration with beacon chain for more accurate epoch tracking
-- Support for multiple L1 networks
-- Advanced proof caching and optimization

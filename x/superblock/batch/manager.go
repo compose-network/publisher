@@ -58,13 +58,13 @@ type BatchEvent struct {
 	Timestamp time.Time   `json:"timestamp"`
 }
 
-// Manager coordinates batch lifecycle with L1 synchronization and slot timing
+// Manager coordinates batch lifecycle with epoch synchronization and slot timing
 type Manager struct {
-	mu          sync.RWMutex
-	log         zerolog.Logger
-	chainID     uint32
-	slotManager *slot.Manager
-	l1Listener  *L1Listener
+	mu           sync.RWMutex
+	log          zerolog.Logger
+	chainID      uint32
+	slotManager  *slot.Manager
+	epochTracker *EpochTracker
 
 	// Current state
 	currentBatch     *BatchInfo
@@ -103,14 +103,14 @@ func DefaultManagerConfig() ManagerConfig {
 func NewManager(
 	cfg ManagerConfig,
 	slotMgr *slot.Manager,
-	l1Listener *L1Listener,
+	epochTracker *EpochTracker,
 	log zerolog.Logger,
 ) (*Manager, error) {
 	if slotMgr == nil {
 		return nil, fmt.Errorf("slot manager is required")
 	}
-	if l1Listener == nil {
-		return nil, fmt.Errorf("L1 listener is required")
+	if epochTracker == nil {
+		return nil, fmt.Errorf("epoch tracker is required")
 	}
 
 	logger := log.With().Str("component", "batch-manager").Logger()
@@ -120,7 +120,7 @@ func NewManager(
 		log:              logger,
 		chainID:          cfg.ChainID,
 		slotManager:      slotMgr,
-		l1Listener:       l1Listener,
+		epochTracker:     epochTracker,
 		completedBatches: make(map[uint64]*BatchInfo),
 		maxBatchSize:     cfg.MaxBatchSize,
 		batchTimeout:     cfg.BatchTimeout,
@@ -191,10 +191,10 @@ func (m *Manager) eventLoop(ctx context.Context) {
 			m.log.Info().Msg("Batch manager event loop canceled")
 			return
 
-		case trigger := <-m.l1Listener.BatchTriggers():
+		case trigger := <-m.epochTracker.BatchTriggers():
 			m.handleBatchTrigger(trigger)
 
-		case err := <-m.l1Listener.Errors():
+		case err := <-m.epochTracker.Errors():
 			m.log.Error().Err(err).Msg("L1 listener error")
 		}
 	}
@@ -207,23 +207,28 @@ func (m *Manager) handleBatchTrigger(trigger BatchTrigger) {
 
 	m.log.Info().
 		Uint64("epoch", trigger.TriggerEpoch).
-		Bool("should_start", trigger.ShouldStart).
-		Msg("Handling batch trigger")
+		Uint64("slot", trigger.TriggerSlot).
+		Msg("Handling batch trigger - ending current batch and starting new one")
 
-	if trigger.ShouldStart {
-		m.startNewBatch(trigger)
+	// When epoch % batch_factor == 0:
+	// 1. Finalize current batch (if exists)
+	// 2. Trigger proof pipeline for completed batch
+	// 3. Start new batch
+	m.finalizeCurrentBatchIfExists()
+	m.startNewBatch(trigger)
+}
+
+// finalizeCurrentBatchIfExists finalizes the current batch if it exists
+func (m *Manager) finalizeCurrentBatchIfExists() {
+	if m.currentBatch != nil && m.currentBatch.State == StateCollecting {
+		if err := m.finalizeBatch(); err != nil {
+			m.log.Error().Err(err).Msg("Failed to finalize previous batch")
+		}
 	}
 }
 
 // startNewBatch initiates a new batch
 func (m *Manager) startNewBatch(trigger BatchTrigger) {
-	// Complete current batch if exists
-	if m.currentBatch != nil && m.currentBatch.State == StateCollecting {
-		if err := m.finalizeBatch(); err != nil {
-			m.log.Error().Err(err).Msg("Failed to finalize previous batch")
-			// Continue with new batch anyway
-		}
-	}
 
 	m.batchCounter++
 	currentSlot := m.slotManager.GetCurrentSlot()

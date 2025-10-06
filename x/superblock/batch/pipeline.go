@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
@@ -440,14 +441,20 @@ func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *PipelineJob)
 
 	// Create proper prover input with batch data
 	aggData := proofs.AggregationProofData{
+		ChainID:         job.BatchInfo.ChainID,
 		CompressedProof: proofs.PublicValueBytes(*job.AggProof),
 		AggregationOutputs: proofs.AggregationOutputs{
-			L2BlockNumber:    job.BatchInfo.Blocks[len(job.BatchInfo.Blocks)-1].BlockNumber,
-			RollupConfigHash: [32]byte{}, // Set proper config hash
+			L2BlockNumber: job.BatchInfo.Blocks[len(job.BatchInfo.Blocks)-1].BlockNumber,
+			// TODO: Set proper values from actual proof data
+			// L1Head, L2PreRoot, L2PostRoot, RollupConfigHash, MailboxRoot, MultiBlockVKey, ProverAddress
 		},
-		RawPublicValues: proofs.PublicValueBytes(*job.RangeProof),
-		AggVKey:         [8]uint32{1, 2, 3, 4, 5, 6, 7, 8}, // Set proper vkey
-		MailboxInfo:     []proofs.MailboxInfo{},
+		AggVKey: [8]int{1, 2, 3, 4, 5, 6, 7, 8}, // TODO: Set proper vkey from proof
+		MailboxInfo: proofs.MailboxInfoStruct{
+			InboxChains:  []common.Hash{},
+			OutboxChains: []common.Hash{},
+			InboxRoots:   []common.Hash{},
+			OutboxRoots:  []common.Hash{},
+		},
 	}
 
 	proofInput := proofs.ProofJobInput{

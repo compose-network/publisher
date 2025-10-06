@@ -16,7 +16,7 @@ type SequencerIntegration struct {
 	coordinator  sequencer.Coordinator
 	batchManager *Manager
 	pipeline     *Pipeline
-	l1Listener   *L1Listener
+	epochTracker *EpochTracker
 
 	// Block tracking
 	lastProcessedSlot uint64
@@ -43,7 +43,7 @@ func NewSequencerIntegration(
 	coord sequencer.Coordinator,
 	batchMgr *Manager,
 	pipeline *Pipeline,
-	l1Listener *L1Listener,
+	epochTracker *EpochTracker,
 	log zerolog.Logger,
 ) (*SequencerIntegration, error) {
 	if coord == nil {
@@ -60,7 +60,7 @@ func NewSequencerIntegration(
 		coordinator:  coord,
 		batchManager: batchMgr,
 		pipeline:     pipeline,
-		l1Listener:   l1Listener,
+		epochTracker: epochTracker,
 	}
 
 	logger.Info().
@@ -240,39 +240,40 @@ func (s *SequencerIntegration) IsInBatchCollectionPeriod() bool {
 	return s.batchManager.IsCollectingBatch()
 }
 
-// GetL1SyncStatus returns information about L1 synchronization status
-func (s *SequencerIntegration) GetL1SyncStatus(ctx context.Context) (map[string]interface{}, error) {
-	if s.l1Listener == nil {
+// GetEpochSyncStatus returns information about epoch synchronization status
+func (s *SequencerIntegration) GetEpochSyncStatus(ctx context.Context) (map[string]interface{}, error) {
+	if s.epochTracker == nil {
 		return map[string]interface{}{
 			"enabled": false,
 		}, nil
 	}
 
-	batchNumber, err := s.l1Listener.GetCurrentBatchNumber(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get current batch number: %w", err)
-	}
+	batchNumber := s.epochTracker.GetCurrentBatchNumber()
+	epoch := s.epochTracker.GetCurrentEpoch()
+	slot := s.epochTracker.GetCurrentSlot()
 
 	return map[string]interface{}{
 		"enabled":             true,
+		"current_epoch":       epoch,
+		"current_slot":        slot,
 		"batch_number":        batchNumber,
 		"last_processed_slot": s.lastProcessedSlot,
 	}, nil
 }
 
-// WaitForBatchTrigger waits for the next batch trigger from L1
+// WaitForBatchTrigger waits for the next batch trigger from epoch tracker
 func (s *SequencerIntegration) WaitForBatchTrigger(ctx context.Context) (*BatchTrigger, error) {
-	if s.l1Listener == nil {
-		return nil, fmt.Errorf("l1 listener not available")
+	if s.epochTracker == nil {
+		return nil, fmt.Errorf("epoch tracker not available")
 	}
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case trigger := <-s.l1Listener.BatchTriggers():
+	case trigger := <-s.epochTracker.BatchTriggers():
 		return &trigger, nil
-	case err := <-s.l1Listener.Errors():
-		return nil, fmt.Errorf("l1 listener error: %w", err)
+	case err := <-s.epochTracker.Errors():
+		return nil, fmt.Errorf("epoch tracker error: %w", err)
 	}
 }
 
@@ -285,12 +286,12 @@ func (s *SequencerIntegration) ForceFinalizeBatch() error {
 		return fmt.Errorf("no current batch to finalize")
 	}
 
-	// This is a simplified approach - in practice you'd want more sophisticated handling
+	// TODO: more sophisticated handling
 	s.log.Warn().
 		Uint64("batch_id", currentBatch.ID).
 		Msg("Forcing batch finalization")
 
-	// The actual finalization would happen in the batch manager's internal logic
+	// TODO: The actual finalization would happen in the batch manager's internal logic
 	// This is just a trigger mechanism
 	return nil
 }
