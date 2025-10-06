@@ -11,74 +11,132 @@ The batch synchronization system ensures that:
 4. Proof generation follows the pipeline: Range → Aggregation → Network Aggregation
 5. Completed proofs are submitted to the Shared Publisher (SP)
 
+## Package Structure
+
+```
+batch/
+├── config.go                   # Simplified batch configuration (3 core fields)
+├── spec.go                     # Protocol specification constants (immutable)
+├── constants.go                # Implementation defaults (overridable)
+├── epoch_tracker.go            # Time-based epoch calculation
+├── manager.go                  # Batch lifecycle management
+├── pipeline.go                 # Proof generation orchestration
+├── sequencer_integration.go    # Sequencer coordinator integration
+└── types/                      # Domain types
+    ├── batch.go                # Batch domain types
+    └── pipeline.go             # Pipeline domain types
+```
+
 ## Components
 
 ### Epoch Tracker (`epoch_tracker.go`)
-- **Time-based epoch calculation**
+- **Time-based epoch calculation** (no RPC required)
 - Uses formula: `epoch = (time.Now() - genesisTime) / 12 seconds / 32 slots`
 - Monitors for new epochs (every ~6.4 minutes)
 - Triggers batch events when `epoch_number % batch_factor == 0`
+- Configuration in `EpochTrackerConfig`
 
 ### Batch Manager (`manager.go`)
-- Manages batch lifecycle (collecting → proving → completed/failed)
+- Manages batch lifecycle states: `collecting → proving → completed/failed`
 - Coordinates with slot timing (12-second blocks)
 - Tracks blocks added to current batch
 - Enforces batch size limits and timeouts
 - Emits batch lifecycle events
+- Configuration in `ManagerConfig`
 
 ### Proof Pipeline (`pipeline.go`)
 - Orchestrates proof generation workflow
+- Pipeline stages: `idle → range_proof → aggregation → network_agg → completed/failed`
 - Integrates with existing `op-succinct` (collector) and `superblock-prover`
 - Handles job queuing, processing, and retries
 - Supports concurrent proof generation
 - Submits completed proofs to Shared Publisher
+- Configuration in `PipelineConfig`
 
 ### Sequencer Integration (`sequencer_integration.go`)
 - Extends existing sequencer coordinator with batch awareness
 - Reports produced blocks to batch manager
 - Monitors batch events and coordinates accordingly
 - Provides batch status information
+- Configuration in `IntegrationConfig`
 
-### Configuration (`config.go`)
-- Centralized configuration for all batch components
-- Validation and defaults handling
-- Production vs test configurations
-- Environment-specific settings
+### Types Package (`types/`)
+
+Domain types are organized in a separate package following Go best practices:
+
+**`types/batch.go`**
+- `BatchState`: Lifecycle state enum (`collecting`, `proving`, `completed`, `failed`)
+- `BatchInfo`: Comprehensive batch information
+- `BatchBlockInfo`: L2 block within a batch
+- `BatchEvent`: Batch lifecycle event
+- `BatchTrigger`: Signal to start a new batch
+
+**`types/pipeline.go`**
+- `PipelineStage`: Proof generation stage enum (`idle`, `range_proof`, `aggregation`, `network_agg`, `completed`, `failed`)
+- `PipelineJob`: Batch proof generation job
+- `PipelineJobEvent`: Pipeline job event
+
+### Configuration
+
+Configuration types are colocated with their implementations:
+- `Config` (main config) in `config.go`
+- `ManagerConfig` in `manager.go`
+- `PipelineConfig` in `pipeline.go`
+- `IntegrationConfig` in `sequencer_integration.go`
+- `EpochTrackerConfig` in `epoch_tracker.go`
 
 ## Usage
 
 ### Basic Setup
 
 ```go
-import "github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch"
+import (
+    "github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch"
+    "github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
+)
 
-// Create configuration
-cfg := batch.DefaultConfig()
-cfg.SetChainID(1001)
-// Genesis time is already set to Ethereum Mainnet genesis in DefaultConfig()
-// No RPC URLs needed!
-
-// Validate configuration
-if err := cfg.Validate(); err != nil {
-    log.Fatal("Invalid config:", err)
+// Simplified configuration (only 3 core fields + 2 optional)
+cfg := batch.Config{
+    Enabled:             true,
+    GenesisTime:         1606824023, // Ethereum Mainnet genesis (Unix timestamp)
+    ChainID:             11155111,   // Sepolia
+    MaxConcurrentJobs:   5,          // Optional: defaults to 5
+    WorkerPollInterval:  10 * time.Second, // Optional: defaults to 10s
 }
 
-// Create components
-// IMPORTANT: Use the same genesis time for slot manager and epoch tracker
-genesisTime := cfg.EpochTracker.GenesisTime
+// Create slot manager (uses same genesis time)
+genesisTime := time.Unix(cfg.GenesisTime, 0).UTC()
 slotManager := slot.NewManager(genesisTime, 12*time.Second, 2.0/3.0)
 
-epochTracker, err := batch.NewEpochTracker(cfg.EpochTracker, log)
+// Create epoch tracker
+epochTrackerCfg := batch.EpochTrackerConfig{
+    GenesisTime: cfg.GenesisTime,
+    BatchFactor: 10, // Trigger batch every 10 epochs
+}
+epochTracker, err := batch.NewEpochTracker(epochTrackerCfg, log)
 if err != nil {
     log.Fatal("Failed to create epoch tracker:", err)
 }
 
-batchManager, err := batch.NewManager(cfg.BatchManager, slotManager, epochTracker, log)
+// Create batch manager
+managerCfg := batch.ManagerConfig{
+    ChainID:      cfg.ChainID,
+    MaxBatchSize: 320, // 10 epochs * 32 slots
+    BatchTimeout: 90 * time.Minute,
+}
+batchManager, err := batch.NewManager(managerCfg, slotManager, epochTracker, log)
 if err != nil {
     log.Fatal("Failed to create batch manager:", err)
 }
 
-pipeline, err := batch.NewPipeline(cfg.Pipeline, batchManager, collector, proverClient, log)
+// Create proof pipeline
+pipelineCfg := batch.PipelineConfig{
+    MaxConcurrentJobs: cfg.MaxConcurrentJobs,
+    JobTimeout:        30 * time.Minute,
+    MaxRetries:        3,
+    RetryDelay:        5 * time.Minute,
+}
+pipeline, err := batch.NewPipeline(pipelineCfg, batchManager, collector, proverClient, log)
 if err != nil {
     log.Fatal("Failed to create pipeline:", err)
 }
@@ -94,8 +152,13 @@ go pipeline.Start(ctx)
 
 ```go
 // Create sequencer integration
+integrationCfg := batch.IntegrationConfig{
+    ChainID:         cfg.ChainID,
+    EnableBatchSync: true,
+    BlockReporting:  true,
+}
 integration, err := batch.NewSequencerIntegration(
-    cfg.Integration,
+    integrationCfg,
     sequencerCoordinator,
     batchManager,
     pipeline,
@@ -141,54 +204,58 @@ go func() {
 
 ## Configuration
 
+### Simplified YAML Configuration
+
+The batch config has been drastically simplified to only essential fields:
+
+```yaml
+batch:
+  enabled: true
+  genesis_time: 1606824023           # Unix timestamp (Ethereum Mainnet genesis)
+  chain_id: 11155111                 # Your chain ID (e.g., Sepolia)
+  max_concurrent_jobs: 5             # Optional: pipeline concurrency (default: 5)
+  worker_poll_interval: 10s          # Optional: worker polling (default: 10s)
+```
+
 ### Environment Variables
 
 Configuration supports environment variable overrides:
 
 ```bash
-# Epoch Tracker Configuration
-export BATCH_EPOCH_TRACKER_GENESIS_TIME="2020-12-01T12:00:23Z"  # Ethereum Mainnet genesis
-export BATCH_EPOCH_TRACKER_BATCH_FACTOR=10
-export BATCH_EPOCH_TRACKER_POLL_INTERVAL=12s
+# Core configuration
+export BATCH_ENABLED=true
+export BATCH_GENESIS_TIME=1606824023     # Unix timestamp
+export BATCH_CHAIN_ID=11155111
 
-# Batch Manager
-export BATCH_BATCH_MANAGER_CHAIN_ID=1001
-export BATCH_BATCH_MANAGER_MAX_BATCH_SIZE=320
-export BATCH_BATCH_MANAGER_BATCH_TIMEOUT=90m
-
-# Pipeline
-export BATCH_PIPELINE_MAX_CONCURRENT_JOBS=5
-export BATCH_PIPELINE_JOB_TIMEOUT=30m
-export BATCH_PIPELINE_MAX_RETRIES=3
+# Optional configuration
+export BATCH_MAX_CONCURRENT_JOBS=5
+export BATCH_WORKER_POLL_INTERVAL=10s
 ```
 
-### YAML Configuration
+### Constants
 
-```yaml
-batch:
-  enabled: true
+The package uses three categories of constants:
 
-  epoch_tracker:
-    genesis_time: "2020-12-01T12:00:23Z"  # Ethereum Mainnet genesis
-    batch_factor: 10                       # Trigger batch every 10 epochs (spec requirement)
-    poll_interval: 12s                     # Match Ethereum slot time
+**Specification Constants** (`spec.go`) - Immutable protocol values:
+- `SlotDuration = 12s` (Ethereum consensus spec)
+- `SlotsPerEpoch = 32` (Ethereum consensus spec)
+- `BatchFactor = 10` (Settlement layer spec)
+- `EthereumMainnetGenesis = 1606824023` (Unix timestamp)
 
-  batch_manager:
-    chain_id: 1001
-    max_batch_size: 320                    # 10 epochs * 32 slots
-    batch_timeout: 90m
+**Implementation Defaults** (`constants.go`) - Overridable defaults:
+- `DefaultMaxBatchSize = 320` (10 epochs * 32 slots)
+- `DefaultBatchTimeout = 90m`
+- `DefaultMaxConcurrentJobs = 5`
+- `DefaultJobTimeout = 30m`
+- `DefaultMaxRetries = 3`
+- `DefaultRetryDelay = 5m`
+- `DefaultWorkerPollInterval = 10s`
 
-  pipeline:
-    max_concurrent_jobs: 5
-    job_timeout: 30m
-    max_retries: 3
-    retry_delay: 5m
-
-  integration:
-    chain_id: 1001
-    enable_batch_sync: true
-    block_reporting: true
-```
+**Channel Buffers** (`constants.go`):
+- `DefaultEpochEventChannelSize = 100`
+- `DefaultBatchEventChannelSize = 100`
+- `DefaultBatchTriggerChannelSize = 10`
+- `DefaultErrorChannelSize = 50`
 
 ## Architecture
 

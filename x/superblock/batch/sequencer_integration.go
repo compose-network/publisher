@@ -7,8 +7,24 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch/types"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/sequencer"
 )
+
+// IntegrationConfig holds configuration for sequencer integration
+type IntegrationConfig struct {
+	ChainID         uint32 `mapstructure:"chain_id"          yaml:"chain_id"`
+	EnableBatchSync bool   `mapstructure:"enable_batch_sync" yaml:"enable_batch_sync"`
+	BlockReporting  bool   `mapstructure:"block_reporting"   yaml:"block_reporting"`
+}
+
+// DefaultIntegrationConfig returns sensible defaults for sequencer integration
+func DefaultIntegrationConfig() IntegrationConfig {
+	return IntegrationConfig{
+		EnableBatchSync: true,
+		BlockReporting:  true,
+	}
+}
 
 // SequencerIntegration extends the sequencer coordinator with batch awareness
 type SequencerIntegration struct {
@@ -20,21 +36,6 @@ type SequencerIntegration struct {
 
 	// Block tracking
 	lastProcessedSlot uint64
-}
-
-// IntegrationConfig holds configuration for sequencer integration
-type IntegrationConfig struct {
-	ChainID         uint32 `mapstructure:"chain_id"          yaml:"chain_id"`
-	EnableBatchSync bool   `mapstructure:"enable_batch_sync" yaml:"enable_batch_sync"`
-	BlockReporting  bool   `mapstructure:"block_reporting"   yaml:"block_reporting"`
-}
-
-// DefaultIntegrationConfig returns sensible defaults
-func DefaultIntegrationConfig() IntegrationConfig {
-	return IntegrationConfig{
-		EnableBatchSync: true,
-		BlockReporting:  true,
-	}
 }
 
 // NewSequencerIntegration creates a new sequencer integration
@@ -173,7 +174,7 @@ func (s *SequencerIntegration) batchEventMonitor(ctx context.Context) {
 }
 
 // handleBatchEvent processes batch lifecycle events
-func (s *SequencerIntegration) handleBatchEvent(event BatchEvent) {
+func (s *SequencerIntegration) handleBatchEvent(event types.BatchEvent) {
 	switch event.Type {
 	case "batch_started":
 		s.log.Info().
@@ -205,7 +206,7 @@ func (s *SequencerIntegration) handleBatchEvent(event BatchEvent) {
 }
 
 // GetCurrentBatchInfo returns information about the current batch being collected
-func (s *SequencerIntegration) GetCurrentBatchInfo() *BatchInfo {
+func (s *SequencerIntegration) GetCurrentBatchInfo() *types.BatchInfo {
 	if s.batchManager == nil {
 		return nil
 	}
@@ -262,7 +263,7 @@ func (s *SequencerIntegration) GetEpochSyncStatus(ctx context.Context) (map[stri
 }
 
 // WaitForBatchTrigger waits for the next batch trigger from epoch tracker
-func (s *SequencerIntegration) WaitForBatchTrigger(ctx context.Context) (*BatchTrigger, error) {
+func (s *SequencerIntegration) WaitForBatchTrigger(ctx context.Context) (*types.BatchTrigger, error) {
 	if s.epochTracker == nil {
 		return nil, fmt.Errorf("epoch tracker not available")
 	}

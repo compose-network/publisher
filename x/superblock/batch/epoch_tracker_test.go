@@ -21,27 +21,24 @@ func TestEpochTrackerCreation(t *testing.T) {
 		{
 			name: "valid config with ethereum mainnet genesis",
 			config: EpochTrackerConfig{
-				GenesisTime:  time.Unix(1606824023, 0).UTC(),
-				BatchFactor:  10,
-				PollInterval: 12 * time.Second,
+				GenesisTime: EthereumMainnetGenesis,
+				BatchFactor: BatchFactor,
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid config with custom genesis",
 			config: EpochTrackerConfig{
-				GenesisTime:  time.Now().Add(-24 * time.Hour),
-				BatchFactor:  5,
-				PollInterval: 6 * time.Second,
+				GenesisTime: time.Now().Add(-24 * time.Hour).Unix(),
+				BatchFactor: 5,
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid config - zero genesis time",
 			config: EpochTrackerConfig{
-				GenesisTime:  time.Time{},
-				BatchFactor:  10,
-				PollInterval: 12 * time.Second,
+				GenesisTime: 0,
+				BatchFactor: 10,
 			},
 			wantErr: true,
 		},
@@ -69,7 +66,7 @@ func TestEpochCalculation(t *testing.T) {
 	t.Parallel()
 
 	// Use Ethereum Mainnet genesis
-	genesisTime := time.Unix(1606824023, 0).UTC()
+	genesisTime := time.Unix(EthereumMainnetGenesis, 0).UTC()
 
 	tests := []struct {
 		name          string
@@ -115,9 +112,8 @@ func TestEpochCalculation(t *testing.T) {
 
 			log := zerolog.Nop()
 			tracker, err := NewEpochTracker(EpochTrackerConfig{
-				GenesisTime:  genesisTime,
-				BatchFactor:  10,
-				PollInterval: 1 * time.Second,
+				GenesisTime: genesisTime.Unix(),
+				BatchFactor: 10,
 			}, log)
 			require.NoError(t, err)
 
@@ -183,9 +179,8 @@ func TestBatchTriggerDetection(t *testing.T) {
 
 			log := zerolog.Nop()
 			tracker, err := NewEpochTracker(EpochTrackerConfig{
-				GenesisTime:  time.Unix(1606824023, 0).UTC(),
-				BatchFactor:  tt.batchFactor,
-				PollInterval: 1 * time.Second,
+				GenesisTime: EthereumMainnetGenesis,
+				BatchFactor: tt.batchFactor,
 			}, log)
 			require.NoError(t, err)
 
@@ -198,8 +193,8 @@ func TestBatchTriggerDetection(t *testing.T) {
 func TestGetCurrentBatchNumber(t *testing.T) {
 	t.Parallel()
 
-	genesisTime := time.Unix(1606824023, 0).UTC()
-	batchFactor := uint64(10)
+	genesisTime := time.Unix(EthereumMainnetGenesis, 0).UTC()
+	batchFactor := uint64(BatchFactor)
 
 	tests := []struct {
 		name          string
@@ -239,9 +234,8 @@ func TestGetCurrentBatchNumber(t *testing.T) {
 
 			log := zerolog.Nop()
 			tracker, err := NewEpochTracker(EpochTrackerConfig{
-				GenesisTime:  genesisTime,
-				BatchFactor:  batchFactor,
-				PollInterval: 1 * time.Second,
+				GenesisTime: genesisTime.Unix(),
+				BatchFactor: batchFactor,
 			}, log)
 			require.NoError(t, err)
 
@@ -258,9 +252,8 @@ func TestEpochTrackerStartStop(t *testing.T) {
 
 	log := zerolog.Nop()
 	tracker, err := NewEpochTracker(EpochTrackerConfig{
-		GenesisTime:  time.Unix(1606824023, 0).UTC(),
-		BatchFactor:  10,
-		PollInterval: 100 * time.Millisecond,
+		GenesisTime: EthereumMainnetGenesis,
+		BatchFactor: BatchFactor,
 	}, log)
 	require.NoError(t, err)
 
@@ -284,9 +277,8 @@ func TestEpochTrackerStats(t *testing.T) {
 
 	log := zerolog.Nop()
 	tracker, err := NewEpochTracker(EpochTrackerConfig{
-		GenesisTime:  time.Unix(1606824023, 0).UTC(),
-		BatchFactor:  10,
-		PollInterval: 1 * time.Second,
+		GenesisTime: EthereumMainnetGenesis,
+		BatchFactor: BatchFactor,
 	}, log)
 	require.NoError(t, err)
 
@@ -309,13 +301,12 @@ func TestEpochTrackerStats(t *testing.T) {
 func TestGetEpochStartTime(t *testing.T) {
 	t.Parallel()
 
-	genesisTime := time.Unix(1606824023, 0).UTC()
+	genesisTime := time.Unix(EthereumMainnetGenesis, 0).UTC()
 	log := zerolog.Nop()
 
 	tracker, err := NewEpochTracker(EpochTrackerConfig{
-		GenesisTime:  genesisTime,
-		BatchFactor:  10,
-		PollInterval: 1 * time.Second,
+		GenesisTime: genesisTime.Unix(),
+		BatchFactor: BatchFactor,
 	}, log)
 	require.NoError(t, err)
 
@@ -354,13 +345,12 @@ func TestGetEpochStartTime(t *testing.T) {
 func TestGetSlotStartTime(t *testing.T) {
 	t.Parallel()
 
-	genesisTime := time.Unix(1606824023, 0).UTC()
+	genesisTime := time.Unix(EthereumMainnetGenesis, 0).UTC()
 	log := zerolog.Nop()
 
 	tracker, err := NewEpochTracker(EpochTrackerConfig{
-		GenesisTime:  genesisTime,
-		BatchFactor:  10,
-		PollInterval: 1 * time.Second,
+		GenesisTime: genesisTime.Unix(),
+		BatchFactor: BatchFactor,
 	}, log)
 	require.NoError(t, err)
 
@@ -407,13 +397,10 @@ func TestDefaultEpochTrackerConfig(t *testing.T) {
 	cfg := DefaultEpochTrackerConfig()
 
 	// Verify Ethereum Mainnet genesis time
-	assert.Equal(t, int64(1606824023), cfg.GenesisTime.Unix())
+	assert.Equal(t, int64(EthereumMainnetGenesis), cfg.GenesisTime)
 
 	// Verify batch factor is 10 (spec requirement)
-	assert.Equal(t, uint64(10), cfg.BatchFactor)
-
-	// Verify poll interval is 12 seconds (Ethereum slot time)
-	assert.Equal(t, 12*time.Second, cfg.PollInterval)
+	assert.Equal(t, uint64(BatchFactor), cfg.BatchFactor)
 }
 
 // TestEpochSynchronization verifies that two epoch trackers with the same genesis time
@@ -421,21 +408,19 @@ func TestDefaultEpochTrackerConfig(t *testing.T) {
 func TestEpochSynchronization(t *testing.T) {
 	t.Parallel()
 
-	genesisTime := time.Unix(1606824023, 0).UTC()
+	genesisTime := time.Unix(EthereumMainnetGenesis, 0).UTC()
 	log := zerolog.Nop()
 
 	// Create two trackers with identical configuration
 	tracker1, err := NewEpochTracker(EpochTrackerConfig{
-		GenesisTime:  genesisTime,
-		BatchFactor:  10,
-		PollInterval: 1 * time.Second,
+		GenesisTime: genesisTime.Unix(),
+		BatchFactor: BatchFactor,
 	}, log)
 	require.NoError(t, err)
 
 	tracker2, err := NewEpochTracker(EpochTrackerConfig{
-		GenesisTime:  genesisTime,
-		BatchFactor:  10,
-		PollInterval: 1 * time.Second,
+		GenesisTime: genesisTime.Unix(),
+		BatchFactor: BatchFactor,
 	}, log)
 	require.NoError(t, err)
 

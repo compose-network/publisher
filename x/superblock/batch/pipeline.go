@@ -8,45 +8,27 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch/types"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 )
 
-// PipelineStage represents the current stage of proof pipeline processing
-type PipelineStage string
+// PipelineConfig holds configuration for the proof pipeline
+type PipelineConfig struct {
+	MaxConcurrentJobs int           `mapstructure:"max_concurrent_jobs" yaml:"max_concurrent_jobs"`
+	JobTimeout        time.Duration `mapstructure:"job_timeout"         yaml:"job_timeout"`
+	MaxRetries        int           `mapstructure:"max_retries"         yaml:"max_retries"`
+	RetryDelay        time.Duration `mapstructure:"retry_delay"         yaml:"retry_delay"`
+}
 
-const (
-	StageIdle        PipelineStage = "idle"
-	StageRangeProof  PipelineStage = "range_proof" // op-succinct range program
-	StageAggregation PipelineStage = "aggregation" // op-succinct aggregation program
-	StageNetworkAgg  PipelineStage = "network_agg" // superblock-prover network aggregation
-	StageCompleted   PipelineStage = "completed"
-	StageFailed      PipelineStage = "failed"
-)
-
-// PipelineJob represents a batch processing job in the proof pipeline
-type PipelineJob struct {
-	ID        string        `json:"id"`
-	BatchID   uint64        `json:"batch_id"`
-	ChainID   uint32        `json:"chain_id"`
-	Stage     PipelineStage `json:"stage"`
-	BatchInfo *BatchInfo    `json:"batch_info"`
-
-	// Stage-specific job IDs
-	RangeProofJobID *string `json:"range_proof_job_id,omitempty"`
-	AggJobID        *string `json:"agg_job_id,omitempty"`
-	NetworkAggJobID *string `json:"network_agg_job_id,omitempty"`
-
-	// Results
-	RangeProof *proofs.ProofBytes `json:"range_proof,omitempty"`
-	AggProof   *proofs.ProofBytes `json:"agg_proof,omitempty"`
-	FinalProof *proofs.ProofBytes `json:"final_proof,omitempty"`
-
-	// Metadata
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	ErrorMessage *string   `json:"error_message,omitempty"`
-	RetryCount   int       `json:"retry_count"`
+// DefaultPipelineConfig returns sensible defaults for proof pipeline
+func DefaultPipelineConfig() PipelineConfig {
+	return PipelineConfig{
+		MaxConcurrentJobs: DefaultMaxConcurrentJobs,
+		JobTimeout:        DefaultJobTimeout,
+		MaxRetries:        DefaultMaxRetries,
+		RetryDelay:        DefaultRetryDelay,
+	}
 }
 
 // Pipeline orchestrates the proof generation flow: Range → Aggregation → Network Aggregation
@@ -58,7 +40,7 @@ type Pipeline struct {
 	proverClient   proofs.ProverClient
 
 	// Job tracking
-	activeJobs map[string]*PipelineJob
+	activeJobs map[string]*types.PipelineJob
 	jobCounter uint64
 
 	// Configuration
@@ -68,41 +50,13 @@ type Pipeline struct {
 	retryDelay        time.Duration
 
 	// Event channels
-	jobEventCh      chan PipelineJobEvent
-	completedJobsCh chan *PipelineJob
+	jobEventCh      chan types.PipelineJobEvent
+	completedJobsCh chan *types.PipelineJob
 
 	// Control
 	ctx      context.Context
 	cancel   context.CancelFunc
 	workerWg sync.WaitGroup
-}
-
-// PipelineJobEvent represents events during pipeline job processing
-type PipelineJobEvent struct {
-	Type      string        `json:"type"`
-	JobID     string        `json:"job_id"`
-	BatchID   uint64        `json:"batch_id"`
-	Stage     PipelineStage `json:"stage"`
-	Data      interface{}   `json:"data,omitempty"`
-	Timestamp time.Time     `json:"timestamp"`
-}
-
-// PipelineConfig holds configuration for the proof pipeline
-type PipelineConfig struct {
-	MaxConcurrentJobs int           `mapstructure:"max_concurrent_jobs" yaml:"max_concurrent_jobs"`
-	JobTimeout        time.Duration `mapstructure:"job_timeout"         yaml:"job_timeout"`
-	MaxRetries        int           `mapstructure:"max_retries"         yaml:"max_retries"`
-	RetryDelay        time.Duration `mapstructure:"retry_delay"         yaml:"retry_delay"`
-}
-
-// DefaultPipelineConfig returns sensible defaults
-func DefaultPipelineConfig() PipelineConfig {
-	return PipelineConfig{
-		MaxConcurrentJobs: 5,
-		JobTimeout:        30 * time.Minute,
-		MaxRetries:        3,
-		RetryDelay:        5 * time.Minute,
-	}
 }
 
 // NewPipeline creates a new proof pipeline orchestrator
@@ -131,13 +85,13 @@ func NewPipeline(
 		batchManager:      batchMgr,
 		proofCollector:    collector,
 		proverClient:      proverClient,
-		activeJobs:        make(map[string]*PipelineJob),
+		activeJobs:        make(map[string]*types.PipelineJob),
 		maxConcurrentJobs: cfg.MaxConcurrentJobs,
 		jobTimeout:        cfg.JobTimeout,
 		maxRetries:        cfg.MaxRetries,
 		retryDelay:        cfg.RetryDelay,
-		jobEventCh:        make(chan PipelineJobEvent, 100),
-		completedJobsCh:   make(chan *PipelineJob, 50),
+		jobEventCh:        make(chan types.PipelineJobEvent, 100),
+		completedJobsCh:   make(chan *types.PipelineJob, 50),
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -232,7 +186,7 @@ func (p *Pipeline) checkForNewBatches() {
 }
 
 // createPipelineJob creates a new pipeline job for a batch
-func (p *Pipeline) createPipelineJob(batch *BatchInfo) error {
+func (p *Pipeline) createPipelineJob(batch *types.BatchInfo) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -247,11 +201,11 @@ func (p *Pipeline) createPipelineJob(batch *BatchInfo) error {
 	p.jobCounter++
 	jobID := fmt.Sprintf("pipeline-%d-%d", batch.ID, p.jobCounter)
 
-	job := &PipelineJob{
+	job := &types.PipelineJob{
 		ID:        jobID,
 		BatchID:   batch.ID,
 		ChainID:   batch.ChainID,
-		Stage:     StageRangeProof,
+		Stage:     types.StageRangeProof,
 		BatchInfo: batch,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -300,7 +254,7 @@ func (p *Pipeline) jobWorker(ctx context.Context, workerID int) {
 	logger := p.log.With().Int("worker_id", workerID).Logger()
 	logger.Info().Msg("Pipeline worker started")
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(DefaultWorkerPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -333,16 +287,16 @@ func (p *Pipeline) jobWorker(ctx context.Context, workerID int) {
 }
 
 // getNextJob returns the next job to process
-func (p *Pipeline) getNextJob() *PipelineJob {
+func (p *Pipeline) getNextJob() *types.PipelineJob {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	// Find the oldest job that's not in a terminal state
-	var oldestJob *PipelineJob
+	var oldestJob *types.PipelineJob
 	var oldestTime time.Time
 
 	for _, job := range p.activeJobs {
-		if job.Stage != StageCompleted && job.Stage != StageFailed {
+		if job.Stage != types.StageCompleted && job.Stage != types.StageFailed {
 			if oldestJob == nil || job.CreatedAt.Before(oldestTime) {
 				oldestJob = job
 				oldestTime = job.CreatedAt
@@ -354,19 +308,19 @@ func (p *Pipeline) getNextJob() *PipelineJob {
 }
 
 // processJob processes a single pipeline job through its current stage
-func (p *Pipeline) processJob(ctx context.Context, job *PipelineJob) error {
+func (p *Pipeline) processJob(ctx context.Context, job *types.PipelineJob) error {
 	switch job.Stage {
-	case StageRangeProof:
+	case types.StageRangeProof:
 		return p.processRangeProofStage(job)
-	case StageAggregation:
+	case types.StageAggregation:
 		return p.processAggregationStage(job)
-	case StageNetworkAgg:
+	case types.StageNetworkAgg:
 		return p.processNetworkAggStage(ctx, job)
-	case StageIdle:
+	case types.StageIdle:
 		return fmt.Errorf("job in idle stage should not be processed")
-	case StageCompleted:
+	case types.StageCompleted:
 		return fmt.Errorf("job already completed")
-	case StageFailed:
+	case types.StageFailed:
 		return fmt.Errorf("job already failed")
 	default:
 		return fmt.Errorf("unknown pipeline stage: %s", job.Stage)
@@ -374,7 +328,7 @@ func (p *Pipeline) processJob(ctx context.Context, job *PipelineJob) error {
 }
 
 // processRangeProofStage handles the op-succinct range proof generation
-func (p *Pipeline) processRangeProofStage(job *PipelineJob) error {
+func (p *Pipeline) processRangeProofStage(job *types.PipelineJob) error {
 	p.log.Info().
 		Str("job_id", job.ID).
 		Uint64("batch_id", job.BatchID).
@@ -389,7 +343,7 @@ func (p *Pipeline) processRangeProofStage(job *PipelineJob) error {
 	// Create mock range proof
 	rangeProof := proofs.ProofBytes("mock_range_proof_" + job.ID)
 	job.RangeProof = &rangeProof
-	job.Stage = StageAggregation
+	job.Stage = types.StageAggregation
 	job.UpdatedAt = time.Now()
 
 	p.log.Info().
@@ -397,15 +351,15 @@ func (p *Pipeline) processRangeProofStage(job *PipelineJob) error {
 		Msg("Range proof stage completed")
 
 	p.emitJobEvent("stage_completed", job, map[string]interface{}{
-		"completed_stage": StageRangeProof,
-		"next_stage":      StageAggregation,
+		"completed_stage": types.StageRangeProof,
+		"next_stage":      types.StageAggregation,
 	})
 
 	return nil
 }
 
 // processAggregationStage handles the op-succinct aggregation
-func (p *Pipeline) processAggregationStage(job *PipelineJob) error {
+func (p *Pipeline) processAggregationStage(job *types.PipelineJob) error {
 	p.log.Info().
 		Str("job_id", job.ID).
 		Uint64("batch_id", job.BatchID).
@@ -417,7 +371,7 @@ func (p *Pipeline) processAggregationStage(job *PipelineJob) error {
 	// Create mock aggregation proof
 	aggProof := proofs.ProofBytes("mock_agg_proof_" + job.ID)
 	job.AggProof = &aggProof
-	job.Stage = StageNetworkAgg
+	job.Stage = types.StageNetworkAgg
 	job.UpdatedAt = time.Now()
 
 	p.log.Info().
@@ -425,15 +379,15 @@ func (p *Pipeline) processAggregationStage(job *PipelineJob) error {
 		Msg("Aggregation stage completed")
 
 	p.emitJobEvent("stage_completed", job, map[string]interface{}{
-		"completed_stage": StageAggregation,
-		"next_stage":      StageNetworkAgg,
+		"completed_stage": types.StageAggregation,
+		"next_stage":      types.StageNetworkAgg,
 	})
 
 	return nil
 }
 
 // processNetworkAggStage handles the superblock-prover network aggregation
-func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *PipelineJob) error {
+func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *types.PipelineJob) error {
 	p.log.Info().
 		Str("job_id", job.ID).
 		Uint64("batch_id", job.BatchID).
@@ -479,11 +433,14 @@ func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *PipelineJob)
 	job.UpdatedAt = time.Now()
 
 	// Poll for completion
+	ticker := time.NewTicker(DefaultWorkerPollInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(10 * time.Second):
+		case <-ticker.C:
 			status, err := p.proverClient.GetStatus(ctx, jobID)
 			if err != nil {
 				p.log.Error().Err(err).Str("job_id", jobID).Msg("Failed to get proof status")
@@ -494,7 +451,7 @@ func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *PipelineJob)
 			case "completed":
 				proof := proofs.ProofBytes(status.Proof)
 				job.FinalProof = &proof
-				job.Stage = StageCompleted
+				job.Stage = types.StageCompleted
 				job.UpdatedAt = time.Now()
 
 				p.log.Info().
@@ -510,7 +467,7 @@ func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *PipelineJob)
 				}
 
 				p.emitJobEvent("stage_completed", job, map[string]interface{}{
-					"completed_stage": StageNetworkAgg,
+					"completed_stage": types.StageNetworkAgg,
 					"final_stage":     true,
 				})
 
@@ -528,7 +485,7 @@ func (p *Pipeline) processNetworkAggStage(ctx context.Context, job *PipelineJob)
 }
 
 // handleJobError handles errors during job processing
-func (p *Pipeline) handleJobError(job *PipelineJob, err error) {
+func (p *Pipeline) handleJobError(job *types.PipelineJob, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -538,7 +495,7 @@ func (p *Pipeline) handleJobError(job *PipelineJob, err error) {
 	job.UpdatedAt = time.Now()
 
 	if job.RetryCount >= p.maxRetries {
-		job.Stage = StageFailed
+		job.Stage = types.StageFailed
 		p.log.Error().
 			Str("job_id", job.ID).
 			Uint64("batch_id", job.BatchID).
@@ -571,7 +528,7 @@ func (p *Pipeline) handleJobError(job *PipelineJob, err error) {
 }
 
 // handleCompletedJob handles completed pipeline jobs
-func (p *Pipeline) handleCompletedJob(job *PipelineJob) {
+func (p *Pipeline) handleCompletedJob(job *types.PipelineJob) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -597,7 +554,7 @@ func (p *Pipeline) handleCompletedJob(job *PipelineJob) {
 }
 
 // submitToSharedPublisher submits the completed proof to the shared publisher
-func (p *Pipeline) submitToSharedPublisher(job *PipelineJob) {
+func (p *Pipeline) submitToSharedPublisher(job *types.PipelineJob) {
 	p.log.Info().
 		Str("job_id", job.ID).
 		Uint64("batch_id", job.BatchID).
@@ -626,8 +583,8 @@ func (p *Pipeline) submitToSharedPublisher(job *PipelineJob) {
 }
 
 // emitJobEvent emits a pipeline job event
-func (p *Pipeline) emitJobEvent(eventType string, job *PipelineJob, data interface{}) {
-	event := PipelineJobEvent{
+func (p *Pipeline) emitJobEvent(eventType string, job *types.PipelineJob, data interface{}) {
+	event := types.PipelineJobEvent{
 		Type:      eventType,
 		JobID:     job.ID,
 		BatchID:   job.BatchID,
@@ -644,11 +601,11 @@ func (p *Pipeline) emitJobEvent(eventType string, job *PipelineJob, data interfa
 }
 
 // GetActiveJobs returns information about currently active jobs
-func (p *Pipeline) GetActiveJobs() []*PipelineJob {
+func (p *Pipeline) GetActiveJobs() []*types.PipelineJob {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	jobs := make([]*PipelineJob, 0, len(p.activeJobs))
+	jobs := make([]*types.PipelineJob, 0, len(p.activeJobs))
 	for _, job := range p.activeJobs {
 		jobCopy := *job
 		jobs = append(jobs, &jobCopy)
@@ -658,7 +615,7 @@ func (p *Pipeline) GetActiveJobs() []*PipelineJob {
 }
 
 // GetJobEvents returns the channel for job events
-func (p *Pipeline) GetJobEvents() <-chan PipelineJobEvent {
+func (p *Pipeline) GetJobEvents() <-chan types.PipelineJobEvent {
 	return p.jobEventCh
 }
 

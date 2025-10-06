@@ -180,3 +180,32 @@ proofs:
   # the superblock is submitted to the L1 contract.
   # ENV: PROOFS_REQUIRE_PROOF
   require_proof: true
+
+# Batch synchronization configuration
+# Enables synchronized batch creation across multiple sequencers using Ethereum's clock.
+# All sequencers MUST use the same genesis_time for proper synchronization.
+batch:
+  # Enable batch synchronization
+  # ENV: BATCH_ENABLED
+  enabled: true
+
+  # Common genesis time (Unix timestamp) - MUST be identical across all sequencers
+  # Default: 1606824023 (Ethereum Mainnet genesis: 2020-12-01 12:00:23 UTC)
+  # ENV: BATCH_GENESIS_TIME
+  genesis_time: 1606824023
+
+  # Chain ID for this rollup
+  # ENV: BATCH_CHAIN_ID
+  chain_id: 11155111
+
+  # Maximum number of concurrent proof generation jobs
+  # Higher values = more parallelism but more resource usage
+  # Default: 5
+  # ENV: BATCH_MAX_CONCURRENT_JOBS
+  max_concurrent_jobs: 5
+
+  # How often workers poll for new proof jobs
+  # Lower values = faster job pickup but more CPU usage
+  # Default: 10s
+  # ENV: BATCH_WORKER_POLL_INTERVAL
+  worker_poll_interval: 10s

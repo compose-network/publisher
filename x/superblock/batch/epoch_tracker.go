@@ -7,13 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-)
-
-const (
-	SlotDuration    = 12 * time.Second // Ethereum slot time
-	SlotsPerEpoch   = 32               // Ethereum consensus spec
-	SecondsPerSlot  = 12
-	SecondsPerEpoch = SecondsPerSlot * SlotsPerEpoch // 384 seconds
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch/types"
 )
 
 // EpochEvent represents an Ethereum epoch transition event
@@ -21,13 +15,6 @@ type EpochEvent struct {
 	EpochNumber uint64
 	Slot        uint64
 	Timestamp   time.Time
-}
-
-// BatchTrigger represents a batch synchronization trigger
-type BatchTrigger struct {
-	TriggerEpoch uint64
-	TriggerSlot  uint64
-	TriggerTime  time.Time
 }
 
 // EpochTracker monitors time-based Ethereum epochs and triggers batch events
@@ -41,7 +28,7 @@ type EpochTracker struct {
 
 	// Event channels
 	epochCh   chan EpochEvent
-	triggerCh chan BatchTrigger
+	triggerCh chan types.BatchTrigger
 	errorCh   chan error
 
 	// Control
@@ -50,28 +37,22 @@ type EpochTracker struct {
 }
 
 // EpochTrackerConfig holds configuration for the epoch tracker
-// //nolint: lll // Config struct is long
 type EpochTrackerConfig struct {
-	GenesisTime  time.Time     `mapstructure:"genesis_time"  yaml:"genesis_time"`  // Common genesis time for all sequencers
-	BatchFactor  uint64        `mapstructure:"batch_factor"  yaml:"batch_factor"`  // Trigger batch every N epochs (default: 10)
-	PollInterval time.Duration `mapstructure:"poll_interval" yaml:"poll_interval"` // How often to check for epoch changes
+	GenesisTime int64  `mapstructure:"genesis_time" yaml:"genesis_time"` // Unix timestamp (like Ethereum: 1606824023)
+	BatchFactor uint64 `mapstructure:"batch_factor" yaml:"batch_factor"` // Trigger batch every N epochs (default: 10)
 }
 
 // DefaultEpochTrackerConfig returns sensible defaults
 func DefaultEpochTrackerConfig() EpochTrackerConfig {
-	// Ethereum Mainnet genesis: 2020-12-01 12:00:23 UTC
-	ethereumGenesisTime := time.Unix(1606824023, 0).UTC()
-
 	return EpochTrackerConfig{
-		GenesisTime:  ethereumGenesisTime,
-		BatchFactor:  10,
-		PollInterval: 12 * time.Second, // Ethereum slot time
+		GenesisTime: EthereumMainnetGenesis,
+		BatchFactor: BatchFactor,
 	}
 }
 
 // NewEpochTracker creates a new epoch tracker with time-based calculation
 func NewEpochTracker(cfg EpochTrackerConfig, log zerolog.Logger) (*EpochTracker, error) {
-	if cfg.GenesisTime.IsZero() {
+	if cfg.GenesisTime == 0 {
 		return nil, fmt.Errorf("genesis_time is required")
 	}
 
@@ -81,31 +62,28 @@ func NewEpochTracker(cfg EpochTrackerConfig, log zerolog.Logger) (*EpochTracker,
 
 	batchFactor := cfg.BatchFactor
 	if batchFactor == 0 {
-		batchFactor = 10
+		batchFactor = BatchFactor
 	}
 
-	pollInterval := cfg.PollInterval
-	if pollInterval == 0 {
-		pollInterval = 12 * time.Second
-	}
+	genesisTime := time.Unix(cfg.GenesisTime, 0).UTC()
 
 	tracker := &EpochTracker{
 		log:          logger,
-		genesisTime:  cfg.GenesisTime,
+		genesisTime:  genesisTime,
 		batchFactor:  batchFactor,
-		pollInterval: pollInterval,
-		epochCh:      make(chan EpochEvent, 10),
-		triggerCh:    make(chan BatchTrigger, 10),
-		errorCh:      make(chan error, 10),
+		pollInterval: SlotDuration,
+		epochCh:      make(chan EpochEvent, DefaultEpochEventChannelSize),
+		triggerCh:    make(chan types.BatchTrigger, DefaultBatchTriggerChannelSize),
+		errorCh:      make(chan error, DefaultErrorChannelSize),
 		ctx:          ctx,
 		cancel:       cancel,
 	}
 
 	logger.Info().
-		Time("genesis_time", tracker.genesisTime).
+		Int64("genesis_time", cfg.GenesisTime).
+		Time("genesis_time_utc", genesisTime).
 		Uint64("batch_factor", tracker.batchFactor).
-		Dur("poll_interval", tracker.pollInterval).
-		Msg("Epoch tracker initialized (time-based calculation)")
+		Msg("Epoch tracker initialized")
 
 	return tracker, nil
 }
@@ -186,7 +164,7 @@ func (t *EpochTracker) EpochEvents() <-chan EpochEvent {
 }
 
 // BatchTriggers returns the channel for batch triggers
-func (t *EpochTracker) BatchTriggers() <-chan BatchTrigger {
+func (t *EpochTracker) BatchTriggers() <-chan types.BatchTrigger {
 	return t.triggerCh
 }
 
@@ -269,7 +247,7 @@ func (t *EpochTracker) processEpoch(epoch uint64) error {
 
 	// Check if this epoch triggers a batch event
 	if t.IsNewBatchEpoch(epoch) {
-		trigger := BatchTrigger{
+		trigger := types.BatchTrigger{
 			TriggerEpoch: epoch,
 			TriggerSlot:  firstSlot,
 			TriggerTime:  epochStartTime,

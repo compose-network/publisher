@@ -8,54 +8,24 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch/types"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
 )
 
-// BatchState represents the current state of a batch
-type BatchState string
-
-const (
-	StateIdle       BatchState = "idle"
-	StateCollecting BatchState = "collecting" // Collecting L2 blocks
-	StateProving    BatchState = "proving"    // Generating proofs
-	StateCompleted  BatchState = "completed"  // Batch completed and sent to SP
-	StateFailed     BatchState = "failed"     // Batch failed
-)
-
-// BatchInfo holds information about a batch
-type BatchInfo struct {
-	ID           uint64           `json:"id"`
-	State        BatchState       `json:"state"`
-	StartEpoch   uint64           `json:"start_epoch"`
-	StartTime    time.Time        `json:"start_time"`
-	EndTime      *time.Time       `json:"end_time,omitempty"`
-	StartSlot    uint64           `json:"start_slot"`
-	EndSlot      *uint64          `json:"end_slot,omitempty"`
-	SlotCount    uint64           `json:"slot_count"`
-	ChainID      uint32           `json:"chain_id"`
-	Blocks       []BatchBlockInfo `json:"blocks"`
-	ProofJobID   *string          `json:"proof_job_id,omitempty"`
-	ErrorMessage *string          `json:"error_message,omitempty"`
-	CreatedAt    time.Time        `json:"created_at"`
-	UpdatedAt    time.Time        `json:"updated_at"`
+// ManagerConfig holds configuration for the batch manager
+type ManagerConfig struct {
+	ChainID      uint32        `mapstructure:"chain_id"       yaml:"chain_id"`
+	MaxBatchSize uint64        `mapstructure:"max_batch_size" yaml:"max_batch_size"`
+	BatchTimeout time.Duration `mapstructure:"batch_timeout"  yaml:"batch_timeout"`
 }
 
-// BatchBlockInfo represents a block within a batch
-type BatchBlockInfo struct {
-	SlotNumber   uint64      `json:"slot_number"`
-	BlockNumber  uint64      `json:"block_number"`
-	BlockHash    common.Hash `json:"block_hash"`
-	Timestamp    time.Time   `json:"timestamp"`
-	TxCount      int         `json:"tx_count"`
-	IncludedXTxs []string    `json:"included_xtxs,omitempty"`
-}
-
-// BatchEvent represents events during batch lifecycle
-type BatchEvent struct {
-	Type      string      `json:"type"`
-	BatchID   uint64      `json:"batch_id"`
-	Data      interface{} `json:"data,omitempty"`
-	Timestamp time.Time   `json:"timestamp"`
+// DefaultManagerConfig returns sensible defaults for batch manager
+func DefaultManagerConfig() ManagerConfig {
+	return ManagerConfig{
+		ChainID:      0, // Must be set by user
+		MaxBatchSize: DefaultMaxBatchSize,
+		BatchTimeout: DefaultBatchTimeout,
+	}
 }
 
 // Manager coordinates batch lifecycle with epoch synchronization and slot timing
@@ -67,8 +37,8 @@ type Manager struct {
 	epochTracker *EpochTracker
 
 	// Current state
-	currentBatch     *BatchInfo
-	completedBatches map[uint64]*BatchInfo
+	currentBatch     *types.BatchInfo
+	completedBatches map[uint64]*types.BatchInfo
 	batchCounter     uint64
 
 	// Configuration
@@ -76,27 +46,12 @@ type Manager struct {
 	batchTimeout time.Duration // Timeout for batch completion
 
 	// Event channels
-	eventCh   chan BatchEvent
-	triggerCh chan BatchTrigger
+	eventCh   chan types.BatchEvent
+	triggerCh chan types.BatchTrigger
 
 	// Control
 	ctx    context.Context
 	cancel context.CancelFunc
-}
-
-// ManagerConfig holds configuration for the batch manager
-type ManagerConfig struct {
-	ChainID      uint32        `mapstructure:"chain_id"       yaml:"chain_id"`
-	MaxBatchSize uint64        `mapstructure:"max_batch_size" yaml:"max_batch_size"` // Max slots per batch
-	BatchTimeout time.Duration `mapstructure:"batch_timeout"  yaml:"batch_timeout"`  // Timeout for batch
-}
-
-// DefaultManagerConfig returns sensible defaults
-func DefaultManagerConfig() ManagerConfig {
-	return ManagerConfig{
-		MaxBatchSize: 320,              // 10 epochs * 32 slots/epoch = ~64 minutes
-		BatchTimeout: 90 * time.Minute, // Allow extra time for proof generation
-	}
 }
 
 // NewManager creates a new batch manager
@@ -121,20 +76,20 @@ func NewManager(
 		chainID:          cfg.ChainID,
 		slotManager:      slotMgr,
 		epochTracker:     epochTracker,
-		completedBatches: make(map[uint64]*BatchInfo),
+		completedBatches: make(map[uint64]*types.BatchInfo),
 		maxBatchSize:     cfg.MaxBatchSize,
 		batchTimeout:     cfg.BatchTimeout,
-		eventCh:          make(chan BatchEvent, 100),
-		triggerCh:        make(chan BatchTrigger, 10),
+		eventCh:          make(chan types.BatchEvent, DefaultBatchEventChannelSize),
+		triggerCh:        make(chan types.BatchTrigger, DefaultBatchTriggerChannelSize),
 		ctx:              ctx,
 		cancel:           cancel,
 	}
 
 	if mgr.maxBatchSize == 0 {
-		mgr.maxBatchSize = 320
+		mgr.maxBatchSize = DefaultMaxBatchSize
 	}
 	if mgr.batchTimeout == 0 {
-		mgr.batchTimeout = 90 * time.Minute
+		mgr.batchTimeout = DefaultBatchTimeout
 	}
 
 	logger.Info().
@@ -163,8 +118,8 @@ func (m *Manager) Stop(ctx context.Context) error {
 
 	// Complete current batch if any
 	m.mu.Lock()
-	if m.currentBatch != nil && m.currentBatch.State == StateCollecting {
-		m.currentBatch.State = StateFailed
+	if m.currentBatch != nil && m.currentBatch.State == types.StateCollecting {
+		m.currentBatch.State = types.StateFailed
 		m.currentBatch.ErrorMessage = stringPtr("Manager stopped")
 		now := time.Now()
 		m.currentBatch.EndTime = &now
@@ -201,7 +156,7 @@ func (m *Manager) eventLoop(ctx context.Context) {
 }
 
 // handleBatchTrigger processes batch triggers from L1 listener
-func (m *Manager) handleBatchTrigger(trigger BatchTrigger) {
+func (m *Manager) handleBatchTrigger(trigger types.BatchTrigger) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -220,7 +175,7 @@ func (m *Manager) handleBatchTrigger(trigger BatchTrigger) {
 
 // finalizeCurrentBatchIfExists finalizes the current batch if it exists
 func (m *Manager) finalizeCurrentBatchIfExists() {
-	if m.currentBatch != nil && m.currentBatch.State == StateCollecting {
+	if m.currentBatch != nil && m.currentBatch.State == types.StateCollecting {
 		if err := m.finalizeBatch(); err != nil {
 			m.log.Error().Err(err).Msg("Failed to finalize previous batch")
 		}
@@ -228,20 +183,20 @@ func (m *Manager) finalizeCurrentBatchIfExists() {
 }
 
 // startNewBatch initiates a new batch
-func (m *Manager) startNewBatch(trigger BatchTrigger) {
+func (m *Manager) startNewBatch(trigger types.BatchTrigger) {
 
 	m.batchCounter++
 	currentSlot := m.slotManager.GetCurrentSlot()
 
-	batch := &BatchInfo{
+	batch := &types.BatchInfo{
 		ID:         m.batchCounter,
-		State:      StateCollecting,
+		State:      types.StateCollecting,
 		StartEpoch: trigger.TriggerEpoch,
 		StartTime:  trigger.TriggerTime,
 		StartSlot:  currentSlot,
 		SlotCount:  0,
 		ChainID:    m.chainID,
-		Blocks:     make([]BatchBlockInfo, 0),
+		Blocks:     make([]types.BatchBlockInfo, 0),
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
@@ -255,7 +210,7 @@ func (m *Manager) startNewBatch(trigger BatchTrigger) {
 		Msg("New batch started")
 
 	// Emit event
-	event := BatchEvent{
+	event := types.BatchEvent{
 		Type:      "batch_started",
 		BatchID:   batch.ID,
 		Data:      batch,
@@ -274,11 +229,11 @@ func (m *Manager) AddBlock(slotNum, blockNum uint64, blockHash common.Hash, txCo
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.currentBatch == nil || m.currentBatch.State != StateCollecting {
+	if m.currentBatch == nil || m.currentBatch.State != types.StateCollecting {
 		return fmt.Errorf("no active collecting batch")
 	}
 
-	blockInfo := BatchBlockInfo{
+	blockInfo := types.BatchBlockInfo{
 		SlotNumber:   slotNum,
 		BlockNumber:  blockNum,
 		BlockHash:    blockHash,
@@ -323,7 +278,7 @@ func (m *Manager) finalizeBatch() error {
 	currentSlot := m.slotManager.GetCurrentSlot()
 	now := time.Now()
 
-	m.currentBatch.State = StateProving
+	m.currentBatch.State = types.StateProving
 	m.currentBatch.EndSlot = &currentSlot
 	m.currentBatch.EndTime = &now
 	m.currentBatch.UpdatedAt = now
@@ -335,7 +290,7 @@ func (m *Manager) finalizeBatch() error {
 		Msg("Batch finalized and ready for proving")
 
 	// Emit event
-	event := BatchEvent{
+	event := types.BatchEvent{
 		Type:      "batch_finalized",
 		BatchID:   m.currentBatch.ID,
 		Data:      m.currentBatch,
@@ -356,7 +311,7 @@ func (m *Manager) finalizeBatch() error {
 }
 
 // GetCurrentBatch returns information about the current batch
-func (m *Manager) GetCurrentBatch() *BatchInfo {
+func (m *Manager) GetCurrentBatch() *types.BatchInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -366,27 +321,27 @@ func (m *Manager) GetCurrentBatch() *BatchInfo {
 
 	// Return a copy
 	batch := *m.currentBatch
-	batch.Blocks = make([]BatchBlockInfo, len(m.currentBatch.Blocks))
+	batch.Blocks = make([]types.BatchBlockInfo, len(m.currentBatch.Blocks))
 	copy(batch.Blocks, m.currentBatch.Blocks)
 
 	return &batch
 }
 
 // GetBatch returns information about a specific batch
-func (m *Manager) GetBatch(batchID uint64) *BatchInfo {
+func (m *Manager) GetBatch(batchID uint64) *types.BatchInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	if m.currentBatch != nil && m.currentBatch.ID == batchID {
 		batch := *m.currentBatch
-		batch.Blocks = make([]BatchBlockInfo, len(m.currentBatch.Blocks))
+		batch.Blocks = make([]types.BatchBlockInfo, len(m.currentBatch.Blocks))
 		copy(batch.Blocks, m.currentBatch.Blocks)
 		return &batch
 	}
 
 	if completed, exists := m.completedBatches[batchID]; exists {
 		batch := *completed
-		batch.Blocks = make([]BatchBlockInfo, len(completed.Blocks))
+		batch.Blocks = make([]types.BatchBlockInfo, len(completed.Blocks))
 		copy(batch.Blocks, completed.Blocks)
 		return &batch
 	}
@@ -399,7 +354,7 @@ func (m *Manager) UpdateBatchProofJob(batchID uint64, jobID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var batch *BatchInfo
+	var batch *types.BatchInfo
 	if m.currentBatch != nil && m.currentBatch.ID == batchID {
 		batch = m.currentBatch
 	} else if completed, exists := m.completedBatches[batchID]; exists {
@@ -431,7 +386,7 @@ func (m *Manager) MarkBatchCompleted(batchID uint64) error {
 		return fmt.Errorf("batch %d not found", batchID)
 	}
 
-	batch.State = StateCompleted
+	batch.State = types.StateCompleted
 	batch.UpdatedAt = time.Now()
 
 	m.log.Info().
@@ -439,7 +394,7 @@ func (m *Manager) MarkBatchCompleted(batchID uint64) error {
 		Msg("Batch marked as completed")
 
 	// Emit event
-	event := BatchEvent{
+	event := types.BatchEvent{
 		Type:      "batch_completed",
 		BatchID:   batchID,
 		Data:      batch,
@@ -465,7 +420,7 @@ func (m *Manager) MarkBatchFailed(batchID uint64, errMsg string) error {
 		return fmt.Errorf("batch %d not found", batchID)
 	}
 
-	batch.State = StateFailed
+	batch.State = types.StateFailed
 	batch.ErrorMessage = &errMsg
 	batch.UpdatedAt = time.Now()
 
@@ -475,7 +430,7 @@ func (m *Manager) MarkBatchFailed(batchID uint64, errMsg string) error {
 		Msg("Batch marked as failed")
 
 	// Emit event
-	event := BatchEvent{
+	event := types.BatchEvent{
 		Type:      "batch_failed",
 		BatchID:   batchID,
 		Data:      batch,
@@ -492,7 +447,7 @@ func (m *Manager) MarkBatchFailed(batchID uint64, errMsg string) error {
 }
 
 // Events returns the channel for batch events
-func (m *Manager) Events() <-chan BatchEvent {
+func (m *Manager) Events() <-chan types.BatchEvent {
 	return m.eventCh
 }
 
@@ -531,19 +486,19 @@ func (m *Manager) IsCollectingBatch() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.currentBatch != nil && m.currentBatch.State == StateCollecting
+	return m.currentBatch != nil && m.currentBatch.State == types.StateCollecting
 }
 
 // GetBatchesReadyForProving returns batches that are ready for proof generation
-func (m *Manager) GetBatchesReadyForProving() []*BatchInfo {
+func (m *Manager) GetBatchesReadyForProving() []*types.BatchInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var ready []*BatchInfo
+	var ready []*types.BatchInfo
 	for _, batch := range m.completedBatches {
-		if batch.State == StateProving && batch.ProofJobID == nil {
+		if batch.State == types.StateProving && batch.ProofJobID == nil {
 			batchCopy := *batch
-			batchCopy.Blocks = make([]BatchBlockInfo, len(batch.Blocks))
+			batchCopy.Blocks = make([]types.BatchBlockInfo, len(batch.Blocks))
 			copy(batchCopy.Blocks, batch.Blocks)
 			ready = append(ready, &batchCopy)
 		}
