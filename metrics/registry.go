@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,7 +31,11 @@ type ComponentRegistry struct {
 }
 
 // NewComponentRegistry creates a registry for a component.
+// It sanitizes the subsystem name to ensure it's a valid Prometheus metric name
+// by replacing hyphens with underscores. This is particularly useful for UUIDs etc.
 func NewComponentRegistry(namespace, subsystem string) *ComponentRegistry {
+	subsystem = strings.ReplaceAll(subsystem, "-", "_")
+
 	return &ComponentRegistry{
 		namespace: namespace,
 		subsystem: subsystem,
