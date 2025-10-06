@@ -1,9 +1,12 @@
-# Root README.md
+# Rollup Shared Publisher
 
+The Rollup Shared Publisher is a coordination layer for achieving synchronous composability and atomic execution of
+transactions across multiple EVM-compatible rollups.
 
-The Rollup Shared Publisher is a decentralized coordination layer for cross-chain atomic transaction execution across
-EVM-compatible rollups. It implements a two-phase commit (2PC) protocol to ensure transactions are either all committed
-or all aborted across participating chains.
+It implements the **Superblock Construction Protocol (SBCP)**, where a central publisher node orchestrates a slot-based
+timeline for participating rollups. Sequencers follow this timeline to build their respective L2 blocks, which are then
+aggregated into a "superblock" and published to L1. This process uses a two-phase commit (2PC) mechanism to ensure that
+cross-chain transactions are atomically committed or aborted across all involved rollups.
 
 **WARNING**: This project is in active development. Breaking changes may occur.
 
@@ -30,281 +33,86 @@ See [Sequencer Implementation Guide](#sequencer-implementation-guide) below.
 
 ## Architecture
 
-The system uses a leader-follower model with the Shared Publisher coordinating cross-chain transactions:
+The Rollup Shared Publisher implements the **Superblock Construction Protocol (SBCP)**, a system designed to coordinate
+the creation of "superblocks" that bundle transactions from multiple independent rollups. This enables synchronous
+composability and atomic cross-chain transactions in a multi-rollup environment.
+
+The protocol is orchestrated by a central node, the **Shared Publisher (SP)**, which manages a slot-based timeline (
+aligned with Ethereum slots). Participating rollup **Sequencers** follow the SP's timeline to build their individual L2
+blocks, which are then aggregated into a final superblock and published to L1.
 
 ```
-┌─────────────────────────┐
-│   Shared Publisher      │
-│      (Leader)           │
-└───────────┬─────────────┘
-            │ 2PC Protocol
-    ┌───────┴───────┐
-    │               │
-┌───▼──────┐   ┌────▼────┐
-│Rollup A  │   │Rollup B │
-│Sequencer │   │Sequencer│
-└──────────┘   └─────────┘
+┌──────────────────────────────────┐
+│      Shared Publisher (Leader)   │
+│ (SBCP Coordinator, 2PC Manager)  │
+└─────────────────┬────────────────┘
+                  │ SBCP Protocol (Slots, Seal Requests)
+                  │ 2PC Protocol (Votes, Decisions)
+          ┌───────┴───────┐
+          │               │
+┌─────────▼───────────┐   ┌───▼───────────────┐
+│ Rollup A Sequencer  │   │ Rollup B Sequencer│
+│ (Follower)          │   │ (Follower)        │
+└─────────────────────┘   └───────────────────┘
 ```
+
+The core logic is modular, separating the low-level 2PC consensus and networking from the high-level superblock
+coordination protocol. See [x/README.md](./x/README.md) for a full overview of the available modules.
 
 ## Modules
 
-The Rollup Shared Publisher maintains several production-grade modules. See [x/README.md](./x/README.md) for detailed
-documentation.
+The project is composed of several modules, located in the `x/` directory. See [x/README.md](./x/README.md) for detailed
+documentation on each.
 
-### Core Modules
+* **[Superblock](./x/superblock/README.md)**: Implements the Superblock Construction Protocol (SBCP), orchestrating
+  slot-based block creation, cross-chain transaction coordination, and final superblock assembly for L1 publication.
+* **[Publisher](./x/publisher/README.md)**: The central coordinator that manages sequencer connections and message
+  broadcasting.
+* **[Consensus](./x/consensus/README.md)**: The core two-phase commit (2PC) implementation for achieving atomic
+  consensus on cross-chain transactions.
+* **[Transport](./x/transport/README.md)**: A high-performance TCP networking layer for communication between the
+  publisher and sequencers.
+* **[Adapter](./x/adapter/README.md)**: Provides interfaces and base implementations for integrating rollup sequencers.
+* **[Auth](./x/auth/README.md)**: Handles ECDSA-based message signing and verification.
+* **[Codec](./x/codec/README.md)**: Manages Protobuf message encoding and decoding.
 
-* [Publisher](./x/publisher/README.md) - Central coordinator for 2PC protocol
-* [Consensus](./x/consensus/README.md) - Two-phase commit implementation
-* [Transport](./x/transport/README.md) - High-performance TCP networking layer
+## Sequencer Integration
 
-### Supporting Modules
+To integrate a rollup as a participant (a "follower"), a sequencer must connect to the Shared Publisher and handle the
+messages defined by the Superblock Construction Protocol (SBCP).
 
-* [Adapter](./x/adapter/README.md) - Interface for rollup integration
-* [Auth](./x/auth/README.md) - ECDSA-based authentication
-* [Codec](./x/codec/README.md) - Protobuf message encoding/decoding
-
-## Sequencer Implementation Guide
-
-To integrate your rollup as a sequencer (follower) in the system:
-
-### 1. Install the SDK
-
-```bash
-go get github.com/ssvlabs/rollup-shared-publisher
-```
-
-### 2. Implement the Adapter Interface
-
-```go
-package sequencer
-
-import (
-	"context"
-	"encoding/hex"
-
-	"github.com/ssvlabs/rollup-shared-publisher/x/adapter"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
-)
-
-type MySequencerAdapter struct {
-	adapter.BaseAdapter
-
-	client  transport.Client
-	chainID []byte
-
-	// Your rollup-specific fields
-	txPool   *TxPool
-	executor *Executor
-	mailbox  *Mailbox
-}
-
-func NewSequencerAdapter(chainID string, txPool *TxPool) *MySequencerAdapter {
-	chainIDBytes, _ := hex.DecodeString(chainID)
-
-	return &MySequencerAdapter{
-		BaseAdapter: *adapter.NewBaseAdapter("my-rollup", "1.0.0", chainID),
-		chainID:     chainIDBytes,
-		txPool:      txPool,
-		executor:    NewExecutor(),
-		mailbox:     NewMailbox(),
-	}
-}
-```
-
-### 3. Handle Protocol Messages
-
-```go
-// Handle incoming cross-chain transaction request
-func (s *MySequencerAdapter) HandleXTRequest(ctx context.Context, from string, req *pb.XTRequest) error {
-    xtID, _ := req.XtID()
-
-    // Extract transactions for this chain
-    for _, tx := range req.Transactions {
-        if bytes.Equal(tx.ChainId, s.chainID) {
-        // Start timer for timeout
-        timer := time.AfterFunc(3*time.Minute, func () {
-        s.sendVote(xtID, false) // Vote abort on timeout
-        })
-
-    // Simulate transaction
-    result := s.executor.Simulate(tx.Transaction)
-
-    if result.RequiresCIRC {
-        // Wait for CIRC messages from other chains
-        s.waitForCIRC(xtID, result.Dependencies)
-    } else {
-        // Send vote immediately
-        s.sendVote(xtID, result.Success)
-    }
-
-    timer.Stop()
-        }
-    }
-    return nil
-}
-
-// Handle 2PC decision from publisher
-func (s *MySequencerAdapter) HandleDecision(ctx context.Context, from string, decision *pb.Decided) error {
-    if decision.Decision {
-    // Commit: Include transaction in next block
-        s.txPool.AddCrossChainTx(decision.XtId)
-    } else {
-    // Abort: Remove from pending
-        s.txPool.RemovePending(decision.XtId)
-    }
-    return nil
-}
-
-// Send vote to publisher
-func (s *MySequencerAdapter) sendVote(xtID *pb.XtID, vote bool) error {
-    msg := &pb.Message{
-        SenderId: s.client.GetID(),
-        Payload: &pb.Message_Vote{
-            Vote: &pb.Vote{
-            SenderChainId: s.chainID,
-            XtId:          xtID,
-            Vote:          vote,
-            },
-        },
-    }
-
-    return s.client.Send(context.Background(), msg)
-}
-```
-
-### 4. Connect to Shared Publisher
-
-```go
-func (s *MySequencerAdapter) Start(ctx context.Context) error {
-    // Create TCP client with optional authentication
-    config := tcp.DefaultClientConfig()
-    config.ServerAddr = "publisher.example.com:8080"
-
-    s.client = tcp.NewClient(config, log)
-
-    // Optional: Add ECDSA authentication
-    if privateKey != nil {
-        authManager := auth.NewManager(privateKey)
-        s.client = s.client.WithAuth(authManager)
-    }
-
-    // Set message handler
-    s.client.SetHandler(s.handleMessage)
-
-    // Connect with retry
-    return s.client.ConnectWithRetry(ctx, "", 5)
-}
-
-func (s *MySequencerAdapter) handleMessage(ctx context.Context, from string, msg *pb.Message) error {
-    switch payload := msg.Payload.(type) {
-    case *pb.Message_XtRequest:
-        return s.HandleXTRequest(ctx, from, payload.XtRequest)
-    case *pb.Message_Decided:
-        return s.HandleDecision(ctx, from, payload.Decided)
-    case *pb.Message_CircMessage:
-        return s.HandleCIRC(ctx, from, payload.CircMessage)
-    default:
-        return fmt.Errorf("unknown message type: %T", payload)
-    }
-}
-```
-
-### 5. Submit Blocks
-
-```go
-func (s *MySequencerAdapter) SubmitBlock(ctx context.Context, block *types.Block) error {
-    // Get included cross-chain transactions
-    includedXTs := s.txPool.GetIncludedCrossChainTxs(block)
-
-    xtIDs := make([]*pb.XtID, len(includedXTs))
-    for i, xt := range includedXTs {
-        xtIDs[i] = xt.ID
-    }
-
-    // Submit block to publisher
-    msg := &pb.Message{
-        Payload: &pb.Message_Block{
-        Block: &pb.Block{
-        ChainId:       s.chainID,
-        BlockData:     block.Encode(),
-        IncludedXtIds: xtIDs,
-        },
-        },
-    }
-
-return s.client.Send(ctx, msg)
-}
-```
-
-### 6. Handle CIRC Messages (Optional)
-
-For rollups supporting inter-rollup communication:
-
-```go
-func (s *MySequencerAdapter) HandleCIRC(ctx context.Context, from string, circ *pb.CIRCMessage) error {
-    // Add CIRC message to mailbox
-    s.mailbox.AddMessage(circ)
-
-    // Resume transaction simulation if waiting
-    if waiter := s.getWaiter(circ.XtId); waiter != nil {
-        waiter.Resume()
-    }
-
-return nil
-}
-```
+The `x/adapter` module provides base interfaces, and `x/superblock/sequencer` contains a reference implementation and
+state machine for a sequencer participating in SBCP. Developers should consult these modules for integration details.
 
 ## Configuration
 
-### Publisher Configuration
+The primary executable is the Shared Publisher leader application. For detailed configuration options, see the
+application's README:
 
-```yaml
-server:
-  listen_addr: ":8080"
-  max_connections: 1000
-  read_timeout: 30s
-  write_timeout: 30s
-  max_message_size: 10485760  # 10MB
-
-consensus:
-  timeout: 60s
-
-metrics:
-  enabled: true
-  port: 8081
-```
-
-### Sequencer Configuration
-
-```go
-config := tcp.ClientConfig{
-    ServerAddr:      "publisher.example.com:8080",
-    ConnectTimeout:  10 * time.Second,
-    ReadTimeout:     30 * time.Second,
-    WriteTimeout:    10 * time.Second,
-    ReconnectDelay:  5 * time.Second,
-    MaxMessageSize:  10 * 1024 * 1024,
-    KeepAlive:       true,
-    KeepAlivePeriod: 30 * time.Second,
-}
-```
+- **[shared-publisher-leader-app/README.md](./shared-publisher-leader-app/README.md)**
 
 ## Monitoring
 
+The Shared Publisher exposes an HTTP API server (default port `:8081`) for monitoring and health checks.
+
 ### Endpoints
 
-- **Metrics**: `http://localhost:8081/metrics`
-- **Health**: `http://localhost:8081/health`
-- **Ready**: `http://localhost:8081/ready`
-- **Stats**: `http://localhost:8081/stats`
+- **`GET /health`**: Liveness probe.
+- **`GET /ready`**: Readiness probe (returns `503` until at least one sequencer is connected).
+- **`GET /stats`**: Internal application statistics and build info.
+- **`GET /metrics`**: Prometheus metrics endpoint.
 
 ### Key Metrics
 
+A sample of key Prometheus metrics exposed by the publisher:
+
 ```
-publisher_consensus_active_transactions
+# Consensus Metrics
 publisher_consensus_transactions_total{state="commit|abort"}
+publisher_consensus_active_transactions
 publisher_consensus_duration_seconds
+
+# Transport Metrics
 publisher_transport_connections_active
 publisher_transport_messages_total{type,direction}
 ```

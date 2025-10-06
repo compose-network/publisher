@@ -1,6 +1,8 @@
 ## Shared Publisher (Leader App)
 
-This directory contains the executable that runs the Shared Publisher leader. It exposes a TCP server that sequencers connect to and a small HTTP server for health and metrics. Authentication via ECDSA signatures is supported and can be enabled via configuration.
+This directory contains the executable that runs the Shared Publisher leader. It exposes a TCP server that sequencers
+connect to and a small HTTP server for health and metrics. Authentication via ECDSA signatures is supported and can be
+enabled via configuration.
 
 ### Build and Run
 
@@ -21,76 +23,99 @@ This directory contains the executable that runs the Shared Publisher leader. It
 
 ### Configuration
 
-Config is loaded from a YAML file (default: `shared-publisher-leader-app/configs/config.yaml`) and can be overridden by environment variables using upper snake case names with section prefixes.
+Configuration is loaded from a YAML file (default: `shared-publisher-leader-app/configs/config.yaml`) and can be
+overridden by environment variables. For example, `server.listen_addr` can be set with `SERVER_LISTEN_ADDR`.
 
-Minimal example:
+See [`configs/config.example.yaml`](./configs/config.example.yaml) for a fully commented example.
+
+#### Main Sections
+
+- **`server`**: Configures the main TCP server for sequencer connections.
+- **`api`**: Configures the separate HTTP API server for health, metrics, and proofs.
+- **`log`**: Logging level (`debug`, `info`, `warn`) and format (`pretty` for development).
+- **`consensus`**: Basic 2PC consensus parameters like timeout.
+- **`auth`**: Optional ECDSA-based authentication for sequencers.
+- **`l1`**: Configuration for connecting to an L1 Ethereum node to publish superblocks.
+- **`proofs`**: Configuration for the zero-knowledge proof generation and verification pipeline.
+
 ```yaml
+# Example configuration structure
 server:
   listen_addr: ":8080"
-  max_connections: 1000
-  read_timeout: 30s
-  write_timeout: 30s
-  max_message_size: 10485760
+  max_connections: 100
+  # ...
 
-metrics:
-  enabled: true
-  port: 8081
-  path: "/metrics"
+api:
+  listen_addr: ":8081"
+  # ...
 
 log:
   level: info
-  pretty: true
-  output: stdout
+  pretty: false
+  # ...
 
 auth:
   enabled: true
-  private_key: "<SP_PRIVATE_KEY_HEX>"
+  private_key: "YOUR_SP_PRIVATE_KEY_HEX"
   trusted_sequencers:
     - id: "rollupA"
-      public_key: "<SEQ1_PUBLIC_KEY_HEX>"
-    - id: "rollupB"
-      public_key: "<SEQ2_PUBLIC_KEY_HEX>"
+      public_key: "SEQ1_PUBLIC_KEY_HEX"
+    # ...
 
 consensus:
-  timeout: 60s
-  role: leader
-```
+  timeout: "60s"
+  role: "leader"
 
-Environment variable overrides (examples):
-- `SERVER_LISTEN_ADDR=":9090"`
-- `SERVER_MAX_CONNECTIONS=2000`
-- `AUTH_ENABLED=true`
-- `AUTH_PRIVATE_KEY=...`
+l1:
+  rpc_endpoint: "ws://localhost:8546"
+  dispute_game_factory: "0xYourContractAddress"
+  shared_publisher_pk_hex: "YOUR_SP_PRIVATE_KEY_HEX"
+  # ...
+
+proofs:
+  enabled: true
+  collector:
+    require_all_chains: true
+    wait_timeout: 300s
+    # ...
+  prover:
+    base_url: "http://superblock-prover:8080"
+    # ...
+  require_proof: true
+```
 
 ### Authentication
 
-The leader app integrates the `x/auth` module and the TCP transport to verify signed messages:
-- When `auth.enabled` is true and `auth.private_key` is provided, the server signs outbound messages and verifies inbound ones.
-- `auth.trusted_sequencers` defines allowed sequencer identities by mapping a human-friendly `id` to a compressed public key (33-byte hex). Verified connections will log the "Connection identity established" message with the resolved `verified_id`.
+The leader app integrates the `x/auth` module to verify sequencer connections.
 
-Key generation helper:
+- When `auth.enabled` is true, the server uses the `private_key` to sign outbound messages and verify inbound ones.
+- `auth.trusted_sequencers` defines a list of known sequencers by mapping an `id` to a compressed public key (33-byte
+  hex).
+- Connections from untrusted keys will be rejected.
+
+A helper script can be used to generate new keys:
+
 ```bash
-go run ./scripts/generate_keys.go
+go run ./scripts/gen-keys.go
 ```
-
-This prints the Shared Publisher private key and compressed public keys for two sample sequencers you can paste into the config.
-
-Expected logs when auth is enabled and sequencers use known keys:
-```
-INFO Authentication enabled for shared publisher address=0x...
-INFO Added trusted sequencer id=rollupA
-INFO Added trusted sequencer id=rollupB
-INFO Connection identity established verified_id=rollupA
-```
-
-If a sequencer connects with an unknown key, messages will still be signature-verified but marked as `unknown:<pubkey-prefix>` unless you enforce reject logic externally.
 
 ### HTTP Endpoints
 
-- `GET /health` — liveness
-- `GET /ready` — returns `503` until there is at least one connection
-- `GET /metrics` — Prometheus metrics (when enabled)
-- `GET /stats` — internal stats plus build info
+The API server (default `:8081`) exposes several endpoints for monitoring and interacting with the service.
+
+#### Core Endpoints
+
+- **`GET /health`**: Liveness probe. Returns `200 OK` if the service is running.
+- **`GET /ready`**: Readiness probe. Returns `200 OK` if the service is ready to accept connections.
+- **`GET /stats`**: Internal application statistics and build information.
+- **`GET /metrics`**: Prometheus metrics endpoint (when `metrics.enabled` is true).
+
+#### Proofs API
+
+When the proofs pipeline is enabled (`proofs.enabled: true`), the following endpoints are available:
+
+- **`POST /v1/proofs/op-succinct`**: Submits a per-rollup proof generated by an `op-succinct` instance.
+- **`GET /v1/proofs/status/{sbHash}`**: Retrieves the collection and proving status for a given superblock hash.
 
 ### CLI
 
@@ -98,7 +123,8 @@ If a sequencer connects with an unknown key, messages will still be signature-ve
 ./bin/rollup-shared-publisher --help
 ```
 
-Flags include `--config`, log tuning, and server/metrics overrides. See `shared-publisher-leader-app/main.go` for details.
+Flags include `--config`, log tuning, and server/metrics overrides. See `shared-publisher-leader-app/main.go` for
+details.
 
 ### Notes
 
