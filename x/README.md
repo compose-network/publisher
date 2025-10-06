@@ -3,144 +3,142 @@
 The Rollup Shared Publisher SDK provides production-grade modules for building cross-chain coordination systems. These
 modules work together to enable atomic transaction execution across multiple rollups.
 
-## Core Modules
+## Modules
 
-Core modules provide essential functionality for the 2PC coordination protocol.
+The SDK is organized into several packages (`x/*`), which can be grouped into three main layers:
 
-### Publisher Module
+### 1. Protocol Layer
 
-* [Publisher](./publisher/README.md) - Central coordinator implementing the leader role in 2PC protocol
-    - Manages cross-chain transaction lifecycle
-    - Broadcasts decisions to all participants
-    - Handles connection management
-    - Tracks active transactions and chain participation
+This layer implements the high-level coordination logic.
 
-### Consensus Module
+- **[Superblock](./superblock/README.md)**: Implements the Superblock Construction Protocol (SBCP) for slot-based,
+  multi-rollup block creation and L1 publication. This is the primary protocol implementation.
 
-* [Consensus](./consensus/README.md) - Two-phase commit protocol implementation
-    - State management for active transactions
-    - Vote collection and decision logic
-    - Timeout handling for stuck transactions
-    - CIRC message queue management
-    - Metrics and monitoring
+### 2. Core Service Layer
 
-### Transport Module
+This layer provides the fundamental building blocks for the coordination service.
 
-* [Transport](./transport/README.md) - High-performance networking layer
-    - TCP-based communication with zero-copy optimizations
-    - Connection pooling and health monitoring
-    - Automatic reconnection with exponential backoff
-    - Optional authentication support
-    - Worker pools for concurrent connection handling
+- **[Publisher](./publisher/README.md)**: A basic coordinator that manages connections and broadcasts messages. It is
+  wrapped by the `superblock` module to enable SBCP.
+- **[Consensus](./consensus/README.md)**: A core implementation of the two-phase commit (2PC) protocol used for reaching
+  agreement on cross-chain transactions.
+- **[Transport](./transport/README.md)**: A high-performance TCP networking layer for communication between all nodes.
 
-## Supporting Modules
+### 3. Supporting Modules
 
-Supporting modules extend the capabilities of the core system.
+These modules provide cross-cutting concerns and utilities.
 
-### Adapter Module
-
-* [Adapter](./adapter/README.md) - Integration interface for rollup sequencers
-    - Base implementation with common functionality
-    - Message routing and handling
-    - Lifecycle hooks for initialization and cleanup
-    - Extensible design for custom rollup logic
-
-### Auth Module
-
-* [Auth](./auth/README.md) - ECDSA-based authentication system
-    - Message signing and verification
-    - Trusted key management
-    - Ethereum-compatible signatures
-    - Optional authentication for secure environments
-
-### Codec Module
-
-* [Codec](./codec/README.md) - Message encoding and serialization
-    - Protobuf-based wire format
-    - Length-prefixed framing
-    - Buffer pooling for performance
-    - Extensible codec registry
+- **[Adapter](./adapter/README.md)**: Defines the interfaces for integrating a rollup sequencer with the publisher.
+- **[Auth](./auth/README.md)**: An optional ECDSA-based authentication system for securing communication.
+- **[Codec](./codec/README.md)**: Handles Protobuf-based message serialization and framing.
 
 ## Module Architecture
 
+The architecture is layered, with the `superblock` module orchestrating the underlying services.
+
 ```
-┌─────────────────────────────────────────┐
+┌───────────────────────────────────────────┐
+│           Superblock Module               │
+│ (SBCP Coordinator, Slot Machine, Proving) │
+└─────────────────┬─────────────────────────┘
+                  │ Wraps
+┌─────────────────▼───────────────────────┐
 │            Publisher Module             │
-│  (Coordinator, Message Router, Stats)   │
+│  (Message Router, Connection Manager)   │
 └─────────────────┬───────────────────────┘
-│
-┌─────────┴─────────┐
-│                   │
+                  │ Uses
+          ┌───────┴─────────┐
+          │                 │
 ┌───────▼────────┐ ┌────────▼────────┐
 │   Consensus    │ │    Transport    │
 │   (2PC Logic)  │ │  (TCP Network)  │
 └───────┬────────┘ └────────┬────────┘
-│                   │
-└─────────┬─────────┘
-│
-┌─────────────┼─────────────┐
-│             │             │
-┌───▼──┐    ┌────▼───┐    ┌────▼───┐
-│ Auth │    │ Codec  │    │Adapter │
-└──────┘    └────────┘    └────────┘
+        │                   │
+        └─────────┬─────────┘
+                  │
+      ┌───────────┼─────────────┐
+      │           │             │
+┌─────▼─┐     ┌───▼────┐    ┌───▼────┐
+│ Codec │     │  Auth  │    │ Adapter│
+└───────┘     └────────┘    └────────┘
 ```
 
 ## Usage Patterns
 
+The following patterns demonstrate how to set up the full Superblock Construction Protocol (SBCP).
+
 ### For Shared Publisher (Leader)
+
+The leader node is created by wrapping a base `publisher` with the `sbadapter` to inject the SBCP coordination logic.
 
 ```go
 import (
     "github.com/ssvlabs/rollup-shared-publisher/x/publisher"
     "github.com/ssvlabs/rollup-shared-publisher/x/consensus"
     "github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
+    "github.com/ssvlabs/rollup-shared-publisher/x/superblock"
+    sbadapter "github.com/ssvlabs/rollup-shared-publisher/x/superblock/adapter"
 )
 
-// Create coordinator
-coordinator := consensus.New(logger, consensus.Config{
-    Role:     consensus.Leader,
-    Timeout:  60 * time.Second,
-})
+// 1. Create base components
+consensusCoord := consensus.New(log, consensus.Config{...})
+tcpServer := tcp.NewServer(transportConfig, log)
+basePublisher, _ := publisher.New(
+    log,
+	publisher.WithTransport(tcpServer),
+    publisher.WithConsensus(consensusCoord),
+	)
 
-// Create transport
-server := tcp.NewServer(transportConfig, log)
+// 2. Define SBCP configuration
+sbcpConfig := superblock.DefaultConfig()
+// ... customize sbcpConfig.Slot, sbcpConfig.L1, sbcpConfig.Proofs ...
 
-// Create publisher
-pub := publisher.New(
-    publisher.WithTransport(server),
-    publisher.WithConsensus(coordinator),
+// 3. Wrap the base publisher to create the Superblock Publisher
+// This injects the SBCP logic and requires dependencies for L1 and proofs.
+superblockPublisher, err := sbadapter.WrapPublisher(
+    basePublisher,
+    sbcpConfig,
+    log,
+    consensusCoord,
+    tcpServer,
+    collectorSvc, // proofs.collector.Service
+    proverClient, // proofs.ProverClient
 )
+if err != nil { ... }
 
-// Start
-pub.Start(ctx)
+// 4. Start the publisher
+superblockPublisher.Start(ctx)
 ```
 
 ### For Sequencer (Follower)
 
+The `x/superblock/sequencer/bootstrap` helper provides the quickest way to set up a sequencer for SBCP, including P2P
+communication for CIRC messages.
+
 ```go
 import (
-    "github.com/ssvlabs/rollup-shared-publisher/x/adapter"
-    "github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
-    "github.com/ssvlabs/rollup-shared-publisher/x/auth"
+    "github.com/ssvlabs/rollup-shared-publisher/x/superblock/sequencer/bootstrap"
 )
 
-// Implement adapter
-type MyAdapter struct {
-    adapter.BaseAdapter
-    // custom fields
-}
+// Use the bootstrap helper to set up a sequencer for SBCP
+rt, err := bootstrap.Setup(ctx, bootstrap.Config{
+    ChainID:   myChainIDBytes,
+    SPAddr:    "shared-publisher.example.com:8080",
+    PeerAddrs: map[string]string{
+    "11155111": "sequencer-a.example.com:9000",
+    "84532":    "sequencer-b.example.com:9000",
+    },
+    Log: log,
+})
+if err != nil { ... }
 
-// Create client
-client := tcp.NewClient(config, log)
+// Start connects to the SP and peers
+rt.Start(ctx)
 
-// Optional: Add authentication
-if privateKey != nil {
-    authManager := auth.NewManager(privateKey)
-    client = client.WithAuth(authManager)
-}
-
-// Connect
-client.Connect(ctx, publisherAddr)
+// The runtime's Coordinator can now be integrated with the sequencer's block production logic.
+// For example, the sequencer would call these methods on the coordinator:
+// rt.Coordinator.OnBlockBuildingStart(...)
+// rt.Coordinator.OnBlockBuildingComplete(...)
 ```
 
 ## Performance Considerations
@@ -150,14 +148,6 @@ client.Connect(ctx, publisherAddr)
 - **Batching**: Multiple transactions per message
 - **Compression**: Optional message compression (planned)
 - **Metrics**: Comprehensive monitoring for optimization
-
-## Security Model
-
-1. **Optional Authentication**: ECDSA signatures for trusted environments
-2. **Message Integrity**: Cryptographic verification of messages
-3. **Timeout Protection**: Configurable timeouts prevent blocking
-4. **Connection Limits**: Maximum connection limits prevent DoS
-5. **TLS Support**: Encryption for network communication (recommended)
 
 ## Module Development
 

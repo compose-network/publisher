@@ -48,8 +48,8 @@ blocks, which are then aggregated into a final superblock and published to L1.
 └─────────────────┬────────────────┘
                   │ SBCP Protocol (Slots, Seal Requests)
                   │ 2PC Protocol (Votes, Decisions)
-          ┌───────┴───────┐
-          │               │
+          ┌───────┴───────────┐
+          │                   │
 ┌─────────▼───────────┐   ┌───▼───────────────┐
 │ Rollup A Sequencer  │   │ Rollup B Sequencer│
 │ (Follower)          │   │ (Follower)        │
@@ -159,7 +159,7 @@ docker-compose down
 
 ## Protocol Specification
 
-See [Superblock Construction Protocol](./docs/superblock_construction_protocol.md) for detailed protocol specification.
+See [Superblock Construction Protocol](./spec/superblock_construction_protocol.md) for detailed protocol specification.
 
 ## Security
 
