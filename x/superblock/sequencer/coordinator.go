@@ -720,20 +720,7 @@ func (sc *SequencerCoordinator) OnBlockBuildingComplete(ctx context.Context, blo
 			Str("block_hash", fmt.Sprintf("%x", block.BlockHash)).
 			Msg("Block building completed successfully")
 
-		// Execute block ready callback
-		if sc.callbacks.OnBlockReady != nil {
-			xtIDs := make([]*pb.XtID, len(block.IncludedXts))
-			for i, xtBytes := range block.IncludedXts {
-				xtIDs[i] = &pb.XtID{Hash: xtBytes}
-			}
-			if err := sc.callbacks.OnBlockReady(ctx, block, xtIDs); err != nil {
-				return err
-			}
-		}
-		// Inform consensus layer that a block committed (mark included XTs)
-		if sc.consensusCoord != nil {
-			_ = sc.consensusCoord.OnL2BlockCommitted(ctx, block)
-		}
+		// TODO: we should call Consensus().OnL2BlockCommitted here
 
 		// Transition back to Waiting after successful sealing
 		if sc.stateMachine.GetCurrentState() == StateSubmission {
@@ -742,7 +729,7 @@ func (sc *SequencerCoordinator) OnBlockBuildingComplete(ctx context.Context, blo
 			}
 		}
 
-		// Reset block builder for next slot
+		// Reset block builder for the next slot
 		if sc.blockBuilder != nil {
 			sc.blockBuilder.Reset()
 		}
@@ -757,6 +744,7 @@ func (sc *SequencerCoordinator) OnBlockBuildingComplete(ctx context.Context, blo
 // handleConsensusDecision is invoked by the consensus layer when the underlying 2PC (SCP)
 // reaches a final decision for the active StartSC. It updates the local SCP integration
 // and unblocks any queued StartSC messages.
+// TODO: check original transactions (clean up)
 func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
@@ -769,15 +757,6 @@ func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, xtI
 	if err := sc.scpIntegration.HandleDecision(xtID, decision); err != nil {
 		sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Failed to apply decision to SCP integration")
 		return err
-	}
-
-	// Clean up original transactions on abort to prevent orphaned txs in next blocks
-	if !decision && sc.callbacks.CleanupOriginalTransactions != nil {
-		if err := sc.callbacks.CleanupOriginalTransactions(ctx, xtID); err != nil {
-			sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Failed to cleanup original transactions")
-		} else {
-			sc.log.Info().Str("xt_id", xtID.Hex()).Msg("Cleaned up original transactions after abort")
-		}
 	}
 
 	// If we returned to Building-Free and have queued StartSCs, process the next one
