@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     shared-publisher-leader-app/main.go shared-publisher-leader-app/app.go shared-publisher-leader-app/version.go
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.22@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
 
 # Install runtime dependencies
 RUN apk --no-cache add ca-certificates tzdata
