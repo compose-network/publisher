@@ -8,11 +8,15 @@ import (
 
 	"github.com/spf13/viper"
 	sbcfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch"
 	l1cfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
 )
 
 // Config holds the complete application configuration
 type Config struct {
+	// Global settings
+	GenesisTime int64 `mapstructure:"genesis_time" yaml:"genesis_time"` // App genesis time (Unix timestamp)
+
 	Server    ServerConfig       `mapstructure:"server"    yaml:"server"`
 	API       APIServerConfig    `mapstructure:"api"       yaml:"api"`
 	Consensus ConsensusConfig    `mapstructure:"consensus" yaml:"consensus"`
@@ -21,6 +25,7 @@ type Config struct {
 	Auth      AuthConfig         `mapstructure:"auth"      yaml:"auth"`
 	L1        l1cfg.Config       `mapstructure:"l1"        yaml:"l1"`
 	Proofs    sbcfg.ProofsConfig `mapstructure:"proofs"    yaml:"proofs"`
+	Batch     batch.Config       `mapstructure:"batch"     yaml:"batch"`
 }
 
 // ServerConfig holds server configuration
@@ -175,6 +180,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("proofs.prover.poll_interval", "5s") // TODO: testing
 	v.SetDefault("proofs.prover.proof_type", "groth16")
 	v.SetDefault("proofs.require_proof", true)
+
+	// Global defaults
+	v.SetDefault("genesis_time", time.Now().Unix()) // App genesis time (override in production)
+
+	// Batch defaults
+	v.SetDefault("batch.enabled", false)
+	v.SetDefault("batch.chain_id", 0)
+	v.SetDefault("batch.ethereum_genesis", 1606824023) // Ethereum genesis for epoch calculation
+	v.SetDefault("batch.max_concurrent_jobs", 5)
+	v.SetDefault("batch.worker_poll_interval", "10s")
 }
 
 // Validate validates the configuration

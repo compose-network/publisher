@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+// SlotManager interface defines the contract for slot timing management
+type SlotManager interface {
+	GetCurrentSlot() uint64
+	GetSlotStartTime(slot uint64) time.Time
+	GetSlotProgress() float64
+	IsSlotSealTime() bool
+	WaitForNextSlot(ctx context.Context) error
+	SetGenesisTime(genesis time.Time)
+}
+
 type Manager struct {
 	mu                  sync.RWMutex
 	genesisTime         time.Time

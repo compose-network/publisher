@@ -75,20 +75,15 @@ func NewCoordinator(
 	transport transport.Server,
 	collector apicollector.Service,
 	prover proofs.ProverClient,
+	slotManager SlotManager,
 ) *Coordinator {
-	slotManagerImpl := slot.NewManager(
-		config.Slot.GenesisTime,
-		config.Slot.Duration,
-		config.Slot.SealCutover,
-	)
-
-	stateMachine := slot.NewStateMachine(slotManagerImpl, log)
+	stateMachine := slot.NewStateMachine(slotManager, log)
 
 	c := &Coordinator{
 		config:          config,
 		log:             log.With().Str("component", "coordinator").Logger(),
 		metrics:         metrics,
-		slotManager:     slotManagerImpl,
+		slotManager:     slotManager,
 		stateMachine:    stateMachine,
 		registryService: registryService,
 		l2BlockStore:    l2BlockStore,

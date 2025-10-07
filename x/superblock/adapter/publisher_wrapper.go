@@ -53,6 +53,7 @@ func WrapPublisher(
 	transport transport.Server,
 	collector collector.Service,
 	prover proofs.ProverClient,
+	slotManager superblock.SlotManager,
 ) (*SuperblockPublisher, error) {
 	registryService := registry.NewMemoryService(log, [][]byte{mockID1, mockID2})
 	l2BlockStore := store.NewMemoryL2BlockStore()
@@ -86,6 +87,7 @@ func WrapPublisher(
 		transport,
 		collector,
 		prover,
+		slotManager,
 	)
 
 	wrapper := &SuperblockPublisher{

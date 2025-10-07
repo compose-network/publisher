@@ -12,6 +12,12 @@
 #   LOG_LEVEL=debug
 #   LOG_PRETTY=true
 
+# Global application settings
+# App genesis time (Unix timestamp) - Used for slot timing across SBCP and batch systems
+# This should be set to a fixed timestamp in production
+# ENV: GENESIS_TIME
+genesis_time: 1234567890
+
 # Server configuration
 server:
   # TCP listen address for sequencer connections
@@ -183,20 +189,20 @@ proofs:
 
 # Batch synchronization configuration
 # Enables synchronized batch creation across multiple sequencers using Ethereum's clock.
-# All sequencers MUST use the same genesis_time for proper synchronization.
 batch:
   # Enable batch synchronization
   # ENV: BATCH_ENABLED
   enabled: true
 
-  # Common genesis time (Unix timestamp) - MUST be identical across all sequencers
-  # Default: 1606824023 (Ethereum Mainnet genesis: 2020-12-01 12:00:23 UTC)
-  # ENV: BATCH_GENESIS_TIME
-  genesis_time: 1606824023
-
   # Chain ID for this rollup
   # ENV: BATCH_CHAIN_ID
   chain_id: 11155111
+
+  # Ethereum genesis timestamp (Unix timestamp) - Used ONLY for epoch calculation
+  # Default: 1606824023 (Ethereum Mainnet genesis: 2020-12-01 12:00:23 UTC)
+  # This value MUST match Ethereum's actual genesis for accurate epoch synchronization
+  # ENV: BATCH_ETHEREUM_GENESIS
+  ethereum_genesis: 1606824023
 
   # Maximum number of concurrent proof generation jobs
   # Higher values = more parallelism but more resource usage

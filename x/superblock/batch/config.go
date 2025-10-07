@@ -10,8 +10,8 @@ import (
 // //nolint:lll // Config struct is long
 type Config struct {
 	Enabled            bool          `mapstructure:"enabled"              yaml:"enabled"`              // Enable batch synchronization
-	GenesisTime        int64         `mapstructure:"genesis_time"         yaml:"genesis_time"`         // Unix timestamp (e.g., 1606824023 for Ethereum Mainnet)
 	ChainID            uint32        `mapstructure:"chain_id"             yaml:"chain_id"`             // Chain ID for this rollup
+	EthereumGenesis    int64         `mapstructure:"ethereum_genesis"     yaml:"ethereum_genesis"`     // Ethereum genesis Unix timestamp (e.g., 1606824023 for Mainnet)
 	MaxConcurrentJobs  int           `mapstructure:"max_concurrent_jobs"  yaml:"max_concurrent_jobs"`  // Max concurrent proof jobs
 	WorkerPollInterval time.Duration `mapstructure:"worker_poll_interval" yaml:"worker_poll_interval"` // How often workers poll for jobs
 }
@@ -20,8 +20,8 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Enabled:            true,
-		GenesisTime:        EthereumMainnetGenesis,
 		ChainID:            0, // Must be set by user
+		EthereumGenesis:    EthereumMainnetGenesis,
 		MaxConcurrentJobs:  DefaultMaxConcurrentJobs,
 		WorkerPollInterval: DefaultWorkerPollInterval,
 	}
@@ -33,12 +33,12 @@ func (c *Config) Validate() error {
 		return nil
 	}
 
-	if c.GenesisTime == 0 {
-		return fmt.Errorf("genesis_time is required when batch sync is enabled")
-	}
-
 	if c.ChainID == 0 {
 		return fmt.Errorf("chain_id is required when batch sync is enabled")
+	}
+
+	if c.EthereumGenesis == 0 {
+		return fmt.Errorf("ethereum_genesis is required when batch sync is enabled")
 	}
 
 	return nil
@@ -47,7 +47,7 @@ func (c *Config) Validate() error {
 // GetEpochTrackerConfig returns epoch tracker configuration with defaults
 func (c *Config) GetEpochTrackerConfig() EpochTrackerConfig {
 	return EpochTrackerConfig{
-		GenesisTime: c.GenesisTime,
+		GenesisTime: c.EthereumGenesis,
 		BatchFactor: BatchFactor,
 	}
 }

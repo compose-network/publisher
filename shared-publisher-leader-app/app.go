@@ -16,6 +16,8 @@ import (
 	apimw "github.com/ssvlabs/rollup-shared-publisher/server/api/middleware"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
 	sbadapter "github.com/ssvlabs/rollup-shared-publisher/x/superblock/adapter"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch"
+	batchhttp "github.com/ssvlabs/rollup-shared-publisher/x/superblock/batch/http"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 	proofshttp "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/http"
@@ -40,6 +42,11 @@ type App struct {
 	cfg       *config.Config
 	publisher publisher.Publisher
 	log       zerolog.Logger
+
+	// Batch components
+	epochTracker  *batch.EpochTracker
+	batchManager  *batch.Manager
+	batchPipeline *batch.Pipeline
 
 	// API server (HTTP)
 	apiServer *apisrv.Server
@@ -66,8 +73,36 @@ func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, 
 	return app, nil
 }
 
-// initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
+// initialize sets up the application components
 func (a *App) initialize(ctx context.Context) error {
+	coordinator, tcpServer, err := a.initializeTransportAndConsensus()
+	if err != nil {
+		return err
+	}
+
+	collectorSvc, proverClient, err := a.initializeProofServices(ctx)
+	if err != nil {
+		return err
+	}
+
+	slotManager, err := a.initializePublisher(coordinator, tcpServer, collectorSvc, proverClient)
+	if err != nil {
+		return err
+	}
+
+	if err := a.initializeBatchSystem(slotManager, collectorSvc, proverClient); err != nil {
+		return err
+	}
+
+	if err := a.initializeAPIServer(collectorSvc); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// initializeTransportAndConsensus sets up consensus coordinator and TCP transport
+func (a *App) initializeTransportAndConsensus() (consensus.Coordinator, transport.Server, error) {
 	consensusConfig := consensus.Config{
 		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
 		IsLeader: true,
@@ -77,28 +112,29 @@ func (a *App) initialize(ctx context.Context) error {
 	coordinator := consensus.New(a.log, consensusConfig)
 	a.coordinatorShutdownFn = coordinator.Stop
 
-	transportConfig := transport.Config{}
-	transportConfig.ListenAddr = a.cfg.Server.ListenAddr
-	transportConfig.MaxConnections = a.cfg.Server.MaxConnections
-	transportConfig.ReadTimeout = a.cfg.Server.ReadTimeout
-	transportConfig.WriteTimeout = a.cfg.Server.WriteTimeout
-	transportConfig.MaxMessageSize = a.cfg.Server.MaxMessageSize
+	transportConfig := transport.Config{
+		ListenAddr:     a.cfg.Server.ListenAddr,
+		MaxConnections: a.cfg.Server.MaxConnections,
+		ReadTimeout:    a.cfg.Server.ReadTimeout,
+		WriteTimeout:   a.cfg.Server.WriteTimeout,
+		MaxMessageSize: a.cfg.Server.MaxMessageSize,
+	}
 
 	tcpServer := tcp.NewServer(transportConfig, a.log)
 
 	if a.cfg.Auth.Enabled {
 		authManager, err := auth.NewManagerFromHex(a.cfg.Auth.PrivateKey)
 		if err != nil {
-			return fmt.Errorf("failed to initialize auth manager: %w", err)
+			return nil, nil, fmt.Errorf("failed to initialize auth manager: %w", err)
 		}
 
 		for _, seq := range a.cfg.Auth.TrustedSequencers {
 			pubKeyBytes, err := hex.DecodeString(seq.PublicKey)
 			if err != nil {
-				return fmt.Errorf("invalid public key for %s: %w", seq.ID, err)
+				return nil, nil, fmt.Errorf("invalid public key for %s: %w", seq.ID, err)
 			}
 			if err := authManager.AddTrustedKey(seq.ID, pubKeyBytes); err != nil {
-				return fmt.Errorf("failed to add trusted key for %s: %w", seq.ID, err)
+				return nil, nil, fmt.Errorf("failed to add trusted key for %s: %w", seq.ID, err)
 			}
 			a.log.Info().Str("id", seq.ID).Msg("Added trusted sequencer")
 		}
@@ -110,12 +146,41 @@ func (a *App) initialize(ctx context.Context) error {
 			Msg("Authentication enabled for shared publisher")
 	}
 
+	return coordinator, tcpServer, nil
+}
+
+// initializeProofServices sets up proof collector and prover client
+func (a *App) initializeProofServices(ctx context.Context) (collector.Service, proofs.ProverClient, error) {
+	collectorSvc := collector.New(ctx, a.log)
+
+	var proverClient proofs.ProverClient
+	if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
+		pc, err := proofclient.NewHTTPClient(a.cfg.Proofs.Prover.BaseURL, nil, a.log)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create prover client: %w", err)
+		}
+		proverClient = pc
+	}
+
+	return collectorSvc, proverClient, nil
+}
+
+// initializePublisher creates the superblock publisher with shared slot manager
+func (a *App) initializePublisher(
+	coordinator consensus.Coordinator,
+	tcpServer transport.Server,
+	collectorSvc collector.Service,
+	proverClient proofs.ProverClient,
+) (*slot.Manager, error) {
+	// Slot timing configuration - always use app genesis time
+	slotGenesisTime := time.Unix(a.cfg.GenesisTime, 0).UTC()
+	slotDuration := 12 * time.Second // Ethereum slot time (12s)
+
 	coordinatorConfig := superblock.DefaultConfig()
-	// TODO: Relax slot timing for debug to give SBCP more room to finish
 	coordinatorConfig.Slot = slot.Config{
-		Duration:    20 * time.Second,
-		SealCutover: 0.90,                            // seal near end of slot
-		GenesisTime: time.Now().Add(5 * time.Second), // mock, in 5 seconds
+		Duration:    slotDuration,
+		SealCutover: 0.90,
+		GenesisTime: slotGenesisTime,
 	}
 	coordinatorConfig.Queue = queue.Config{
 		MaxSize:           1000,
@@ -123,17 +188,6 @@ func (a *App) initialize(ctx context.Context) error {
 	}
 	coordinatorConfig.L1 = a.cfg.L1
 	coordinatorConfig.Proofs = a.cfg.Proofs
-
-	collectorSvc := collector.New(ctx, a.log)
-
-	var proverClient proofs.ProverClient
-	if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
-		pc, err := proofclient.NewHTTPClient(a.cfg.Proofs.Prover.BaseURL, nil, a.log)
-		if err != nil {
-			return fmt.Errorf("failed to create prover client: %w", err)
-		}
-		proverClient = pc
-	}
 
 	pub, err := publisher.New(
 		a.log,
@@ -143,8 +197,14 @@ func (a *App) initialize(ctx context.Context) error {
 		publisher.WithMetrics(a.cfg.Metrics.Enabled),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create publisher: %w", err)
+		return nil, fmt.Errorf("failed to create publisher: %w", err)
 	}
+
+	sharedSlotManager := slot.NewManager(
+		slotGenesisTime,
+		coordinatorConfig.Slot.Duration,
+		coordinatorConfig.Slot.SealCutover,
+	)
 
 	sbPub, err := sbadapter.WrapPublisher(
 		pub,
@@ -154,13 +214,59 @@ func (a *App) initialize(ctx context.Context) error {
 		tcpServer,
 		collectorSvc,
 		proverClient,
+		sharedSlotManager,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create superblock publisher: %w", err)
+		return nil, fmt.Errorf("failed to create superblock publisher: %w", err)
 	}
 	a.publisher = sbPub
 
-	// API server (shared HTTP surface)
+	return sharedSlotManager, nil
+}
+
+// initializeBatchSystem sets up batch synchronization components if enabled
+func (a *App) initializeBatchSystem(
+	slotManager *slot.Manager,
+	collectorSvc collector.Service,
+	proverClient proofs.ProverClient,
+) error {
+	if !a.cfg.Batch.Enabled {
+		return nil
+	}
+
+	a.log.Info().
+		Uint32("chain_id", a.cfg.Batch.ChainID).
+		Int64("app_genesis_time", a.cfg.GenesisTime).
+		Int64("ethereum_genesis", a.cfg.Batch.EthereumGenesis).
+		Msg("Initializing batch synchronization")
+
+	epochTrackerCfg := a.cfg.Batch.GetEpochTrackerConfig()
+	epochTracker, err := batch.NewEpochTracker(epochTrackerCfg, a.log)
+	if err != nil {
+		return fmt.Errorf("failed to create epoch tracker: %w", err)
+	}
+	a.epochTracker = epochTracker
+
+	managerCfg := a.cfg.Batch.GetManagerConfig()
+	batchManager, err := batch.NewManager(managerCfg, slotManager, epochTracker, a.log)
+	if err != nil {
+		return fmt.Errorf("failed to create batch manager: %w", err)
+	}
+	a.batchManager = batchManager
+
+	pipelineCfg := a.cfg.Batch.GetPipelineConfig()
+	batchPipeline, err := batch.NewPipeline(pipelineCfg, batchManager, collectorSvc, proverClient, a.log)
+	if err != nil {
+		return fmt.Errorf("failed to create batch pipeline: %w", err)
+	}
+	a.batchPipeline = batchPipeline
+
+	a.log.Info().Msg("Batch synchronization initialized successfully")
+	return nil
+}
+
+// initializeAPIServer sets up the HTTP API server with all endpoints
+func (a *App) initializeAPIServer(collectorSvc collector.Service) error {
 	apiCfg := apisrv.Config{
 		ListenAddr:        a.cfg.API.ListenAddr,
 		ReadHeaderTimeout: a.cfg.API.ReadHeaderTimeout,
@@ -189,8 +295,13 @@ func (a *App) initialize(ctx context.Context) error {
 	proofHandler := proofshttp.NewHandler(collectorSvc, a.log)
 	proofHandler.RegisterMux(s.Router)
 
-	a.apiServer = s
+	// Batch API
+	if a.cfg.Batch.Enabled {
+		batchHandler := batchhttp.NewHandler(a.epochTracker, a.batchManager, a.batchPipeline, a.log)
+		batchHandler.RegisterMux(s.Router)
+	}
 
+	a.apiServer = s
 	return nil
 }
 
@@ -201,6 +312,23 @@ func (a *App) Run(ctx context.Context) error {
 
 	if err := a.publisher.Start(runCtx); err != nil {
 		return fmt.Errorf("failed to start publisher: %w", err)
+	}
+
+	if a.cfg.Batch.Enabled {
+		if a.epochTracker != nil {
+			go a.epochTracker.Start(runCtx)
+			a.log.Info().Msg("Epoch tracker started")
+		}
+
+		if a.batchManager != nil {
+			go a.batchManager.Start(runCtx)
+			a.log.Info().Msg("Batch manager started")
+		}
+
+		if a.batchPipeline != nil {
+			go a.batchPipeline.Start(runCtx)
+			a.log.Info().Msg("Batch pipeline started")
+		}
 	}
 
 	go a.metricsReporter(runCtx)
@@ -246,7 +374,26 @@ func (a *App) shutdown() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Shutdown consensus coordinator first
+	// Stop batch components
+	if a.batchPipeline != nil {
+		if err := a.batchPipeline.Stop(shutdownCtx); err != nil {
+			a.log.Error().Err(err).Msg("Batch pipeline shutdown error")
+		}
+	}
+
+	if a.batchManager != nil {
+		if err := a.batchManager.Stop(shutdownCtx); err != nil {
+			a.log.Error().Err(err).Msg("Batch manager shutdown error")
+		}
+	}
+
+	if a.epochTracker != nil {
+		if err := a.epochTracker.Stop(shutdownCtx); err != nil {
+			a.log.Error().Err(err).Msg("Epoch tracker shutdown error")
+		}
+	}
+
+	// Shutdown consensus coordinator
 	if a.coordinatorShutdownFn != nil {
 		if err := a.coordinatorShutdownFn(shutdownCtx); err != nil {
 			a.log.Error().Err(err).Msg("Consensus coordinator shutdown error")
