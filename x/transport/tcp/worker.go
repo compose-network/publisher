@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog"
+	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
 
 	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
 )
@@ -92,6 +93,8 @@ func (wp *WorkerPool) worker(ctx context.Context, id int) {
 }
 
 // Execute handles a connection lifecycle
+//
+// //nolint:gocyclo // under development
 func (ct *ConnectionTask) Execute(ctx context.Context) {
 	log := ct.log.With().Str("conn_id", ct.conn.ID()).Logger()
 	log.Info().Msg("Handling new connection")
@@ -125,6 +128,29 @@ func (ct *ConnectionTask) Execute(ctx context.Context) {
 				}
 				log.Error().Err(err).Msg("Read error")
 				return
+			}
+
+			// Handle ping/pong messages at transport level
+			switch payload := msg.Payload.(type) {
+			case *pb.Message_Ping:
+				// Received ping, send pong
+				log.Debug().Msg("Received ping from client, sending pong")
+				pongMsg := &pb.Message{
+					SenderId: "server",
+					Payload: &pb.Message_Pong{
+						Pong: &pb.Pong{
+							Timestamp: payload.Ping.Timestamp,
+						},
+					},
+				}
+				if err := ct.conn.WriteMessage(pongMsg); err != nil {
+					log.Debug().Err(err).Msg("Failed to send pong")
+				}
+				continue
+			case *pb.Message_Pong:
+				// Received pong, connection is alive
+				log.Debug().Msg("Received pong from client")
+				continue
 			}
 
 			if ct.handler != nil {
