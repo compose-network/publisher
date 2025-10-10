@@ -16,11 +16,12 @@ type Entry struct {
 type EntryType string
 
 const (
-	EntrySlotStart   EntryType = "slot_start"
-	EntrySCPStart    EntryType = "scp_start"
-	EntrySCPDecision EntryType = "scp_decision"
-	EntryL2Block     EntryType = "l2_block"
-	EntrySuperblock  EntryType = "superblock"
-	EntryRollback    EntryType = "rollback"
-	EntryCheckpoint  EntryType = "checkpoint"
+	EntrySlotStart    EntryType = "slot_start"
+	EntrySCPStart     EntryType = "scp_start"
+	EntrySCPDecision  EntryType = "scp_decision"
+	EntryL2Block      EntryType = "l2_block"
+	EntrySuperblock   EntryType = "superblock"
+	EntryRollback     EntryType = "rollback"
+	EntryCheckpoint   EntryType = "checkpoint"
+	EntrySlotSnapshot EntryType = "slot_snapshot"
 )

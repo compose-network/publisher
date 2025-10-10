@@ -105,6 +105,21 @@ func (sm *StateMachine) GetCurrentSlot() uint64 {
 	return sm.currentSlot
 }
 
+func (sm *StateMachine) GetNextSuperblockNumber() uint64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.nextSuperblockNumber
+}
+
+func (sm *StateMachine) GetLastSuperblockHash() []byte {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	if sm.lastSuperblockHash == nil {
+		return nil
+	}
+	return append([]byte(nil), sm.lastSuperblockHash...)
+}
+
 // TransitionTo moves SP through SBCP states: Starting→Free→Locked→Sealing
 func (sm *StateMachine) TransitionTo(newState State, reason string) error {
 	sm.mu.Lock()
@@ -370,6 +385,93 @@ func (sm *StateMachine) Reset() {
 	sm.scpInstances = make(map[string]*SCPInstance)
 	sm.l2BlockRequests = make(map[string]*pb.L2BlockRequest)
 	// Do not clear lastHeads; we need continuity across slots.
+}
+
+// SeedL2BlockRequests primes the state machine with explicit rollback-derived
+// metadata so subsequent StartSlot broadcasts reflect the recovered state.
+func (sm *StateMachine) SeedL2BlockRequests(
+	slot uint64,
+	superblockNumber uint64,
+	lastHash []byte,
+	requests []*pb.L2BlockRequest,
+) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	sm.currentState = StateStarting
+	sm.currentSlot = slot
+	sm.nextSuperblockNumber = superblockNumber
+	sm.lastSuperblockHash = append([]byte(nil), lastHash...)
+
+	sm.l2BlockRequests = make(map[string]*pb.L2BlockRequest, len(requests))
+	sm.activeRollups = make([][]byte, 0, len(requests))
+
+	for _, req := range requests {
+		if req == nil || len(req.ChainId) == 0 {
+			continue
+		}
+		copyReq := proto.Clone(req).(*pb.L2BlockRequest)
+		sm.l2BlockRequests[string(req.ChainId)] = copyReq
+		sm.activeRollups = append(sm.activeRollups, append([]byte(nil), req.ChainId...))
+	}
+}
+
+// RestoreSnapshotState updates the state machine internals based on recovered data.
+func (sm *StateMachine) RestoreSnapshotState(
+	state State,
+	received map[string]*pb.L2Block,
+	instances map[string]*SCPInstance,
+) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	sm.currentState = state
+
+	sm.receivedL2Blocks = make(map[string]*pb.L2Block, len(received))
+	for chainID, block := range received {
+		sm.receivedL2Blocks[chainID] = proto.Clone(block).(*pb.L2Block)
+		if sm.lastHeads == nil {
+			sm.lastHeads = make(map[string]*pb.L2Block)
+		}
+		sm.lastHeads[chainID] = proto.Clone(block).(*pb.L2Block)
+	}
+
+	sm.scpInstances = make(map[string]*SCPInstance, len(instances))
+	for id, inst := range instances {
+		sm.scpInstances[id] = cloneInstance(inst)
+	}
+}
+
+func cloneInstance(inst *SCPInstance) *SCPInstance {
+	if inst == nil {
+		return nil
+	}
+	copy := *inst
+	copy.XtID = append([]byte(nil), inst.XtID...)
+	if len(inst.ParticipatingChains) > 0 {
+		copy.ParticipatingChains = make([][]byte, len(inst.ParticipatingChains))
+		for i, chain := range inst.ParticipatingChains {
+			copy.ParticipatingChains[i] = append([]byte(nil), chain...)
+		}
+	}
+	if len(inst.Votes) > 0 {
+		copy.Votes = make(map[string]bool, len(inst.Votes))
+		for voter, v := range inst.Votes {
+			copy.Votes[voter] = v
+		}
+	}
+	if inst.Request != nil {
+		copy.Request = proto.Clone(inst.Request).(*pb.XTRequest)
+	}
+	if inst.Decision != nil {
+		decision := *inst.Decision
+		copy.Decision = &decision
+	}
+	if inst.DecisionTime != nil {
+		decisionTime := *inst.DecisionTime
+		copy.DecisionTime = &decisionTime
+	}
+	return &copy
 }
 
 func (sm *StateMachine) GetTransitionHistory() []StateTransition {
