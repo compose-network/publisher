@@ -6,9 +6,7 @@ import (
 	"time"
 )
 
-// NewMemoryManager creates an in-memory WAL manager suitable for tests or
-// deployments that only require crash-only durability within the process
-// lifetime. Entries are kept in a ring protected by a mutex.
+// NewMemoryManager creates an in-memory WAL manager.
 func NewMemoryManager() Manager {
 	return &memoryManager{
 		entries: make([]*Entry, 0),
