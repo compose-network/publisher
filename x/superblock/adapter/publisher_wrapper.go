@@ -82,6 +82,7 @@ func WrapPublisher(
 		xtQueue,
 		l1Pub,
 		nil, // wal
+		nil, // rollback handler (not used)
 		consensusCoord,
 		transport,
 		collector,

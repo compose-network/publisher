@@ -1,7 +1,6 @@
 package superblock
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -24,6 +23,7 @@ import (
 	apicollector "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/registry"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/rollback"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/wal"
@@ -47,6 +47,7 @@ type Coordinator struct {
 	xtQueue         queue.XTRequestQueue
 	l1Publisher     l1.Publisher
 	walManager      wal.Manager
+	rollbackHandler rollback.Handler
 
 	consensusCoord consensus.Coordinator
 	transport      transport.Server
@@ -78,6 +79,7 @@ func NewCoordinator(
 	xtQueue queue.XTRequestQueue,
 	l1Publisher l1.Publisher,
 	walManager wal.Manager,
+	rollbackHandler rollback.Handler,
 	consensusCoord consensus.Coordinator,
 	transport transport.Server,
 	collector apicollector.Service,
@@ -103,6 +105,7 @@ func NewCoordinator(
 		xtQueue:          xtQueue,
 		l1Publisher:      l1Publisher,
 		walManager:       walManager,
+		rollbackHandler:  rollbackHandler,
 		consensusCoord:   consensusCoord,
 		transport:        transport,
 		stopCh:           make(chan struct{}),
@@ -835,7 +838,7 @@ func (c *Coordinator) l1EventWatcher(ctx context.Context) {
 				delete(c.l1Tracked, ev.SuperblockNumber)
 				c.l1TrackMu.Unlock()
 
-				if err := c.handleSuperblockRollback(ctx, ev, sb); err != nil {
+				if err := c.rollbackHandler.HandleSuperblockRollback(ctx, ev, sb); err != nil {
 					c.log.Error().
 						Err(err).
 						Uint64("superblock_number", ev.SuperblockNumber).
@@ -1097,7 +1100,11 @@ func (c *Coordinator) recoverFromWAL(ctx context.Context) error {
 
 	c.stateMachine.Reset()
 	c.stateMachine.SeedL2BlockRequests(latest.Slot, latest.NextSuperblockNumber, latest.LastSuperblockHash, requests)
-	c.stateMachine.RestoreSnapshotState(c.toSlotStateMachine(latest.State), latest.ReceivedL2Blocks, latest.SCPInstances)
+	c.stateMachine.RestoreSnapshotState(
+		c.toSlotStateMachine(latest.State),
+		latest.ReceivedL2Blocks,
+		latest.SCPInstances,
+	)
 
 	c.executionHistoryMu.Lock()
 	c.executionHistory = make(map[uint64]*SlotExecution)
@@ -1432,269 +1439,6 @@ func (c *Coordinator) handleL2Block(ctx context.Context, from string, l2Block *p
 
 	c.syncExecutionFromStateMachine()
 	c.recordExecutionSnapshot(c.currentExecution)
-
-	return nil
-}
-
-// handleSuperblockRollback is triggered when L1 reports that a previously proposed superblock was rolled back.
-// The full recovery flow will be built incrementally; for now, guard against invalid events and surface a clear error.
-//
-// //nolint:gocyclo // dev
-func (c *Coordinator) handleSuperblockRollback(
-	ctx context.Context,
-	ev *l1events.SuperblockEvent,
-	rolledBack *store.Superblock,
-) error {
-	if rolledBack == nil {
-		return fmt.Errorf("rolled-back superblock data missing for event %d", ev.SuperblockNumber)
-	}
-	if ev.SuperblockNumber == 0 {
-		return fmt.Errorf("rollback event for genesis superblock is invalid")
-	}
-	if rolledBack.Number != ev.SuperblockNumber {
-		return fmt.Errorf("rolled-back superblock mismatch: event=%d stored=%d", ev.SuperblockNumber, rolledBack.Number)
-	}
-
-	lastValid, err := c.findLastValidSuperblock(ctx, rolledBack.Number)
-	if err != nil {
-		return fmt.Errorf("failed to locate last valid superblock: %w", err)
-	}
-
-	l2Requests, err := c.computeL2BlockRequestsAfterRollback(ctx, lastValid)
-	if err != nil {
-		return fmt.Errorf("failed to compute L2 block requests for rollback: %w", err)
-	}
-
-	if err := c.requeueRolledBackTransactions(ctx, rolledBack.Slot); err != nil {
-		c.log.Warn().Err(err).Uint64("slot", rolledBack.Slot).Msg("Failed to requeue transactions from rolled-back slot")
-	}
-
-	nextSuperblockNumber := uint64(1)
-	lastHash := make([]byte, 32)
-	if lastValid != nil {
-		nextSuperblockNumber = lastValid.Number + 1
-		lastHash = lastValid.Hash.Bytes()
-	}
-
-	currentSlot := c.slotManager.GetCurrentSlot()
-	if currentSlot == 0 {
-		currentSlot = c.stateMachine.GetCurrentSlot()
-	}
-	if currentSlot == 0 {
-		currentSlot = rolledBack.Slot + 1
-	}
-
-	if err := c.sendRollBackAndStartSlot(ctx, currentSlot, nextSuperblockNumber, lastHash, l2Requests); err != nil {
-		return fmt.Errorf("failed to broadcast rollback message: %w", err)
-	}
-
-	if lastValid != nil {
-		for _, block := range lastValid.L2Blocks {
-			c.stateMachine.SeedLastHead(block)
-		}
-	}
-
-	c.stateMachine.Reset()
-	c.stateMachine.SeedL2BlockRequests(currentSlot, nextSuperblockNumber, lastHash, l2Requests)
-
-	// Create fresh execution context aligned with the rollback restart parameters.
-	activeRollups := make([][]byte, 0, len(l2Requests))
-	for _, req := range l2Requests {
-		activeRollups = append(activeRollups, append([]byte(nil), req.ChainId...))
-	}
-
-	l2BlockRequestMap := make(map[string]*pb.L2BlockRequest, len(l2Requests))
-	for _, req := range l2Requests {
-		l2BlockRequestMap[string(req.ChainId)] = proto.Clone(req).(*pb.L2BlockRequest)
-	}
-
-	c.mu.Lock()
-	c.currentExecution = &SlotExecution{
-		Slot:                 currentSlot,
-		State:                SlotStateStarting,
-		StartTime:            time.Now(),
-		NextSuperblockNumber: nextSuperblockNumber,
-		LastSuperblockHash:   append([]byte(nil), lastHash...),
-		ActiveRollups:        activeRollups,
-		ReceivedL2Blocks:     make(map[string]*pb.L2Block),
-		SCPInstances:         make(map[string]*slot.SCPInstance),
-		L2BlockRequests:      l2BlockRequestMap,
-		AttemptedRequests:    make(map[string]*queue.QueuedXTRequest),
-	}
-	c.mu.Unlock()
-
-	c.syncExecutionFromStateMachine()
-	c.recordExecutionSnapshot(c.currentExecution)
-
-	c.executionHistoryMu.Lock()
-	for slot := range c.executionHistory {
-		if slot >= rolledBack.Slot {
-			delete(c.executionHistory, slot)
-		}
-	}
-	c.executionHistoryMu.Unlock()
-
-	c.mu.Lock()
-	c.currentExecution = nil
-	c.mu.Unlock()
-
-	c.log.Info().
-		Uint64("rolled_back_number", rolledBack.Number).
-		Uint64("last_valid_number", func() uint64 {
-			if lastValid == nil {
-				return 0
-			}
-			return lastValid.Number
-		}()).
-		Uint64("next_superblock_number", nextSuperblockNumber).
-		Uint64("restart_slot", currentSlot).
-		Int("l2_requests", len(l2Requests)).
-		Msg("Handled superblock rollback; restart instructions broadcast")
-
-	return nil
-}
-
-func (c *Coordinator) findLastValidSuperblock(ctx context.Context, rolledBackNumber uint64) (*store.Superblock, error) {
-	if rolledBackNumber == 0 {
-		return nil, fmt.Errorf("invalid rolled-back number 0")
-	}
-
-	for number := rolledBackNumber - 1; number > 0; number-- {
-		sb, err := c.superblockStore.GetSuperblock(ctx, number)
-		if err != nil {
-			continue
-		}
-		if sb.Status != store.SuperblockStatusRolledBack {
-			return sb, nil
-		}
-	}
-
-	return nil, nil
-}
-
-func (c *Coordinator) computeL2BlockRequestsAfterRollback(
-	ctx context.Context,
-	lastValid *store.Superblock,
-) ([]*pb.L2BlockRequest, error) {
-	activeRollups, err := c.registryService.GetActiveRollups(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	requests := make([]*pb.L2BlockRequest, 0, len(activeRollups))
-	for _, chainID := range activeRollups {
-		var headBlock *pb.L2Block
-
-		if lastValid != nil {
-			for _, l2Block := range lastValid.L2Blocks {
-				if bytes.Equal(l2Block.ChainId, chainID) {
-					headBlock = l2Block
-					break
-				}
-			}
-		}
-
-		if headBlock == nil {
-			if latest, err := c.l2BlockStore.GetLatestL2Block(ctx, chainID); err == nil && latest != nil {
-				headBlock = latest
-			}
-		}
-
-		request := &pb.L2BlockRequest{
-			ChainId: append([]byte(nil), chainID...),
-		}
-
-		if headBlock != nil {
-			request.BlockNumber = headBlock.BlockNumber + 1
-			request.ParentHash = append([]byte(nil), headBlock.BlockHash...)
-		} else {
-			request.BlockNumber = 0
-			request.ParentHash = nil
-			c.log.Warn().
-				Str("chain_id", fmt.Sprintf("%x", chainID)).
-				Msg("No prior L2 block found during rollback; requesting genesis block")
-		}
-
-		requests = append(requests, request)
-	}
-
-	return requests, nil
-}
-
-func (c *Coordinator) sendRollBackAndStartSlot(
-	ctx context.Context,
-	currentSlot uint64,
-	nextSuperblockNumber uint64,
-	lastSuperblockHash []byte,
-	requests []*pb.L2BlockRequest,
-) error {
-	msg := &pb.Message{
-		SenderId: "shared-publisher",
-		Payload: &pb.Message_RollBackAndStartSlot{
-			RollBackAndStartSlot: &pb.RollBackAndStartSlot{
-				L2BlocksRequest:      requests,
-				CurrentSlot:          currentSlot,
-				NextSuperblockNumber: nextSuperblockNumber,
-				LastSuperblockHash:   append([]byte(nil), lastSuperblockHash...),
-			},
-		},
-	}
-
-	c.log.Info().
-		Uint64("slot", currentSlot).
-		Uint64("next_superblock_number", nextSuperblockNumber).
-		Int("l2_requests", len(requests)).
-		Msg("Broadcasting RollBackAndStartSlot message to sequencers")
-
-	return c.transport.Broadcast(ctx, msg, "")
-}
-
-func (c *Coordinator) requeueRolledBackTransactions(ctx context.Context, slot uint64) error {
-	var snapshot *SlotExecution
-
-	c.executionHistoryMu.RLock()
-	if exec, ok := c.executionHistory[slot]; ok {
-		snapshot = exec
-	}
-	c.executionHistoryMu.RUnlock()
-
-	if snapshot == nil && c.currentExecution != nil && c.currentExecution.Slot == slot {
-		snapshot = c.currentExecution
-	}
-
-	if snapshot == nil || len(snapshot.AttemptedRequests) == 0 {
-		c.log.Warn().
-			Uint64("slot", slot).
-			Msg("No attempted transactions recorded for rolled-back slot; callers must re-submit")
-		return nil
-	}
-
-	requests := make([]*queue.QueuedXTRequest, 0, len(snapshot.AttemptedRequests))
-	for _, req := range snapshot.AttemptedRequests {
-		clone := *req
-		if req.Request != nil {
-			clone.Request = proto.Clone(req.Request).(*pb.XTRequest)
-		}
-		clone.XtID = append([]byte(nil), req.XtID...)
-		requests = append(requests, &clone)
-	}
-
-	if err := c.xtQueue.RequeueForSlot(ctx, requests); err != nil {
-		return err
-	}
-
-	// Clear attempted requests to avoid double requeue on subsequent recovery paths.
-	c.executionHistoryMu.Lock()
-	if entry, exists := c.executionHistory[snapshot.Slot]; exists {
-		entry.AttemptedRequests = make(map[string]*queue.QueuedXTRequest)
-	}
-	c.executionHistoryMu.Unlock()
-
-	c.mu.Lock()
-	if c.currentExecution != nil && c.currentExecution.Slot == snapshot.Slot {
-		c.currentExecution.AttemptedRequests = make(map[string]*queue.QueuedXTRequest)
-	}
-	c.mu.Unlock()
 
 	return nil
 }
