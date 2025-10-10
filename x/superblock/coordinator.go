@@ -36,7 +36,7 @@ type Coordinator struct {
 	log     zerolog.Logger
 	metrics prometheus.Registerer
 
-	slotManager     SlotManager
+	slot            slot.Slot
 	stateMachine    *slot.StateMachine
 	registryService registry.Service
 	l2BlockStore    store.L2BlockStore
@@ -76,19 +76,19 @@ func NewCoordinator(
 	collector apicollector.Service,
 	prover proofs.ProverClient,
 ) *Coordinator {
-	slotManagerImpl := slot.NewManager(
+	slotImpl := slot.New(
 		config.Slot.GenesisTime,
 		config.Slot.Duration,
 		config.Slot.SealCutover,
 	)
 
-	stateMachine := slot.NewStateMachine(slotManagerImpl, log)
+	stateMachine := slot.NewStateMachine(slotImpl, log)
 
 	c := &Coordinator{
 		config:          config,
 		log:             log.With().Str("component", "coordinator").Logger(),
 		metrics:         metrics,
-		slotManager:     slotManagerImpl,
+		slot:            slotImpl,
 		stateMachine:    stateMachine,
 		registryService: registryService,
 		l2BlockStore:    l2BlockStore,
@@ -176,23 +176,11 @@ func (c *Coordinator) Stop(ctx context.Context) error {
 }
 
 func (c *Coordinator) GetCurrentSlot() uint64 {
-	return c.slotManager.GetCurrentSlot()
+	return c.slot.GetCurrent()
 }
 
-func (c *Coordinator) GetSlotState() SlotState {
-	state := c.stateMachine.GetCurrentState()
-	switch state {
-	case slot.StateStarting:
-		return SlotStateStarting
-	case slot.StateFree:
-		return SlotStateFree
-	case slot.StateLocked:
-		return SlotStateLocked
-	case slot.StateSealing:
-		return SlotStateSealing
-	default:
-		return SlotStateStarting
-	}
+func (c *Coordinator) GetSlotState() slot.State {
+	return c.stateMachine.GetCurrentState()
 }
 
 // Logger exposes the coordinator's logger for external packages (e.g., handlers).
@@ -292,7 +280,7 @@ func (c *Coordinator) slotExecutionLoop(ctx context.Context) {
 }
 
 func (c *Coordinator) processSlotTick(ctx context.Context) error {
-	currentSlot := c.slotManager.GetCurrentSlot()
+	currentSlot := c.slot.GetCurrent()
 	currentState := c.stateMachine.GetCurrentState()
 
 	switch currentState {
@@ -344,7 +332,7 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 	// Initialize current execution context
 	c.currentExecution = &SlotExecution{
 		Slot:                 currentSlot,
-		State:                SlotStateFree,
+		State:                slot.StateFree,
 		StartTime:            time.Now(),
 		NextSuperblockNumber: nextNumber,
 		LastSuperblockHash:   lastHash,
@@ -361,7 +349,7 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 }
 
 func (c *Coordinator) handleFreeState(ctx context.Context, currentSlot uint64) error {
-	if c.slotManager.IsSlotSealTime() {
+	if c.slot.IsSealTime() {
 		return c.requestSeal(ctx, currentSlot)
 	}
 
@@ -383,7 +371,7 @@ func (c *Coordinator) handleFreeState(ctx context.Context, currentSlot uint64) e
 }
 
 func (c *Coordinator) handleLockedState(ctx context.Context, currentSlot uint64) error {
-	if c.slotManager.IsSlotSealTime() {
+	if c.slot.IsSealTime() {
 		return c.requestSeal(ctx, currentSlot)
 	}
 
@@ -397,7 +385,7 @@ func (c *Coordinator) handleSealingState(ctx context.Context, currentSlot uint64
 
 	// Check for slot timeout
 	stateMachineSlot := c.stateMachine.GetCurrentSlot()
-	managerCurrentSlot := c.slotManager.GetCurrentSlot()
+	managerCurrentSlot := c.slot.GetCurrent()
 
 	if managerCurrentSlot > stateMachineSlot {
 		return c.handleSlotTimeout(ctx, stateMachineSlot)

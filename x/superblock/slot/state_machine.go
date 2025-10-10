@@ -38,7 +38,7 @@ type StateMachine struct {
 	mu           sync.RWMutex
 	currentState State
 	currentSlot  uint64
-	slotManager  *Manager
+	slot         Slot
 	log          zerolog.Logger
 
 	nextSuperblockNumber uint64
@@ -78,11 +78,11 @@ type SCPInstance struct {
 	DecisionTime        *time.Time
 }
 
-func NewStateMachine(slotManager *Manager, log zerolog.Logger) *StateMachine {
+func NewStateMachine(slot Slot, log zerolog.Logger) *StateMachine {
 	return &StateMachine{
 		currentState:         StateStarting,
 		currentSlot:          0,
-		slotManager:          slotManager,
+		slot:                 slot,
 		log:                  log.With().Str("component", "slot.state_machine").Logger(),
 		receivedL2Blocks:     make(map[string]*pb.L2Block),
 		scpInstances:         make(map[string]*SCPInstance),

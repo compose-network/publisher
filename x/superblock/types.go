@@ -11,7 +11,7 @@ import (
 // SlotExecution tracks the execution state for a single slot in the SBCP
 type SlotExecution struct {
 	Slot                 uint64                            `json:"slot"`
-	State                SlotState                         `json:"state"`
+	State                slot.State                        `json:"state"`
 	StartTime            time.Time                         `json:"start_time"`
 	NextSuperblockNumber uint64                            `json:"next_superblock_number"`
 	LastSuperblockHash   []byte                            `json:"last_superblock_hash"`

@@ -6,6 +6,7 @@ import (
 
 	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
 	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
+	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
 )
 
 type XTInterceptor struct {
@@ -36,7 +37,7 @@ func (i *XTInterceptor) Handle(ctx context.Context, from string, msg *pb.Message
 	xtID, _ := xtReq.XtID()
 
 	// Check if we're in a slot and Free state
-	if i.coordinator.GetSlotState() == superblock.SlotStateFree {
+	if i.coordinator.GetSlotState() == slot.StateFree {
 		i.coordinator.Logger().Info().
 			Str("xt_id", xtID.Hex()).
 			Uint64("slot", i.coordinator.GetCurrentSlot()).
