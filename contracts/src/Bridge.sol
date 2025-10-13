@@ -1,74 +1,90 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3
 pragma solidity 0.8.30;
 
-import { IToken } from "@ssv/src/interfaces/IToken.sol";
+import { IBridgeableToken } from "@ssv/src/interfaces/IBridgeableToken.sol";
 import { IMailbox } from "@ssv/src/interfaces/IMailbox.sol";
 import { IBridge } from "@ssv/src/interfaces/IBridge.sol";
 
+/**
+ * @title Bridge
+ * @notice This contract handles token bridging between blockchain networks using a mailbox for cross-chain messages.
+ *
+ * @author
+ * SSV Labs
+ */
 contract Bridge is IBridge {
-    IMailbox public mailbox;
 
+    /// @notice The mailbox contract used for sending and receiving cross-chain messages.
+    /// @dev This is set in the constructor and cannot be changed later.
+    IMailbox public immutable mailbox;
+
+    /// @notice Initializes the bridge with a mailbox address.
+    /// @dev Sets the mailbox interface for all cross-chain operations.
+    /// @param _mailbox The address of the mailbox contract.
     constructor(address _mailbox) {
         mailbox = IMailbox(_mailbox);
     }
 
-    /// Send some funds to some address on another chain
-    /// @param otherChainId identifier of the destination chain
-    /// @param token address of the token to be transferred
-    /// @param sender address of the sender of the tokens (on the source chain)
-    /// @param receiver address of the recipient of the tokens (on the destination chain)
-    /// @param amount amount of tokens to be bridged
-    /// @param sessionId identifier of the user session
-    /// @param destBridge address of the Bridge contract on the destination chain
+    /// @notice Sends tokens from the current chain to another chain by burning them here and preparing a message.
+    /// @dev The caller must be the tokens sender. Tokens are burned, and a message is written to the mailbox for the destination bridge to process.
+    /// @param otherChainId The ID of the destination blockchain.
+    /// @param token The address of the token being transferred.
+    /// @param sender The address sending the tokens (must be the caller).
+    /// @param receiver The address that will receive the tokens on the destination chain.
+    /// @param amount The number of tokens to transfer.
+    /// @param sessionId A unique ID for this transaction session.
+    /// @param destBridge The address of the Bridge contract on the destination chain.
     function send(
-        uint256 otherChainId, // Destination chain ID
-        address token, // Token contract address
-        address sender, // Sender's address on source
-        address receiver, // Receiver's address on dest
-        uint256 amount, // Amount to transfer
-        uint256 sessionId, // Session ID for the transfer
-        address destBridge // Bridge address on dest chain
+        uint256 otherChainId,
+        address token,
+        address sender,
+        address receiver,
+        uint256 amount,
+        uint256 sessionId,
+        address destBridge
     ) external {
-        require(sender == msg.sender, "Should be the real sender");
+        if (msg.sender != sender) {
+            revert Unauthorized();
+        }
 
-        IToken(token).burn(sender, amount);
+        IBridgeableToken(token).burn(sender, amount);
 
         bytes memory data = abi.encode(sender, receiver, token, amount);
 
-        // Send the message to the dest chain
         mailbox.write(otherChainId, destBridge, sessionId, "SEND", data);
 
         emit DataWritten(data);
     }
 
-    /// Process funds reception on the destination chain
-    /// @param otherChainId source chain identifier the funds are sent from
-    /// @param sender address of the sender of the funds
-    /// @param receiver address of the receiver of the funds
-    /// @param sessionId identifier of the user session
-    /// @param srcBridge address of the Bridge contract on the source chain
-    /// @return token address of the token that was transferred
-    /// @return amount amount of tokens transferred
+    /// @notice Receives and processes tokens on the destination chain by minting them after reading the source message.
+    /// @dev The caller must be the receiver. It checks the message, verifies sender and receiver, mints tokens, and sends an acknowledgment back.
+    /// @param otherChainId The ID of the source blockchain.
+    /// @param sender The address that sent the tokens from the source chain.
+    /// @param receiver The address receiving the tokens (must be the caller).
+    /// @param sessionId The unique ID for this transaction session.
+    /// @param srcBridge The address of the Bridge contract on the source chain.
+    /// @return token The address of the token that was transferred.
+    /// @return amount The number of tokens transferred.
     function receiveTokens(
-        uint256 otherChainId, // Source chain ID
-        address sender, // Original sender
-        address receiver, // Receiver on this chain
-        uint256 sessionId, // Session ID
-        address srcBridge // Bridge on source chain
+        uint256 otherChainId,
+        address sender,
+        address receiver,
+        uint256 sessionId,
+        address srcBridge
     ) external returns (address token, uint256 amount) {
-        require(msg.sender == receiver, "Only receiver can claim");
+        if (msg.sender != receiver) {
+            revert Unauthorized();
+        }
 
-        // Read the message from mailbox
         bytes memory m = mailbox.read(
             otherChainId,
-            srcBridge,  // sender is address from other chain, receiver is this bridge
+            srcBridge,
             sessionId,
             "SEND"
         );
 
-        // If no message, revert
         if (m.length == 0) {
-            revert();
+            revert EmptySourceChainMessage();
         }
 
         address readSender;
@@ -79,10 +95,14 @@ contract Bridge is IBridge {
             (address, address, address, uint256)
         );
 
-        require(readSender == sender, "The sender should match");
-        require(readReceiver == receiver, "Receiver mismatch");
+        if (readSender != sender) {
+            revert SenderMismatch();
+        }
+        if (readReceiver != receiver) {
+            revert ReceiverMismatch();
+        }
 
-        IToken(token).mint(receiver, amount);
+        IBridgeableToken(token).mint(receiver, amount);
 
         m = abi.encode("OK");
         mailbox.write(otherChainId, srcBridge, sessionId, "ACK SEND", m);
@@ -92,13 +112,17 @@ contract Bridge is IBridge {
         return (token, amount);
     }
 
-    /// Function to check if ACK is there
+    /// @notice Checks for an acknowledgment message from the destination chain.
+    /// @dev This is a view function to read the ACK without changing the state.
+    /// @param chainDest The ID of the destination blockchain.
+    /// @param destBridge The address of the Bridge contract on the destination chain.
+    /// @param sessionId The unique ID for the transaction session.
+    /// @return The acknowledgment message as bytes, or empty if none exists.
     function checkAck(
-        uint256 chainDest, // Dest chain
-        address destBridge, // Bridge on dest chain
-        uint256 sessionId // Session ID
+        uint256 chainDest,
+        address destBridge,
+        uint256 sessionId
     ) external view returns (bytes memory) {
-        // sender is a bridge from other chain, receiver is this bridge
         return
             mailbox.read(chainDest, destBridge, sessionId, "ACK SEND");
     }

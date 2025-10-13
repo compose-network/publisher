@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3
 pragma solidity 0.8.30;
 
 import { IMailbox } from "@ssv/src/interfaces/IMailbox.sol";
@@ -7,96 +7,69 @@ import { console } from "forge-std/console.sol";
 /**
  * @title Mailbox
  * @notice The Mailbox Contract to manage chain interaction via CIRC/Espresso.
+ * @dev It stores messages in inboxes and outboxes using unique keys. Roots are updated for each chain to track changes. Only the coordinator can add to the inbox for security.
  *
- * **************
- * ** GLOSSARY **
- * **************
- * @dev The following terms are used throughout the contract:
- *
- * - **Coordinator**: a.k.a. the Shared Sequencer:
- *   1. pre-populates all cross-chain messages in the chain inboxes.
- *
- * *************
- * ** AUTHORS **
- * *************
  * @author
  * SSV Labs
  */
 contract Mailbox is IMailbox {
-    /*
-     * STORAGE KEYS:
-     *
-     *   solidity storage consists of slots, each slot is 32 bytes. each slot has a number,
-     *   numbers are distributed sequentially for simple data types and in harder way for complex
-     *
-     *   See https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html
-     *       https://ethereum.stackexchange.com/questions/133473/how-to-calculate-the-location-index-slot-in-storage-of-a-mapping-key
-     *       https://medium.com/@flores.eugenio03/exploring-the-storage-layout-in-solidity-and-how-to-access-state-variables-bf2cbc6f8018
-     *
-     *   --- how to compute slots ---
-     *
-     *   simple vars:
-     *       sequentially assigned (variable1 = slot 0 (0x0), variable2 = slot 1 (0x1), etc.)
-     *
-     *   mapping:
-     *       mapping(a => b) someMapping is declared at slot N
-     *       storage key for someMapping[k] = keccak256(abi.encode(a, N))
-     *       ex: `inbox[0x123...]` stored at keccak256(0x123..., 2) since `inbox` is the 3rd var
-     *
-     *   dynamic arrays:
-     *       SomeType[] array at slot N
-     *       slot N stores array length (for array [1,2,3] slot N value would be equal to 3)
-     *       elements start at base = keccak256(abi.encode(N))
-     *       element i is at base + i
-     *       ex: `keyListInbox[0]` stored at keccak256(abi.encode(5)) + 0
-     *
-     *        once you know the slot formula, you can pass the 32-byte
-     *        storage key to eth_getProof to fetch proofs for that variable
-     *
-     *   Feel free to ping me if you have any questions :)
-     */
 
-    /// @notice
+    /// @notice The address of the coordinator that can add messages to the inbox.
+    /// @dev This is set once in the constructor and can't be changed.
     address public immutable COORDINATOR;
-    /// Chain-specific inbox and outbox roots
-    /// @notice List of chain IDs with messages in the inbox
+
+    /// @notice List of chain IDs that have messages in the inbox.
     uint256[] public chainIDsInbox;
-    /// @notice List of chain IDs with messages in the outbox
+
+    /// @notice List of chain IDs that have messages in the outbox.
     uint256[] public chainIDsOutbox;
-    /// @notice Mapping of chain ID to inbox root
+
+    /// @notice Mapping from chain ID to the root hash of its inbox.
+    /// @dev The root is updated each time a new message is added to the inbox for that chain.
     mapping(uint256 chainId => bytes32 inboxRoot) public inboxRootPerChain;
-    /// @notice Mapping of chain ID to outbox root
+
+    /// @notice Mapping from chain ID to the root hash of its outbox.
+    /// @dev The root is updated each time a new message is added to the outbox for that chain.
     mapping(uint256 chainId => bytes32 outboxRoot) public outboxRootPerChain;
-    /// @notice
+
+    /// @notice Mapping from message key to the message data in the inbox.
     mapping(bytes32 key => bytes message) public inbox;
-    /// @notice
+
+    /// @notice Mapping from message key to the message data in the outbox.
     mapping(bytes32 key => bytes message) public outbox;
-    /// @notice
+
+    /// @notice Mapping to track if a key has been created (used in inbox or outbox).
     mapping(bytes32 key => bool used) public createdKeys;
-    /// @notice
+
+    /// @notice List of headers for messages in the inbox.
     MessageHeader[] public messageHeaderListInbox;
-    /// @notice
+
+    /// @notice List of headers for messages in the outbox.
     MessageHeader[] public messageHeaderListOutbox;
 
+    /// @notice Modifier to restrict access to only the coordinator.
+    /// @dev Reverts if the caller is not the coordinator.
     modifier onlyCoordinator() {
         if (msg.sender != COORDINATOR) revert InvalidCoordinator();
         _;
     }
 
-    /// @notice constructor to initialize the authorized coordinator and chain ID
-    /// @param _coordinator the address of the coordinator
+    /// @notice Sets up the mailbox with the coordinator's address.
+    /// @dev The coordinator is the only one who can add incoming messages.
+    /// @param _coordinator The address of the trusted coordinator.
     constructor(address _coordinator) {
         COORDINATOR = _coordinator;
     }
 
-    /// @notice creates the key for the inbox and outbox
-    /// @param chainMessageSender identifier of the source chain
-    /// @param chainMessageRecipient identifier of the destination chain
-    /// @param sender address of the sender
-    /// @param receiver address of the recipient
-    /// @param sessionId identifier of the user session
-    /// @param label label to be able to differentiate between different operations within a same session.
-    /// @return key the key in the form of a hash
+    /// @notice Creates and returns a unique key for a message based on its details.
+    /// @dev This key is a hash of all the message parts, used to store and find messages.
+    /// @param chainMessageSender The ID of the chain sending the message.
+    /// @param chainMessageRecipient The ID of the chain receiving the message.
+    /// @param sender The address sending the message.
+    /// @param receiver The address receiving the message.
+    /// @param sessionId A unique number for the session.
+    /// @param label A tag to tell different actions apart in the same session.
+    /// @return key The unique hash key for the message.
     function getKey(
         uint256 chainMessageSender,
         uint256 chainMessageRecipient,
@@ -117,13 +90,13 @@ contract Mailbox is IMailbox {
         );
     }
 
-    /// @notice read messages from the inbox
-    /// @dev messages from the inbox can be read by any contract any number of times.
-    /// @param chainMessageSender identifier of the chain that sent a message
-    /// @param sender address of the sender on the source chain
-    /// @param sessionId identifier of the user session
-    /// @param label label to be able to differentiate between different operations within a same session.
-    /// @return message the message data
+    /// @notice Reads a message from the inbox.
+    /// @dev Anyone can read messages. Function checks if the message exists and throws if it does not.
+    /// @param chainMessageSender The ID of the chain that sent the message.
+    /// @param sender The address that sent the message.
+    /// @param sessionId The session number.
+    /// @param label The tag for the action.
+    /// @return message The data of the message.
     function read(
         uint256 chainMessageSender,
         address sender,
@@ -131,8 +104,8 @@ contract Mailbox is IMailbox {
         bytes calldata label
     ) external view returns (bytes memory message) {
         bytes32 key = getKey(
-            chainMessageSender, // other chain is the sender
-            block.chainid, // this chain is receiver
+            chainMessageSender,
+            block.chainid,
             sender,
             msg.sender,
             sessionId,
@@ -146,13 +119,13 @@ contract Mailbox is IMailbox {
         return inbox[key];
     }
 
-    /// @notice write messages to the outbox
-    /// @dev any contract can write to the outbox; sender is populated automatically using msg.sender.
-    /// @param chainMessageRecipient identifier of the destination chain
-    /// @param receiver address of the recipient on the destination chain
-    /// @param sessionId identifier of the user session
-    /// @param label label to be able to differentiate between different operations within a same session.
-    /// @param data the data to write
+    /// @notice Writes a message to the outbox to send to another chain.
+    /// @dev Any contract can write to the outbox. It creates a key, stores the data, and updates the outbox root.
+    /// @param chainMessageRecipient The ID of the chain receiving the message.
+    /// @param receiver The address that will receive the message.
+    /// @param sessionId The session number.
+    /// @param label The tag for the action.
+    /// @param data The message data to send.
     function write(
         uint256 chainMessageRecipient,
         address receiver,
@@ -161,8 +134,8 @@ contract Mailbox is IMailbox {
         bytes calldata data
     ) external {
         bytes32 key = getKey(
-            block.chainid,  // this chain is the message sender
-            chainMessageRecipient, // other chain is the recipient
+            block.chainid,
+            chainMessageRecipient,
             msg.sender,
             receiver,
             sessionId,
@@ -181,25 +154,24 @@ contract Mailbox is IMailbox {
             )
         );
 
-        emit NewOutboxKey(messageHeaderListOutbox.length - 1, key);
-
-        // Update chain-specific outbox root
         if (outboxRootPerChain[chainMessageRecipient] == bytes32(0)) {
             chainIDsOutbox.push(chainMessageRecipient);
         }
         outboxRootPerChain[chainMessageRecipient] = keccak256(
             abi.encode(outboxRootPerChain[chainMessageRecipient], key, data)
         );
+
+        emit NewOutboxKey(messageHeaderListOutbox.length - 1, key);
     }
 
-    /// @notice write messages to the inbox - onlyCoordinator
-    /// @dev the inboxes are filled with the messages computed by the Coordinator.
-    /// @param chainMessageSender identifier of the source chain
-    /// @param sender address of the sender on the source chain
-    /// @param receiver address of the recipient on the destination chain
-    /// @param sessionId identifier of the user session
-    /// @param label label to be able to differentiate between different operations within a same session.
-    /// @param data the data to write
+    /// @notice Adds a message to the inbox. Only the coordinator can do this.
+    /// @dev This is for incoming messages from other chains. It updates the inbox root.
+    /// @param chainMessageSender The ID of the chain that sent the message.
+    /// @param sender The address that sent it.
+    /// @param receiver The address receiving it.
+    /// @param sessionId The session number.
+    /// @param label The tag for the action.
+    /// @param data The message data.
     function putInbox(
         uint256 chainMessageSender,
         address sender,
@@ -209,8 +181,8 @@ contract Mailbox is IMailbox {
         bytes calldata data
     ) external onlyCoordinator {
         bytes32 key = getKey(
-            chainMessageSender,  // message is incoming from another chain
-            block.chainid,  // this chain is the message recipient
+            chainMessageSender,
+            block.chainid,
             sender,
             receiver,
             sessionId,
@@ -222,19 +194,24 @@ contract Mailbox is IMailbox {
             MessageHeader(chainMessageSender, block.chainid, sender, receiver, sessionId, label)
         );
 
-        emit NewInboxKey(messageHeaderListInbox.length - 1, key);
-
-        // Update chain-specific inbox root
         if (inboxRootPerChain[chainMessageSender] == bytes32(0)) {
             chainIDsInbox.push(chainMessageSender);
         }
         inboxRootPerChain[chainMessageSender] = keccak256(
             abi.encode(inboxRootPerChain[chainMessageSender], key, data)
         );
+
+        emit NewInboxKey(messageHeaderListInbox.length - 1, key);
     }
 
+    /// @notice Computes the key for a message in the inbox using its ID.
+    /// @dev Useful for checking or verifying keys from the header list.
+    /// @param id The index in the inbox header list.
+    /// @return The computed key hash.
     function computeKey(uint256 id) external view returns (bytes32) {
-        require(id < messageHeaderListInbox.length, "Invalid id");
+        if (id >= messageHeaderListInbox.length) {
+            revert InvalidId();
+        }
 
         MessageHeader storage m = messageHeaderListInbox[id];
 
@@ -249,58 +226,4 @@ contract Mailbox is IMailbox {
                 )
             );
     }
-
-    // @dev only for testing - uncomment and use to clear the storage
-    /**
-    function clear() public onlyCoordinator {
-        for (uint256 i = 0; i < messageHeaderListInbox.length; i++) {
-            MessageHeader storage m = messageHeaderListInbox[i];
-
-            bytes32 key = keccak256(
-                abi.encodePacked(
-                    m.chainSrc,
-                    m.chainDest,
-                    m.sender,
-                    m.receiver,
-                    m.sessionId,
-                    m.label
-                )
-            );
-            delete inbox[key];
-            delete createdKeys[key];
-            delete messageHeaderListInbox[i];
-        }
-        delete messageHeaderListInbox;
-
-        for (uint256 j = 0; j < messageHeaderListOutbox.length; j++) {
-            MessageHeader storage m2 = messageHeaderListOutbox[j];
-
-            bytes32 key2 = keccak256(
-                abi.encodePacked(
-                    m2.chainSrc,
-                    m2.chainDest,
-                    m2.sender,
-                    m2.receiver,
-                    m2.sessionId,
-                    m2.label
-                )
-            );
-            delete outbox[key2];
-            delete createdKeys[key2];
-            delete messageHeaderListOutbox[j];
-        }
-        delete messageHeaderListOutbox;
-
-        // Clear chain-specific roots and arrays
-        for (uint256 i = 0; i < chainIDsInbox.length; i++) {
-            delete inboxRootPerChain[chainIDsInbox[i]];
-        }
-        delete chainIDsInbox;
-
-        for (uint256 j = 0; j < chainIDsOutbox.length; j++) {
-            delete outboxRootPerChain[chainIDsOutbox[j]];
-        }
-        delete chainIDsOutbox;
-    }
-    */
 }

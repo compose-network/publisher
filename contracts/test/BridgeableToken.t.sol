@@ -7,6 +7,8 @@ contract TokenTest is Setup {
     function testTokenMint(uint256 mintedBalance) public {
         uint256 balance = myToken.balanceOf(DEPLOYER);
         assertEq(balance, 0, "Initial balance should be 0");
+
+        vm.prank(address(bridge));
         myToken.mint(DEPLOYER, mintedBalance);
         balance = myToken.balanceOf(DEPLOYER);
         assertEq(
@@ -26,6 +28,8 @@ contract TokenTest is Setup {
             mintedBalance,
             "Initial balance should be the minted one"
         );
+
+        vm.prank(address(bridge));
         myToken.burn(DEPLOYER, burnedBalance);
         balance = myToken.balanceOf(DEPLOYER);
         assertEq(

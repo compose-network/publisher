@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import { Setup } from "@ssv/test/Setup.t.sol";
+import { IBridge } from "@ssv/src/interfaces/IBridge.sol";
 
 contract BridgeTest is Setup {
     uint256 internal thisChain = block.chainid;
@@ -11,8 +12,10 @@ contract BridgeTest is Setup {
     function testSend() public {
         address mockDestBridge = address(0xDEADBEEF);
 
-        vm.startPrank(DEPLOYER);
+        vm.prank(address(bridge));
         myToken.mint(DEPLOYER, 100);
+
+        vm.startPrank(DEPLOYER);
         myToken.approve(address(bridge), 100);
 
         // send tokens to a bridge on chain B
@@ -142,7 +145,7 @@ contract BridgeTest is Setup {
 
         vm.startPrank(address(0xBAD));
 
-        vm.expectRevert("Should be the real sender");
+        vm.expectRevert(IBridge.Unauthorized.selector);
         bridge.send(
             otherChain,
             address(myToken),
@@ -161,7 +164,7 @@ contract BridgeTest is Setup {
 
         vm.startPrank(address(0xBAD));
 
-        vm.expectRevert("Only receiver can claim");
+        vm.expectRevert(IBridge.Unauthorized.selector);
         bridge.receiveTokens(
             otherChain,
             DEPLOYER,
@@ -213,7 +216,7 @@ contract BridgeTest is Setup {
 
         vm.startPrank(COORDINATOR);
 
-        vm.expectRevert("The sender should match");
+        vm.expectRevert(IBridge.SenderMismatch.selector);
         bridge.receiveTokens(
             otherChain,
             DEPLOYER,

@@ -250,7 +250,7 @@ contract MailboxTest is Setup {
 
     /// @dev Tests computeKey reverts on invalid id
     function testComputeKeyInvalidId() public {
-        vm.expectRevert("Invalid id");
+        vm.expectRevert(IMailbox.InvalidId.selector);
         mailbox.computeKey(0);
     }
 

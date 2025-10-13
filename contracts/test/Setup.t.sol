@@ -4,13 +4,13 @@ pragma solidity 0.8.30;
 import { Test } from "forge-std/Test.sol";
 import { Mailbox } from "@ssv/src/Mailbox.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
-import { MyToken } from "@ssv/src/Token.sol";
+import { BridgeableToken } from "@ssv/src/BridgeableToken.sol";
 import { Bridge } from "@ssv/src/Bridge.sol";
 
 contract Setup is Test {
     Mailbox public mailbox;
     PingPong public pingPong;
-    MyToken public myToken;
+    BridgeableToken public myToken;
     Bridge public bridge;
 
     address public immutable DEPLOYER = makeAddr("Deployer");
@@ -28,8 +28,8 @@ contract Setup is Test {
         vm.prank(DEPLOYER);
         mailbox = new Mailbox(address(COORDINATOR));
         pingPong = new PingPong(address(mailbox));
-        myToken = new MyToken();
         bridge = new Bridge(address(mailbox));
+        myToken = new BridgeableToken(address(bridge));
 
         vm.label(address(mailbox), "Mailbox");
         vm.label(address(pingPong), "PingPong");

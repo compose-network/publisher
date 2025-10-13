@@ -6,21 +6,22 @@ import { stdJson } from "forge-std/StdJson.sol";
 
 import { Mailbox } from "@ssv/src/Mailbox.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
-import { MyToken } from "@ssv/src/Token.sol";
+import { BridgeableToken } from "@ssv/src/BridgeableToken.sol";
 import { Bridge } from "@ssv/src/Bridge.sol";
 
 contract DeployAll is Script {
     using stdJson for string;
 
     function _deployAll() internal returns (string memory) {
+        bytes32 salt = vm.envBytes32("DEPLOY_SALT");
+
         vm.startBroadcast();
 
         address coordinator = vm.envAddress("DEPLOYER_ADDRESS");
 
-
         // mailbox address
         address mailboxAddr = _deployCreate2(
-            keccak256("MAILBOX_v1"),
+            salt,
             abi.encodePacked(
                 type(Mailbox).creationCode,
                 abi.encode(coordinator)
@@ -28,10 +29,9 @@ contract DeployAll is Script {
         );
         Mailbox mailbox = Mailbox(mailboxAddr);
 
-
         // pingpong address
         address pingPongAddr = _deployCreate2(
-            keccak256("PINGPONG_v1"),
+            salt,
             abi.encodePacked(
                 type(PingPong).creationCode,
                 abi.encode(address(mailbox))
@@ -41,7 +41,7 @@ contract DeployAll is Script {
 
         // bridge address
         address bridgeAddr = _deployCreate2(
-            keccak256("BRIDGE_v1"),
+            salt,
             abi.encodePacked(
                 type(Bridge).creationCode,
                 abi.encode(address(mailbox))
@@ -51,20 +51,20 @@ contract DeployAll is Script {
 
         // token address
         address tokenAddr = _deployCreate2(
-            keccak256("MYTOKEN_v1"),
-            type(MyToken).creationCode // no constructor args
+            salt,
+            type(BridgeableToken).creationCode // no constructor args
         );
-        MyToken myToken = MyToken(tokenAddr);
+        BridgeableToken token = BridgeableToken(tokenAddr);
 
         vm.stopBroadcast();
 
         console.log("Mailbox:  ", address(mailbox));
         console.log("PingPong:  ", address(pingPong));
         console.log("Coordinator:  ", coordinator);
-        console.log("MyToken:  ", address(myToken));
+        console.log("Token:  ", address(token));
         console.log("Bridge:  ", address(bridge));
 
-        return saveToJson(coordinator, bridge, pingPong, mailbox, myToken);
+        return saveToJson(coordinator, bridge, pingPong, mailbox, token);
     }
 
     function saveToJson(
@@ -72,14 +72,14 @@ contract DeployAll is Script {
         Bridge bridge,
         PingPong pingPong,
         Mailbox mailbox,
-        MyToken myToken
+        BridgeableToken token
     ) internal returns (string memory) {
         string memory parent = "parent";
 
         string memory deployed_addresses = "addresses";
         vm.serializeAddress(deployed_addresses, "Mailbox", address(mailbox));
         vm.serializeAddress(deployed_addresses, "PingPong", address(pingPong));
-        vm.serializeAddress(deployed_addresses, "MyToken", address(myToken));
+        vm.serializeAddress(deployed_addresses, "Token", address(token));
         vm.serializeAddress(deployed_addresses, "Bridge", address(bridge));
 
         string memory deployed_addresses_output = vm.serializeAddress(

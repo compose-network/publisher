@@ -3,6 +3,7 @@ pragma solidity 0.8.30;
 
 import { Setup } from "@ssv/test/Setup.t.sol";
 import { PingPong } from "@ssv/src/PingPong.sol";
+import { IPingPong } from "@ssv/src/interfaces/IPingPong.sol";
 
 contract PingPongTest is Setup {
 
@@ -28,7 +29,7 @@ contract PingPongTest is Setup {
         mailbox.putInbox(otherChain, DEPLOYER, address(pingPong), 1, "PONG", "");
         vm.prank(DEPLOYER);
         vm.expectRevert(
-            abi.encodeWithSelector(PingPong.PongMessageEmpty.selector)
+            abi.encodeWithSelector(IPingPong.PongMessageEmpty.selector)
         );
         bytes memory pong = pingPong.ping(
             otherChain,
@@ -46,7 +47,7 @@ contract PingPongTest is Setup {
         mailbox.putInbox(otherChain, DEPLOYER, address(pingPong), 1, "PING", "");
         vm.prank(DEPLOYER);
         vm.expectRevert(
-            abi.encodeWithSelector(PingPong.PingMessageEmpty.selector)
+            abi.encodeWithSelector(IPingPong.PingMessageEmpty.selector)
         );
         bytes memory ping = pingPong.pong(
             otherChain,

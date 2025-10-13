@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3
 pragma solidity 0.8.30;
 
 import { IPingPong } from "@ssv/src/interfaces/IPingPong.sol";
@@ -6,39 +6,32 @@ import { IMailbox } from "@ssv/src/interfaces/IMailbox.sol";
 
 /**
  * @title PingPong
- * @notice The PingPong Contract to send "PING" and "PONG" messages via CIRC/Espresso.
+ * @notice This contract lets two blockchain networks talk to each other via maiboxes by sending simple "PING" and "PONG" messages.
  *
- * **************
- * ** GLOSSARY **
- * **************
- * @dev The following terms are used throughout the contract:
- *
- *
- * *************
- * ** AUTHORS **
- * *************
  * @author
  * SSV Labs
  */
 contract PingPong is IPingPong {
-    /// @notice the CIRC Mailbox contract
-    IMailbox public mailbox;
 
-    /// @notice constructor to initialize the authorized mailbox
-    /// @param _mailbox the address of the mailbox
+    /// @notice The mailbox used to send and receive messages between chains.
+    /// @dev This is set when the contract is created and handles all the cross-chain messaging.
+    IMailbox public immutable mailbox;
+
+    /// @notice Sets up the contract with the mailbox address.
+    /// @dev This runs when the contract is deployed to connect it to the mailbox.
+    /// @param _mailbox The address of the mailbox contract.
     constructor(address _mailbox) {
         mailbox = IMailbox(_mailbox);
     }
 
-    error PingMessageEmpty();
-    error PongMessageEmpty();
-
-    /// @notice sends a PING message and reads a PONG
-    /// @dev messages from the inbox can be read by any contract any number of times.
-    /// @param otherChain identifier of the destination chain
-    /// @param sessionId identifier of the user session
-    /// @param data the data to write
-    /// @return pongMessage the message data
+    /// @notice Sends a PING message to another chain and checks for a PONG reply.
+    /// @dev It writes the PING to the mailbox and reads any PONG that's there.
+    /// @param otherChain The ID of the other chain to send to.
+    /// @param pongSender The address expected to send the PONG back.
+    /// @param pingReceiver The address that should receive the PING on the other chain.
+    /// @param sessionId A number to track this specific conversation.
+    /// @param data The message data to send with the PING.
+    /// @return pongMessage The PONG message data if there is one.
     function ping(
         uint256 otherChain,
         address pongSender,
@@ -49,7 +42,7 @@ contract PingPong is IPingPong {
         IMailbox(mailbox).write(otherChain, pingReceiver, sessionId, "PING", data);
         pongMessage = IMailbox(mailbox).read(
             otherChain,
-            pongSender, // read message from sender addr to this contract
+            pongSender,
             sessionId,
             "PONG"
         );
@@ -58,12 +51,13 @@ contract PingPong is IPingPong {
         }
     }
 
-    /// @notice sends a PONG message and reads a PING
-    /// @dev any contract can write to the outbox but the source is populated automatically using msg.sender.
-    /// @param otherChain identifier of the source chain
-    /// @param sessionId identifier of the user session
-    /// @param data the data to write
-    /// @return pingMessage the message data
+    /// @notice Sends a PONG message back to another chain after checking for a PING.
+    /// @dev It first reads the PING, then writes the PONG. The sender is automatically this contract.
+    /// @param otherChain The ID of the other chain that sent the PING.
+    /// @param pingSender The address that sent the PING.
+    /// @param sessionId A number to track this specific conversation.
+    /// @param data The message data to send with the PONG.
+    /// @return pingMessage The PING message data that was read.
     function pong(
         uint256 otherChain,
         address pingSender,
@@ -72,14 +66,13 @@ contract PingPong is IPingPong {
     ) external returns (bytes memory pingMessage) {
         pingMessage = IMailbox(mailbox).read(
             otherChain,
-            pingSender,  // read message from sender addr to this contract
+            pingSender,
             sessionId,
             "PING"
         );
         if (pingMessage.length == 0) {
             revert PingMessageEmpty();
         }
-        // write message to other chain, sender is this address
         IMailbox(mailbox).write(otherChain, address(this), sessionId, "PONG", data);
     }
 }
