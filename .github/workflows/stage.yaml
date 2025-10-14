@@ -6,20 +6,20 @@ on:
 jobs:
   build-image-and-deploy:
     container:
-      image: node:20
+      image: node:20@sha256:8cdc6b9b711af0711cc6139955cc1331fab5e0a995afd3260c52736fbc338059
     runs-on: self-hosted
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
       - name: build image
-        uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
+        uses: ssvlabs/github-actions/actions/argo-workflow-submit@f3f2ba68982400ceced1d95c01638e81ca584cee # v0.2.0
         with:
           argo_workflow_file: .argo/build-image.yaml
           parameters: '["imageTag=${GITHUB_SHA}",
                       "dockerBuildExtraArgs="]'
 
       - name: deploy to stage hoodi
-        uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
+        uses: ssvlabs/github-actions/actions/argo-workflow-submit@f3f2ba68982400ceced1d95c01638e81ca584cee # v0.2.0
         with:
           argo_workflow_file: .argo/deploy.yaml
           parameters: '["gitopsRepo=gitops-stage",
@@ -28,10 +28,10 @@ jobs:
   publish-charts:
     runs-on: self-hosted
     container:
-      image: node:20
+      image: node:20@sha256:8cdc6b9b711af0711cc6139955cc1331fab5e0a995afd3260c52736fbc338059
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
         with:
           fetch-depth: 0
       - name: github self-hosted runner workspace fix for 'tj-actions/changed-files'
@@ -39,7 +39,7 @@ jobs:
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        uses: tj-actions/changed-files@ed68ef82c095e0d48ec87eccea555d944a631a4c # v46
         with:
           dir_names_exclude_current_dir: true
           dir_names: true
@@ -48,7 +48,7 @@ jobs:
             charts/*/Chart.yaml
             charts/*/CHANGELOG.md
       - name: publish chart via argo
-        uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
+        uses: ssvlabs/github-actions/actions/argo-workflow-submit@f3f2ba68982400ceced1d95c01638e81ca584cee # v0.2.0
         with:
           argo_workflow_file: .argo/helmchart.yaml
           parameters: '["chartDirs=rollup-shared-publisher"]'
