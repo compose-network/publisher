@@ -8,7 +8,7 @@ import (
 	"github.com/compose-network/publisher/log"
 	"github.com/spf13/cobra"
 
-	"github.com/compose-network/publisher/shared-publisher-leader-app/config"
+	"github.com/compose-network/publisher/publisher-leader-app/config"
 )
 
 var (
@@ -55,7 +55,7 @@ func initCommands() {
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config",
-		"shared-publisher-leader-app/configs/config.yaml", "config file path")
+		"publisher-leader-app/configs/config.yaml", "config file path")
 	rootCmd.PersistentFlags().String("log-level", "", "log level (trace, debug, info, warn, error)")
 	rootCmd.PersistentFlags().Bool("log-pretty", false, "enable pretty logging")
 
@@ -72,7 +72,7 @@ func initCommands() {
 
 func initConfig() {
 	if cfgFile == "" {
-		cfgFile = "shared-publisher-leader-app/configs/config.yaml"
+		cfgFile = "publisher-leader-app/configs/config.yaml"
 	}
 }
 

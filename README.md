@@ -24,7 +24,7 @@ make build
 ./bin/publisher
 
 # Run with custom config
-./bin/publisher --config shared-publisher-leader-app/configs/config.yaml
+./bin/publisher --config publisher-leader-app/configs/config.yaml
 ```
 
 ### Implementing a Sequencer (Follower)
@@ -89,7 +89,7 @@ state machine for a sequencer participating in SBCP. Developers should consult t
 The primary executable is the Shared Publisher leader application. For detailed configuration options, see the
 application's README:
 
-- **[shared-publisher-leader-app/README.md](./shared-publisher-leader-app/README.md)**
+- **[publisher-leader-app/README.md](./publisher-leader-app/README.md)**
 
 ## Monitoring
 

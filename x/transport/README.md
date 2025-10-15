@@ -234,7 +234,7 @@ func sendVote(client transport.Client, xtID *pb.XtID, vote bool) error {
 // Broadcast to all except sender (server-side)
 func broadcastDecision(server transport.Server, decision *pb.Decided, excludeID string) error {
     msg := &pb.Message{
-        SenderId: "shared-publisher",
+        SenderId: "publisher",
         Payload: &pb.Message_Decided{
             Decided: decision,
         },

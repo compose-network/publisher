@@ -8,7 +8,7 @@ import (
 var (
 	Uptime = func() prometheus.Gauge {
 		gauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "shared_publisher",
+			Namespace: "publisher",
 			Subsystem: "core",
 			Name:      "uptime_seconds",
 			Help:      "Uptime in seconds",

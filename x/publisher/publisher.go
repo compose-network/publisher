@@ -111,7 +111,7 @@ func (p *publisher) broadcastDecision(ctx context.Context, xtID *pb.XtID, decisi
 	}
 
 	msg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: decided,
 		},

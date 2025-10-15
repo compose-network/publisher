@@ -261,7 +261,7 @@ func (s *Server) SetHandler(handler transport.ServerMessageHandler) {
 // Broadcast sends a message to all clients except excluded
 func (s *Server) Broadcast(ctx context.Context, msg *pb.Message, excludeID string) error {
 	// Override sender ID
-	msg.SenderId = "shared-publisher"
+	msg.SenderId = "publisher"
 
 	data, err := s.codec.EncodeMessage(msg)
 	if err != nil {

@@ -94,7 +94,7 @@ log:
 
   # Log file path (only used if output=file)
   # ENV: LOG_FILE
-  # file: /var/log/shared-publisher.log
+  # file: /var/log/publisher.log
 
 # Consensus configuration
 consensus:

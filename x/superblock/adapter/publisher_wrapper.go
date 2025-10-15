@@ -241,10 +241,10 @@ func (sp *SuperblockPublisher) handleVote(ctx context.Context, from string, msg 
 func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vote bool) error {
 	sp.log.Info().Str("xt_id", xtID.Hex()).Bool("vote", vote).Msg("SP broadcasting vote")
 	voteMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Vote{
 			Vote: &pb.Vote{
-				SenderChainId: []byte("shared-publisher"),
+				SenderChainId: []byte("publisher"),
 				XtId:          xtID,
 				Vote:          vote,
 			},
@@ -256,7 +256,7 @@ func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, xtID *pb
 func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {
 	sp.log.Info().Str("xt_id", xtID.Hex()).Bool("decision", decision).Msg("SP broadcasting decision")
 	decidedMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: &pb.Decided{
 				XtId:     xtID,

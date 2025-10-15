@@ -28,7 +28,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/compose-network/publisher/metrics"
-	"github.com/compose-network/publisher/shared-publisher-leader-app/config"
+	"github.com/compose-network/publisher/publisher-leader-app/config"
 	"github.com/compose-network/publisher/x/auth"
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/publisher"

@@ -420,7 +420,7 @@ func (c *Coordinator) startSCP(ctx context.Context, queuedRequest *queue.QueuedX
 	c.currentExecution.AttemptedRequests[fmt.Sprintf("%x", queuedRequest.XtID)] = queuedRequest
 
 	startSCMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_StartSc{
 			StartSc: &pb.StartSC{
 				Slot:             c.stateMachine.GetCurrentSlot(),
@@ -655,10 +655,10 @@ func (c *Coordinator) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vo
 	c.log.Info().Str("xt_id", xtID.Hex()).Bool("vote", vote).Msg("Broadcasting vote to sequencers")
 
 	voteMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Vote{
 			Vote: &pb.Vote{
-				SenderChainId: []byte("shared-publisher"),
+				SenderChainId: []byte("publisher"),
 				XtId:          xtID,
 				Vote:          vote,
 			},
@@ -672,7 +672,7 @@ func (c *Coordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID
 	c.log.Info().Str("xt_id", xtID.Hex()).Bool("decision", decision).Msg("Broadcasting decision to sequencers")
 
 	decidedMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: &pb.Decided{
 				XtId:     xtID,
@@ -697,7 +697,7 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 		if inst.Decision == nil {
 			// Broadcast Decided(false)
 			decidedMsg := &pb.Message{
-				SenderId: "shared-publisher",
+				SenderId: "publisher",
 				Payload: &pb.Message_Decided{
 					Decided: &pb.Decided{XtId: &pb.XtID{Hash: inst.XtID}, Decision: false},
 				},
@@ -803,7 +803,7 @@ func (c *Coordinator) sendStartSlotMessages(
 	}
 
 	startSlotMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_StartSlot{
 			StartSlot: &pb.StartSlot{
 				Slot:                 slot,
@@ -840,7 +840,7 @@ func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SC
 
 func (c *Coordinator) sendRequestSealMessages(ctx context.Context, slot uint64, includedXTs [][]byte) {
 	requestSealMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_RequestSeal{
 			RequestSeal: &pb.RequestSeal{
 				Slot:        slot,

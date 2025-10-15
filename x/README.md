@@ -123,7 +123,7 @@ import (
 // Use the bootstrap helper to set up a sequencer for SBCP
 rt, err := bootstrap.Setup(ctx, bootstrap.Config{
     ChainID:   myChainIDBytes,
-    SPAddr:    "shared-publisher.example.com:8080",
+    SPAddr:    "publisher.example.com:8080",
     PeerAddrs: map[string]string{
     "11155111": "sequencer-a.example.com:9000",
     "84532":    "sequencer-b.example.com:9000",

@@ -15,7 +15,7 @@ all: clean lint test build
 
 build: ## Build the application binary
 	@echo "Building..."
-	go build $(LDFLAGS) -o bin/$(BINARY_NAME) shared-publisher-leader-app/main.go shared-publisher-leader-app/app.go shared-publisher-leader-app/version.go
+	go build $(LDFLAGS) -o bin/$(BINARY_NAME) publisher-leader-app/main.go publisher-leader-app/app.go publisher-leader-app/version.go
 
 clean: ## Clean up build artifacts
 	@echo "Cleaning..."
@@ -46,14 +46,14 @@ proto-lint: ## Lint protobuf files
 
 run: build ## Run the application
 	@echo "Running publisher..."
-	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml
+	./bin/$(BINARY_NAME) --config publisher-leader-app/configs/config.yaml
 
 smoke: build ## Run smoke test against local API
 	@bash scripts/smoke.sh
 
 run-dev: build ## Run in development mode
 	@echo "Running in development mode..."
-	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml --log-pretty --log-level debug
+	./bin/$(BINARY_NAME) --config publisher-leader-app/configs/config.yaml --log-pretty --log-level debug
 
 docker: ## Build the Docker image
 	@echo "Building Docker image..."

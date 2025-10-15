@@ -18,12 +18,12 @@ enabled via configuration.
 
 - Run with a custom config:
   ```bash
-  ./bin/publisher --config shared-publisher-leader-app/configs/config.yaml
+  ./bin/publisher --config publisher-leader-app/configs/config.yaml
   ```
 
 ### Configuration
 
-Configuration is loaded from a YAML file (default: `shared-publisher-leader-app/configs/config.yaml`) and can be
+Configuration is loaded from a YAML file (default: `publisher-leader-app/configs/config.yaml`) and can be
 overridden by environment variables. For example, `server.listen_addr` can be set with `SERVER_LISTEN_ADDR`.
 
 See [`configs/config.example.yaml`](./configs/config.example.yaml) for a fully commented example.
@@ -123,7 +123,7 @@ When the proofs pipeline is enabled (`proofs.enabled: true`), the following endp
 ./bin/publisher --help
 ```
 
-Flags include `--config`, log tuning, and server/metrics overrides. See `shared-publisher-leader-app/main.go` for
+Flags include `--config`, log tuning, and server/metrics overrides. See `publisher-leader-app/main.go` for
 details.
 
 ### Notes
