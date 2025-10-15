@@ -99,6 +99,7 @@ func (x *HandshakeRequest) GetNonce() []byte {
 	return nil
 }
 
+// HandshakeResponse is sent from the server to the client after a handshake request.
 type HandshakeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`                   // Whether authentication succeeded
@@ -204,6 +205,7 @@ func (x *Ping) GetTimestamp() int64 {
 	return 0
 }
 
+// Pong is a response to a Ping message.
 type Pong struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"` // Echo back the timestamp from Ping
@@ -1461,8 +1463,8 @@ const file_rollup_v1_messages_proto_rawDesc = "" +
 	"\x12handshake_response\x18\r \x01(\v2\x1c.rollup.v1.HandshakeResponseH\x00R\x11handshakeResponse\x12%\n" +
 	"\x04ping\x18\x0e \x01(\v2\x0f.rollup.v1.PingH\x00R\x04ping\x12%\n" +
 	"\x04pong\x18\x0f \x01(\v2\x0f.rollup.v1.PongH\x00R\x04pongB\t\n" +
-	"\apayloadB\xa8\x01\n" +
-	"\rcom.rollup.v1B\rMessagesProtoP\x01ZCgithub.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1;rollupv1\xa2\x02\x03RXX\xaa\x02\tRollup.V1\xca\x02\tRollup\\V1\xe2\x02\x15Rollup\\V1\\GPBMetadata\xea\x02\n" +
+	"\apayloadB\xa2\x01\n" +
+	"\rcom.rollup.v1B\rMessagesProtoP\x01Z=github.com/compose-network/publisher/proto/rollup/v1;rollupv1\xa2\x02\x03RXX\xaa\x02\tRollup.V1\xca\x02\tRollup\\V1\xe2\x02\x15Rollup\\V1\\GPBMetadata\xea\x02\n" +
 	"Rollup::V1b\x06proto3"
 
 var (

@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/superblock"
 )
 
 type XTHandler struct {

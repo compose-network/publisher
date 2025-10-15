@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/superblock/sequencer"
+	"github.com/compose-network/publisher/x/superblock/slot"
+	"github.com/compose-network/publisher/x/transport"
+	"github.com/compose-network/publisher/x/transport/tcp"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/sequencer"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
 )
 
 // Config holds inputs to wire a sequencer with SBCP and P2P CIRC.

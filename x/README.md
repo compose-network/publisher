@@ -1,6 +1,6 @@
 # List of Modules
 
-The Rollup Shared Publisher SDK provides production-grade modules for building cross-chain coordination systems. These
+The Publisher SDK provides production-grade modules for building cross-chain coordination systems. These
 modules work together to enable atomic transaction execution across multiple rollups.
 
 ## Modules
@@ -73,11 +73,11 @@ The leader node is created by wrapping a base `publisher` with the `sbadapter` t
 
 ```go
 import (
-    "github.com/ssvlabs/rollup-shared-publisher/x/publisher"
-    "github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-    "github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
-    "github.com/ssvlabs/rollup-shared-publisher/x/superblock"
-    sbadapter "github.com/ssvlabs/rollup-shared-publisher/x/superblock/adapter"
+    "github.com/compose-network/publisher/x/publisher"
+    "github.com/compose-network/publisher/x/consensus"
+    "github.com/compose-network/publisher/x/transport/tcp"
+    "github.com/compose-network/publisher/x/superblock"
+    sbadapter "github.com/compose-network/publisher/x/superblock/adapter"
 )
 
 // 1. Create base components
@@ -117,7 +117,7 @@ communication for CIRC messages.
 
 ```go
 import (
-    "github.com/ssvlabs/rollup-shared-publisher/x/superblock/sequencer/bootstrap"
+    "github.com/compose-network/publisher/x/superblock/sequencer/bootstrap"
 )
 
 // Use the bootstrap helper to set up a sequencer for SBCP

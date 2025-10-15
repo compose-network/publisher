@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"google.golang.org/protobuf/proto"
 )
 

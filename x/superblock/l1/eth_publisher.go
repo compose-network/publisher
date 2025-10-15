@@ -8,8 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs"
 
+	"github.com/compose-network/publisher/x/superblock/l1/contracts"
+	"github.com/compose-network/publisher/x/superblock/l1/events"
+	"github.com/compose-network/publisher/x/superblock/l1/tx"
+	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -18,10 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/rs/zerolog"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/contracts"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/events"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/tx"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
 type abiProvider interface {

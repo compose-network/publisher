@@ -1,5 +1,5 @@
 version: v1
-name: buf.build/ssvlabs/rollup-shared-publisher
+name: buf.build/compose-network/publisher
 breaking:
   use:
     - FILE

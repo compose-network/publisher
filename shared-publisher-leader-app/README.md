@@ -13,12 +13,12 @@ enabled via configuration.
 
 - Run with default config:
   ```bash
-  ./bin/rollup-shared-publisher
+  ./bin/publisher
   ```
 
 - Run with a custom config:
   ```bash
-  ./bin/rollup-shared-publisher --config shared-publisher-leader-app/configs/config.yaml
+  ./bin/publisher --config shared-publisher-leader-app/configs/config.yaml
   ```
 
 ### Configuration
@@ -120,7 +120,7 @@ When the proofs pipeline is enabled (`proofs.enabled: true`), the following endp
 ### CLI
 
 ```bash
-./bin/rollup-shared-publisher --help
+./bin/publisher --help
 ```
 
 Flags include `--config`, log tuning, and server/metrics overrides. See `shared-publisher-leader-app/main.go` for

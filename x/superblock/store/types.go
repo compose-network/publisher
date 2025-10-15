@@ -3,8 +3,8 @@ package store
 import (
 	"time"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/ethereum/go-ethereum/common"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
 )
 
 type Superblock struct {

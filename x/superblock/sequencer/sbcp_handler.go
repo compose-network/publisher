@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/superblock/protocol"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/protocol"
 )
 
 // sbcpHandler implements the protocol.MessageHandler interface for SBCP messages

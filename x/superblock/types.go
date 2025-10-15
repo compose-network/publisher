@@ -3,9 +3,9 @@ package superblock
 import (
 	"time"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/superblock/queue"
+	"github.com/compose-network/publisher/x/superblock/slot"
 )
 
 // SlotExecution tracks the execution state for a single slot in the SBCP

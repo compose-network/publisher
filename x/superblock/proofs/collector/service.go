@@ -5,7 +5,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs"
 )
 
 // Service coordinates per-rollup proof submissions for a superblock hash.

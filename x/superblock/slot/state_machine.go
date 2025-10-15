@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
 	"google.golang.org/protobuf/proto"
 )
 

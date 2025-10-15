@@ -5,9 +5,9 @@ import (
 	"net"
 	"time"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/auth"
 	"github.com/ethereum/go-ethereum/common"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/auth"
 )
 
 // Transport defines the network transport interface

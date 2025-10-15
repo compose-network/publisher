@@ -3,10 +3,10 @@ package contracts
 import (
 	"context"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs"
 
+	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
 // Binding defines how to encode a publish-superblock call to a specific contract.

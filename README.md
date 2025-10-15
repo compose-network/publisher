@@ -1,6 +1,6 @@
-# Rollup Shared Publisher
+# Publisher
 
-The Rollup Shared Publisher is a coordination layer for achieving synchronous composability and atomic execution of
+The Publisher is a coordination layer for achieving synchronous composability and atomic execution of
 transactions across multiple EVM-compatible rollups.
 
 It implements the **Superblock Construction Protocol (SBCP)**, where a central publisher node orchestrates a slot-based
@@ -21,10 +21,10 @@ cross-chain transactions are atomically committed or aborted across all involved
 make build
 
 # Run with default config
-./bin/rollup-shared-publisher
+./bin/publisher
 
 # Run with custom config
-./bin/rollup-shared-publisher --config shared-publisher-leader-app/configs/config.yaml
+./bin/publisher --config shared-publisher-leader-app/configs/config.yaml
 ```
 
 ### Implementing a Sequencer (Follower)
@@ -33,7 +33,7 @@ See [Sequencer Implementation Guide](#sequencer-implementation-guide) below.
 
 ## Architecture
 
-The Rollup Shared Publisher implements the **Superblock Construction Protocol (SBCP)**, a system designed to coordinate
+The Publisher implements the **Superblock Construction Protocol (SBCP)**, a system designed to coordinate
 the creation of "superblocks" that bundle transactions from multiple independent rollups. This enables synchronous
 composability and atomic cross-chain transactions in a multi-rollup environment.
 

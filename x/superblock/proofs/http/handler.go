@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
+	apicommon "github.com/compose-network/publisher/server/api"
+	"github.com/compose-network/publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs/collector"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
-	apicommon "github.com/ssvlabs/rollup-shared-publisher/server/api"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 )
 
 type Handler struct {

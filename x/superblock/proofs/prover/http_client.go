@@ -14,7 +14,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs"
 )
 
 // HTTPClient implements proofs.ProverClient over the superblock-prover REST API.

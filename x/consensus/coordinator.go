@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // coordinator implements the Coordinator interface

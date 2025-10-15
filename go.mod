@@ -1,4 +1,4 @@
-module github.com/ssvlabs/rollup-shared-publisher
+module github.com/compose-network/publisher
 
 go 1.24.5
 

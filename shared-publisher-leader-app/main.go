@@ -5,17 +5,17 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/compose-network/publisher/log"
 	"github.com/spf13/cobra"
-	"github.com/ssvlabs/rollup-shared-publisher/log"
 
-	"github.com/ssvlabs/rollup-shared-publisher/shared-publisher-leader-app/config"
+	"github.com/compose-network/publisher/shared-publisher-leader-app/config"
 )
 
 var (
 	cfgFile string
 	rootCmd = &cobra.Command{
-		Use:   "rollup-shared-publisher",
-		Short: "Rollup Shared Publisher",
+		Use:   "publisher",
+		Short: "Publisher",
 		Long:  banner + "\n\nA shared publisher for coordinating cross-chain transactions across rollups.",
 		RunE:  runApp,
 	}
@@ -28,20 +28,6 @@ var (
 )
 
 const banner = `
-██████╗  ██████╗ ██╗     ██╗     ██╗   ██╗██████╗
-██╔══██╗██╔═══██╗██║     ██║     ██║   ██║██╔══██╗
-██████╔╝██║   ██║██║     ██║     ██║   ██║██████╔╝
-██╔══██╗██║   ██║██║     ██║     ██║   ██║██╔═══╝
-██║  ██║╚██████╔╝███████╗███████╗╚██████╔╝██║
-╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝ ╚═════╝ ╚═╝
-
-███████╗██╗  ██╗ █████╗ ██████╗ ███████╗██████╗
-██╔════╝██║  ██║██╔══██╗██╔══██╗██╔════╝██╔══██╗
-███████╗███████║███████║██████╔╝█████╗  ██║  ██║
-╚════██║██╔══██║██╔══██║██╔══██╗██╔══╝  ██║  ██║
-███████║██║  ██║██║  ██║██║  ██║███████╗██████╔╝
-╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═════╝
-
 ██████╗ ██╗   ██╗██████╗ ██╗     ██╗███████╗██╗  ██╗███████╗██████╗
 ██╔══██╗██║   ██║██╔══██╗██║     ██║██╔════╝██║  ██║██╔════╝██╔══██╗
 ██████╔╝██║   ██║██████╔╝██║     ██║███████╗███████║█████╗  ██████╔╝
@@ -129,7 +115,7 @@ func runApp(cmd *cobra.Command, _ []string) error {
 func runVersion(*cobra.Command, []string) {
 	fmt.Println(banner)
 	fmt.Println()
-	fmt.Printf("Rollup Shared Publisher\n")
+	fmt.Printf("Publisher\n")
 	fmt.Printf("Version:    %s\n", Version)
 	fmt.Printf("Build Time: %s\n", BuildTime)
 	fmt.Printf("Git Commit: %s\n", GitCommit)

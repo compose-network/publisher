@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/log"
+	"github.com/compose-network/publisher/log"
 )
 
 type RollupInfo struct {

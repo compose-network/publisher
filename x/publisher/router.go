@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sync"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // HandlerFunc is a function that handles a specific message type

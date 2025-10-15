@@ -3,8 +3,8 @@ package transport
 import (
 	"time"
 
+	"github.com/compose-network/publisher/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ssvlabs/rollup-shared-publisher/metrics"
 )
 
 // Metrics holds transport-level metrics

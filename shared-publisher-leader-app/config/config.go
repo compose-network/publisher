@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	sbcfg "github.com/compose-network/publisher/x/superblock"
+	l1cfg "github.com/compose-network/publisher/x/superblock/l1"
 	"github.com/spf13/viper"
-	sbcfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock"
-	l1cfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
 )
 
 // Config holds the complete application configuration

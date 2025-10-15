@@ -3,8 +3,8 @@ package sequencer
 import (
 	"context"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
 )
 
 // MinerNotifier defines the interface for notifying miner about sequencer events

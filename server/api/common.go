@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/server/api/middleware"
+	"github.com/compose-network/publisher/server/api/middleware"
 )
 
 // WriteError writes a standardized error response with request tracking.

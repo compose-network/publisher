@@ -2,7 +2,7 @@ version: v1
 managed:
   enabled: true
   go_package_prefix:
-    default: github.com/ssvlabs/rollup-shared-publisher/proto
+    default: github.com/compose-network/publisher/proto
 plugins:
   - plugin: buf.build/protocolbuffers/go
     out: .

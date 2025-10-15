@@ -1,8 +1,8 @@
 .PHONY: all build clean test coverage lint proto run docker help
 
 # Variables
-BINARY_NAME=rollup-shared-publisher
-DOCKER_IMAGE=rollup-shared-publisher
+BINARY_NAME=publisher
+DOCKER_IMAGE=publisher
 VERSION=$(shell git describe --tags --always --dirty)
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(shell git rev-parse HEAD)
@@ -45,7 +45,7 @@ proto-lint: ## Lint protobuf files
 	cd proto && make proto-lint
 
 run: build ## Run the application
-	@echo "Running shared publisher..."
+	@echo "Running publisher..."
 	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml
 
 smoke: build ## Run smoke test against local API

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package rollup.v1;
 
-option go_package = "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1;v1";
+option go_package = "github.com/compose-network/publisher/proto/rollup/v1;v1";
 
 // Connection-level authentication handshake messages
 message HandshakeRequest {
@@ -13,6 +13,7 @@ message HandshakeRequest {
   bytes nonce = 5;           // Random nonce for replay protection
 }
 
+// HandshakeResponse is sent from the server to the client after a handshake request.
 message HandshakeResponse {
   bool accepted = 1;             // Whether authentication succeeded
   string error = 2;              // Error message if rejected
@@ -24,6 +25,7 @@ message Ping {
   int64 timestamp = 1; // Timestamp for latency measurement
 }
 
+// Pong is a response to a Ping message.
 message Pong {
   int64 timestamp = 1; // Echo back the timestamp from Ping
 }

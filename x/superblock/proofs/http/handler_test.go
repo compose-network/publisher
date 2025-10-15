@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/compose-network/publisher/x/superblock/proofs/collector"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
 	"github.com/stretchr/testify/require"
 )
 

@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/compose-network/publisher/x/superblock/proofs"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
 )
 
 var _ Service = (*ProofCollector)(nil)

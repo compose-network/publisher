@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
 // TODO: Temporary solution - support nil outputs parameter

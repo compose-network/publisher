@@ -3,7 +3,7 @@ package http
 import (
 	"encoding/json"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs"
 )
 
 // submitReq is the JSON schema for POST routeSubmitOpSuccinct

@@ -7,10 +7,10 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/compose-network/publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
 )
 
 // DisputeGameFactory ABI JSON embedded at compile time

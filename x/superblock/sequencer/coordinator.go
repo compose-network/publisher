@@ -7,11 +7,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/superblock/protocol"
+	"github.com/compose-network/publisher/x/transport"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/protocol"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
 )
 
 // SequencerCoordinator coordinates sequencer SBCP operations
