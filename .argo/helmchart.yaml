@@ -11,7 +11,7 @@ spec:
         - - name: checkout-code
             templateRef:
               name: cwft-git
-              template: checkout-with-githubapp
+              template: checkout-with-githubapp-compose-network
               clusterScope: true
             arguments:
               parameters:
