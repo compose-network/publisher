@@ -900,7 +900,10 @@ func (c *Coordinator) failSlot(slotNumber uint64, reason string) error {
 	return c.stateMachine.TransitionTo(slot.StateStarting, fmt.Sprintf("slot failed: %s", reason))
 }
 
-// requeueAttemptedRequests requeues all attempted xTs for the next slot
+// requeueAttemptedRequests requeues all attempted cross-chain transactions for the next slot.
+// This is called when a slot fails (e.g., validation errors, timeouts) to ensure that
+// transactions that were started but not successfully included in a superblock are retried.
+// The queued transactions will have their attempt count incremented and priority adjusted.
 func (c *Coordinator) requeueAttemptedRequests(ctx context.Context) error {
 	if c.currentExecution == nil || len(c.currentExecution.AttemptedRequests) == 0 {
 		return nil
@@ -909,7 +912,7 @@ func (c *Coordinator) requeueAttemptedRequests(ctx context.Context) error {
 	for _, r := range c.currentExecution.AttemptedRequests {
 		reqs = append(reqs, r)
 	}
-	// clear current map to avoid double requeue
+	// Clear current map to avoid double requeue
 	c.currentExecution.AttemptedRequests = make(map[string]*queue.QueuedXTRequest)
 	return c.xtQueue.RequeueForSlot(ctx, reqs)
 }
