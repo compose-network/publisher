@@ -58,17 +58,24 @@ func WrapPublisher(
 	l2BlockStore := store.NewMemoryL2BlockStore()
 	superblockStore := store.NewMemorySuperblockStore()
 	xtQueue := queue.NewMemoryXTRequestQueue(queue.DefaultConfig())
-	// Build L1 publisher from config; required for production
-	if config.L1.RPCEndpoint == "" || config.L1.DisputeGameFactory == "" {
-		return nil, fmt.Errorf("missing L1 config: rpc_endpoint and dispute_game_factory are required")
-	}
-	binding, err := l1contracts.NewDisputeGameFactoryBinding(config.L1.DisputeGameFactory)
-	if err != nil {
-		return nil, fmt.Errorf("create L1 binding: %w", err)
-	}
-	l1Pub, err := l1.NewEthPublisher(context.Background(), config.L1, binding, nil, log)
-	if err != nil {
-		return nil, fmt.Errorf("init L1 publisher: %w", err)
+
+	// Build L1 publisher from config if enabled
+	var l1Pub l1.Publisher
+	if config.L1.Enabled {
+		if config.L1.RPCEndpoint == "" || config.L1.DisputeGameFactory == "" {
+			return nil, fmt.Errorf("missing L1 config: rpc_endpoint and dispute_game_factory are required")
+		}
+		binding, err := l1contracts.NewDisputeGameFactoryBinding(config.L1.DisputeGameFactory)
+		if err != nil {
+			return nil, fmt.Errorf("create L1 binding: %w", err)
+		}
+		l1Pub, err = l1.NewEthPublisher(context.Background(), config.L1, binding, nil, log)
+		if err != nil {
+			return nil, fmt.Errorf("init L1 publisher: %w", err)
+		}
+		log.Info().Msg("L1 publisher enabled")
+	} else {
+		log.Warn().Msg("L1 publisher disabled - running in test mode")
 	}
 
 	// Create the coordinator with all dependencies

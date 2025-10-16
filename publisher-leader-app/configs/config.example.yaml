@@ -103,6 +103,10 @@ consensus:
 
 # L1 (Ethereum) configuration for superblock publishing
 l1:
+  # Enable L1 publishing
+  # ENV: L1_ENABLED
+  enabled: true
+
   # RPC endpoint, e.g., ws://localhost:8546 or https://mainnet.infura.io/v3/<key>
   # ENV: L1_RPC_ENDPOINT
   rpc_endpoint: "ws://localhost:8546"

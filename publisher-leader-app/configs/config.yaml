@@ -34,6 +34,7 @@ consensus:
 
 # L1 (Ethereum) configuration for superblock publishing
 l1:
+  enabled: false  # Set to false for testing without L1
   # You can override via env L1_RPC_ENDPOINT
   rpc_endpoint: ""
   # DisputeGameFactory contract for proof-enabled superblock submission
