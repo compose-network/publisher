@@ -2,6 +2,9 @@ package l1
 
 // Config holds Ethereum L1 integration configuration
 type Config struct {
+	// Enable L1 publishing
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+
 	// RPC endpoint to an Ethereum node. Prefer WS for subscriptions.
 	RPCEndpoint string `mapstructure:"rpc_endpoint" yaml:"rpc_endpoint"`
 
