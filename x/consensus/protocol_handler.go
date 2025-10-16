@@ -61,6 +61,14 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 		decided := msg.GetDecided()
 		return h.coordinator.RecordDecision(decided.XtId, decided.Decision)
 
+	case MsgNativeDecided:
+		nativeDecided := msg.GetNativeDecided()
+		return h.coordinator.RecordDecision(nativeDecided.XtId, nativeDecided.Decision)
+
+	case MsgWSDecided:
+		wsDecided := msg.GetWsDecided()
+		return h.coordinator.RecordDecision(wsDecided.XtId, wsDecided.Decision)
+
 	case MsgCIRCMessage:
 		circMsg := msg.GetCircMessage()
 		return h.coordinator.RecordCIRCMessage(circMsg)
