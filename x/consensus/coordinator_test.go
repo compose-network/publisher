@@ -372,18 +372,18 @@ func TestTwoPC_Follower(t *testing.T) {
 	})
 
 	t.Run("record decision", func(t *testing.T) {
-		// Leader sends decision
+		callbacks.wg.Add(1)
 		err := coord.RecordDecision(xtID, true)
 		require.NoError(t, err)
 
-		// Check final state
 		finalState, err := coord.GetTransactionState(xtID)
 		require.NoError(t, err)
 		assert.Equal(t, StateCommit, finalState)
 
-		// Follower should not trigger decision callback for itself
-		_, ok := callbacks.getDecision(xtID)
-		assert.False(t, ok)
+		callbacks.wg.Wait()
+		dec, ok := callbacks.getDecision(xtID)
+		require.True(t, ok)
+		assert.True(t, dec)
 	})
 
 	t.Run("record decision for unknown tx", func(t *testing.T) {
@@ -416,6 +416,13 @@ func TestCIRCMessageHandling(t *testing.T) {
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
+
+	callbacks.wg.Add(1)
+	_, err = coord.RecordVote(xtID, ChainKeyUint64(1), true)
+	require.NoError(t, err)
+	_, err = coord.RecordVote(xtID, ChainKeyUint64(2), true)
+	require.NoError(t, err)
+	callbacks.wg.Wait()
 
 	circMsg := &pb.CIRCMessage{
 		SourceChain: new(big.Int).SetUint64(1).Bytes(),
