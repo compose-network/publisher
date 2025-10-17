@@ -112,7 +112,7 @@ func (a *App) initialize(ctx context.Context) error {
 
 	coordinatorConfig := superblock.DefaultConfig()
 	coordinatorConfig.Slot = slot.Config{
-		Duration:    12 * time.Second,
+		Duration:    6 * time.Second,
 		SealCutover: 2.0 / 3.0,
 		GenesisTime: time.Unix(1760599941, 0), // Custom genesis time
 	}
