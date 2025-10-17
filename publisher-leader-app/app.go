@@ -114,7 +114,7 @@ func (a *App) initialize(ctx context.Context) error {
 	coordinatorConfig.Slot = slot.Config{
 		Duration:    12 * time.Second,
 		SealCutover: 2.0 / 3.0,
-		GenesisTime: time.Now(),
+		GenesisTime: time.Unix(1760599941, 0), // Custom genesis time
 	}
 	coordinatorConfig.Queue = queue.Config{
 		MaxSize:           1000,
