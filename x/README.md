@@ -103,6 +103,7 @@ superblockPublisher, err := sbadapter.WrapPublisher(
     tcpServer,
     collectorSvc, // proofs.collector.Service
     proverClient, // proofs.ProverClient
+    registryService, // x/superblock/registry.Service
 )
 if err != nil { ... }
 

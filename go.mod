@@ -3,6 +3,7 @@ module github.com/compose-network/publisher
 go 1.24.5
 
 require (
+	github.com/compose-network/registry v0.0.0-20251019130932-f9a7f7dd297b
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.1
@@ -16,6 +17,7 @@ require (
 )
 
 require (
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
