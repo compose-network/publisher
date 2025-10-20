@@ -9,23 +9,23 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/superblock/l1"
+	l1events "github.com/compose-network/publisher/x/superblock/l1/events"
+	"github.com/compose-network/publisher/x/superblock/l1/tx"
+	"github.com/compose-network/publisher/x/superblock/proofs"
+	apicollector "github.com/compose-network/publisher/x/superblock/proofs/collector"
+	"github.com/compose-network/publisher/x/superblock/queue"
+	"github.com/compose-network/publisher/x/superblock/registry"
+	"github.com/compose-network/publisher/x/superblock/slot"
+	"github.com/compose-network/publisher/x/superblock/store"
+	"github.com/compose-network/publisher/x/superblock/wal"
+	"github.com/compose-network/publisher/x/transport"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
-	l1events "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/events"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/tx"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
-	apicollector "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/registry"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/wal"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
 )
 
 // Coordinator orchestrates the Superblock Construction Protocol (SBCP)
@@ -420,7 +420,7 @@ func (c *Coordinator) startSCP(ctx context.Context, queuedRequest *queue.QueuedX
 	c.currentExecution.AttemptedRequests[fmt.Sprintf("%x", queuedRequest.XtID)] = queuedRequest
 
 	startSCMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_StartSc{
 			StartSc: &pb.StartSC{
 				Slot:             c.stateMachine.GetCurrentSlot(),
@@ -655,10 +655,10 @@ func (c *Coordinator) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vo
 	c.log.Info().Str("xt_id", xtID.Hex()).Bool("vote", vote).Msg("Broadcasting vote to sequencers")
 
 	voteMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Vote{
 			Vote: &pb.Vote{
-				SenderChainId: []byte("shared-publisher"),
+				SenderChainId: []byte("publisher"),
 				XtId:          xtID,
 				Vote:          vote,
 			},
@@ -672,7 +672,7 @@ func (c *Coordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID
 	c.log.Info().Str("xt_id", xtID.Hex()).Bool("decision", decision).Msg("Broadcasting decision to sequencers")
 
 	decidedMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: &pb.Decided{
 				XtId:     xtID,
@@ -697,7 +697,7 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 		if inst.Decision == nil {
 			// Broadcast Decided(false)
 			decidedMsg := &pb.Message{
-				SenderId: "shared-publisher",
+				SenderId: "publisher",
 				Payload: &pb.Message_Decided{
 					Decided: &pb.Decided{XtId: &pb.XtID{Hash: inst.XtID}, Decision: false},
 				},
@@ -803,7 +803,7 @@ func (c *Coordinator) sendStartSlotMessages(
 	}
 
 	startSlotMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_StartSlot{
 			StartSlot: &pb.StartSlot{
 				Slot:                 slot,
@@ -840,7 +840,7 @@ func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SC
 
 func (c *Coordinator) sendRequestSealMessages(ctx context.Context, slot uint64, includedXTs [][]byte) {
 	requestSealMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_RequestSeal{
 			RequestSeal: &pb.RequestSeal{
 				Slot:        slot,
@@ -900,7 +900,10 @@ func (c *Coordinator) failSlot(slotNumber uint64, reason string) error {
 	return c.stateMachine.TransitionTo(slot.StateStarting, fmt.Sprintf("slot failed: %s", reason))
 }
 
-// requeueAttemptedRequests requeues all attempted xTs for the next slot
+// requeueAttemptedRequests requeues all attempted cross-chain transactions for the next slot.
+// This is called when a slot fails (e.g., validation errors, timeouts) to ensure that
+// transactions that were started but not successfully included in a superblock are retried.
+// The queued transactions will have their attempt count incremented and priority adjusted.
 func (c *Coordinator) requeueAttemptedRequests(ctx context.Context) error {
 	if c.currentExecution == nil || len(c.currentExecution.AttemptedRequests) == 0 {
 		return nil
@@ -909,7 +912,7 @@ func (c *Coordinator) requeueAttemptedRequests(ctx context.Context) error {
 	for _, r := range c.currentExecution.AttemptedRequests {
 		reqs = append(reqs, r)
 	}
-	// clear current map to avoid double requeue
+	// Clear current map to avoid double requeue
 	c.currentExecution.AttemptedRequests = make(map[string]*queue.QueuedXTRequest)
 	return c.xtQueue.RequeueForSlot(ctx, reqs)
 }

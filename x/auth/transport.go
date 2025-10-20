@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // CreateHandshakeRequest creates a handshake request with signature

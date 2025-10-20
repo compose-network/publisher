@@ -1,7 +1,7 @@
 # adapter
 
 The adapter module provides interfaces and base implementations for integrating different rollup sequencer
-implementations with the Rollup Shared Publisher SDK.
+implementations with the Publisher SDK.
 
 ## Overview
 

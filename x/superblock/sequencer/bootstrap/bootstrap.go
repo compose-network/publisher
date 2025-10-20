@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/superblock/sequencer"
+	"github.com/compose-network/publisher/x/superblock/slot"
+	"github.com/compose-network/publisher/x/transport"
+	"github.com/compose-network/publisher/x/transport/tcp"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/sequencer"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
 )
 
 // Config holds inputs to wire a sequencer with SBCP and P2P CIRC.
@@ -95,7 +95,7 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 	// Sequencer coordinator (SBCP)
 	slotDuration := cfg.SlotDuration
 	if slotDuration == 0 {
-		slotDuration = 12 * time.Second
+		slotDuration = 6 * time.Second
 	}
 	sealCutover := cfg.SlotSealCutover
 	if sealCutover == 0 {
@@ -107,7 +107,7 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 		Slot: slot.Config{
 			Duration:    slotDuration,
 			SealCutover: sealCutover,
-			GenesisTime: time.Now(),
+			GenesisTime: time.Unix(1760599941, 0), // Custom genesis time
 		},
 		BlockTimeout:         30 * time.Second,
 		MaxLocalTxs:          1000,

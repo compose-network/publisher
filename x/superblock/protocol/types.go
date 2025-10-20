@@ -3,7 +3,7 @@ package protocol
 import (
 	"fmt"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // MessageType represents SBCP protocol message types

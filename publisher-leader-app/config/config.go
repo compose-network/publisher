@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	sbcfg "github.com/compose-network/publisher/x/superblock"
+	l1cfg "github.com/compose-network/publisher/x/superblock/l1"
 	"github.com/spf13/viper"
-	sbcfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock"
-	l1cfg "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
 )
 
 // Config holds the complete application configuration
@@ -154,6 +154,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.require_auth", true)
 
 	// L1 defaults
+	v.SetDefault("l1.enabled", true)
 	v.SetDefault("l1.rpc_endpoint", "")
 	v.SetDefault("l1.dispute_game_factory", "")
 	v.SetDefault("l1.chain_id", 0)
@@ -246,14 +247,15 @@ func (c *Config) validateAuth() error {
 }
 
 func (c *Config) validateL1() error {
-	if strings.TrimSpace(c.L1.RPCEndpoint) == "" && strings.TrimSpace(c.L1.DisputeGameFactory) == "" {
-		return nil // L1 not configured
+	// If L1 is disabled, skip validation
+	if !c.L1.Enabled {
+		return nil
 	}
 	if strings.TrimSpace(c.L1.RPCEndpoint) == "" {
-		return fmt.Errorf("l1.rpc_endpoint is required when L1 is configured")
+		return fmt.Errorf("l1.rpc_endpoint is required when L1 is enabled")
 	}
 	if strings.TrimSpace(c.L1.DisputeGameFactory) == "" {
-		return fmt.Errorf("l1.dispute_game_factory is required when L1 is configured")
+		return fmt.Errorf("l1.dispute_game_factory is required when L1 is enabled")
 	}
 	return nil
 }

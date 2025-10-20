@@ -3,11 +3,11 @@ package l1
 import (
 	"context"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/events"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/tx"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
+	"github.com/compose-network/publisher/x/superblock/l1/events"
+	"github.com/compose-network/publisher/x/superblock/l1/tx"
+	"github.com/compose-network/publisher/x/superblock/store"
 )
 
 type Publisher interface {

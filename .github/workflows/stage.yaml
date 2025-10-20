@@ -6,7 +6,7 @@ on:
 jobs:
   build-image-and-deploy:
     container:
-      image: node:20
+      image: node:24
     runs-on: self-hosted
     steps:
       - name: Check out repository code

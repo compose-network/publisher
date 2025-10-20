@@ -7,20 +7,20 @@ import (
 	"reflect"
 	"sync"
 
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/publisher"
+	"github.com/compose-network/publisher/x/superblock"
+	"github.com/compose-network/publisher/x/superblock/l1"
+	l1contracts "github.com/compose-network/publisher/x/superblock/l1/contracts"
+	"github.com/compose-network/publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs/collector"
+	"github.com/compose-network/publisher/x/superblock/queue"
+	"github.com/compose-network/publisher/x/superblock/registry"
+	"github.com/compose-network/publisher/x/superblock/store"
+	"github.com/compose-network/publisher/x/superblock/wal"
+	"github.com/compose-network/publisher/x/transport"
 	"github.com/rs/zerolog"
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/publisher"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
-	l1contracts "github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1/contracts"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/registry"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/wal"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
 )
 
 // TODO: Mock IDs for testing
@@ -58,17 +58,24 @@ func WrapPublisher(
 	l2BlockStore := store.NewMemoryL2BlockStore()
 	superblockStore := store.NewMemorySuperblockStore()
 	xtQueue := queue.NewMemoryXTRequestQueue(queue.DefaultConfig())
-	// Build L1 publisher from config; required for production
-	if config.L1.RPCEndpoint == "" || config.L1.DisputeGameFactory == "" {
-		return nil, fmt.Errorf("missing L1 config: rpc_endpoint and dispute_game_factory are required")
-	}
-	binding, err := l1contracts.NewDisputeGameFactoryBinding(config.L1.DisputeGameFactory)
-	if err != nil {
-		return nil, fmt.Errorf("create L1 binding: %w", err)
-	}
-	l1Pub, err := l1.NewEthPublisher(context.Background(), config.L1, binding, nil, log)
-	if err != nil {
-		return nil, fmt.Errorf("init L1 publisher: %w", err)
+
+	// Build L1 publisher from config if enabled
+	var l1Pub l1.Publisher
+	if config.L1.Enabled {
+		if config.L1.RPCEndpoint == "" || config.L1.DisputeGameFactory == "" {
+			return nil, fmt.Errorf("missing L1 config: rpc_endpoint and dispute_game_factory are required")
+		}
+		binding, err := l1contracts.NewDisputeGameFactoryBinding(config.L1.DisputeGameFactory)
+		if err != nil {
+			return nil, fmt.Errorf("create L1 binding: %w", err)
+		}
+		l1Pub, err = l1.NewEthPublisher(context.Background(), config.L1, binding, nil, log)
+		if err != nil {
+			return nil, fmt.Errorf("init L1 publisher: %w", err)
+		}
+		log.Info().Msg("L1 publisher enabled")
+	} else {
+		log.Warn().Msg("L1 publisher disabled - running in test mode")
 	}
 
 	// Create the coordinator with all dependencies
@@ -241,10 +248,10 @@ func (sp *SuperblockPublisher) handleVote(ctx context.Context, from string, msg 
 func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vote bool) error {
 	sp.log.Info().Str("xt_id", xtID.Hex()).Bool("vote", vote).Msg("SP broadcasting vote")
 	voteMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Vote{
 			Vote: &pb.Vote{
-				SenderChainId: []byte("shared-publisher"),
+				SenderChainId: []byte("publisher"),
 				XtId:          xtID,
 				Vote:          vote,
 			},
@@ -256,7 +263,7 @@ func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, xtID *pb
 func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {
 	sp.log.Info().Str("xt_id", xtID.Hex()).Bool("decision", decision).Msg("SP broadcasting decision")
 	decidedMsg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: &pb.Decided{
 				XtId:     xtID,

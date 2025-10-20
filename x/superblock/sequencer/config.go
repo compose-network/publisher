@@ -3,7 +3,7 @@ package sequencer
 import (
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
+	"github.com/compose-network/publisher/x/superblock/slot"
 )
 
 // Config holds sequencer coordinator configuration

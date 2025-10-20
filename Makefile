@@ -1,8 +1,8 @@
 .PHONY: all build clean test coverage lint proto run docker help
 
 # Variables
-BINARY_NAME=rollup-shared-publisher
-DOCKER_IMAGE=rollup-shared-publisher
+BINARY_NAME=publisher
+DOCKER_IMAGE=publisher
 VERSION=$(shell git describe --tags --always --dirty)
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(shell git rev-parse HEAD)
@@ -15,7 +15,7 @@ all: clean lint test build
 
 build: ## Build the application binary
 	@echo "Building..."
-	go build $(LDFLAGS) -o bin/$(BINARY_NAME) shared-publisher-leader-app/main.go shared-publisher-leader-app/app.go shared-publisher-leader-app/version.go
+	go build $(LDFLAGS) -o bin/$(BINARY_NAME) publisher-leader-app/main.go publisher-leader-app/app.go publisher-leader-app/version.go
 
 clean: ## Clean up build artifacts
 	@echo "Cleaning..."
@@ -45,15 +45,15 @@ proto-lint: ## Lint protobuf files
 	cd proto && make proto-lint
 
 run: build ## Run the application
-	@echo "Running shared publisher..."
-	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml
+	@echo "Running publisher..."
+	./bin/$(BINARY_NAME) --config publisher-leader-app/configs/config.yaml
 
 smoke: build ## Run smoke test against local API
 	@bash scripts/smoke.sh
 
 run-dev: build ## Run in development mode
 	@echo "Running in development mode..."
-	./bin/$(BINARY_NAME) --config shared-publisher-leader-app/configs/config.yaml --log-pretty --log-level debug
+	./bin/$(BINARY_NAME) --config publisher-leader-app/configs/config.yaml --log-pretty --log-level debug
 
 docker: ## Build the Docker image
 	@echo "Building Docker image..."

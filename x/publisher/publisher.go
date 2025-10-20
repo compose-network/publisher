@@ -9,9 +9,9 @@ import (
 
 	"github.com/rs/zerolog"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/transport"
 )
 
 // publisher is the central coordinator (LEADER)
@@ -111,7 +111,7 @@ func (p *publisher) broadcastDecision(ctx context.Context, xtID *pb.XtID, decisi
 	}
 
 	msg := &pb.Message{
-		SenderId: "shared-publisher",
+		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: decided,
 		},

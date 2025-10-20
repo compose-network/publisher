@@ -1,10 +1,10 @@
-# Protobuf Definitions for rollup-shared-publisher
+# Protobuf Definitions for publisher
 
-All of the `rollup-shared-publisher` proto files are defined here. This folder is the canonical source for the protobuf
+All of the `publisher` proto files are defined here. This folder is the canonical source for the protobuf
 definitions used in the project.
 
 These definitions are managed on the [Buf Schema Registry](httpss://buf.build) at
-`buf.build/ssvlabs/rollup-shared-publisher`.
+`buf.build/ssvlabs/publisher`.
 
 User facing documentation should not be placed here but instead goes in `buf.md` and in each protobuf package following
 the guidelines in https://docs.buf.build/bsr/documentation.

@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
+	"github.com/compose-network/publisher/x/consensus"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // HandleMessage routes messages to the registered handlers

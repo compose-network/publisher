@@ -111,7 +111,7 @@ wait_health() {
 }
 
 make_no_auth_config() {
-    local main_config="$ROOT_DIR/shared-publisher-leader-app/configs/config.yaml"
+    local main_config="$ROOT_DIR/publisher-leader-app/configs/config.yaml"
     local no_auth_config="/tmp/sp-no-auth.yaml"
 
     if [[ ! -f "$main_config" ]]; then
@@ -139,8 +139,8 @@ start_sp() {
     if [[ "$MODE" == "auth" ]]; then
         log "Starting SP with authentication..."
         ( cd "$ROOT_DIR" && \
-          go run ./shared-publisher-leader-app \
-            --config shared-publisher-leader-app/configs/config.yaml \
+          go run ./publisher-leader-app \
+            --config publisher-leader-app/configs/config.yaml \
             --log-pretty \
             --metrics ) &
         SP_PID=$!
@@ -149,7 +149,7 @@ start_sp() {
         local config
         config=$(make_no_auth_config)
         ( cd "$ROOT_DIR" && \
-          go run ./shared-publisher-leader-app \
+          go run ./publisher-leader-app \
             --config "$config" \
             --log-pretty \
             --metrics ) &

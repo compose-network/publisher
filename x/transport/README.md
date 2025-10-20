@@ -1,6 +1,6 @@
 # Transport Package
 
-High-performance, authenticated TCP transport layer for the Rollup Shared Publisher SDK.
+High-performance, authenticated TCP transport layer for the Publisher SDK.
 
 ## Overview
 
@@ -33,9 +33,9 @@ transport/
 
 ```go
 import (
-    "github.com/ssvlabs/rollup-shared-publisher/x/auth"
-    "github.com/ssvlabs/rollup-shared-publisher/x/transport"
-    "github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
+    "github.com/compose-network/publisher/x/auth"
+    "github.com/compose-network/publisher/x/transport"
+    "github.com/compose-network/publisher/x/transport/tcp"
 )
 
 // Create server with authentication
@@ -234,7 +234,7 @@ func sendVote(client transport.Client, xtID *pb.XtID, vote bool) error {
 // Broadcast to all except sender (server-side)
 func broadcastDecision(server transport.Server, decision *pb.Decided, excludeID string) error {
     msg := &pb.Message{
-        SenderId: "shared-publisher",
+        SenderId: "publisher",
         Payload: &pb.Message_Decided{
             Decided: decision,
         },

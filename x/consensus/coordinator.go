@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // coordinator implements the Coordinator interface
@@ -250,10 +250,19 @@ func (c *coordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
 		state.Timer.Stop()
 	}
 
+	duration := time.Since(state.StartTime)
+	c.metrics.RecordTransactionCompleted(state.GetDecision().String(), duration)
+
 	c.log.Info().
 		Str("xt_id", xtID.Hex()).
 		Bool("decision", decision).
+		Dur("duration", duration).
 		Msg("Recorded decision")
+
+	// Notify the sequencer coordinator about the decision to allow state transitions and
+	// processing of queued transactions. Transaction cleanup is handled separately by the
+	// RequestSeal handler to avoid race conditions.
+	c.callbackMgr.InvokeDecision(xtID, decision, duration)
 
 	// Schedule cleanup
 	time.AfterFunc(5*time.Minute, func() {

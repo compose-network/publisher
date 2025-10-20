@@ -3,14 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: rollup-shared-publisher:latest
-    container_name: rollup-shared-publisher
+    image: publisher:latest
+    container_name: publisher
     restart: unless-stopped
     ports:
       - "8080:8080"  # TCP
       - "8081:8081"  # Metrics
     volumes:
-      - ./shared-publisher-leader-app/configs/config.yaml:/app/configs/config.yaml:ro
+      - ./publisher-leader-app/configs/config.yaml:/app/configs/config.yaml:ro
     environment:
       - TZ=UTC
     logging:

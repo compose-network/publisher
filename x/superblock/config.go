@@ -3,11 +3,11 @@ package superblock
 import (
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/l1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/wal"
+	"github.com/compose-network/publisher/x/superblock/l1"
+	"github.com/compose-network/publisher/x/superblock/queue"
+	"github.com/compose-network/publisher/x/superblock/slot"
+	"github.com/compose-network/publisher/x/superblock/store"
+	"github.com/compose-network/publisher/x/superblock/wal"
 )
 
 // Config aggregates configuration for all SBCP components

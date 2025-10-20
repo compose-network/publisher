@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/compose-network/publisher/x/auth"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"github.com/ssvlabs/rollup-shared-publisher/x/auth"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/transport"
 )
 
 // Server implements high-performance TCP server
@@ -36,13 +36,9 @@ type Server struct {
 }
 
 func DefaultServerConfig() transport.Config {
-	return transport.Config{
-		ListenAddr:      ":8080",
-		MaxConnections:  1024,
-		MaxMessageSize:  1024 * 1024,
-		KeepAlive:       true,
-		KeepAlivePeriod: 30 * time.Second,
-	}
+	cfg := transport.DefaultConfig()
+	cfg.MaxConnections = 1024
+	return cfg
 }
 
 // NewServer creates a new TCP server
@@ -261,7 +257,7 @@ func (s *Server) SetHandler(handler transport.ServerMessageHandler) {
 // Broadcast sends a message to all clients except excluded
 func (s *Server) Broadcast(ctx context.Context, msg *pb.Message, excludeID string) error {
 	// Override sender ID
-	msg.SenderId = "shared-publisher"
+	msg.SenderId = "publisher"
 
 	data, err := s.codec.EncodeMessage(msg)
 	if err != nil {

@@ -3,8 +3,8 @@ package consensus
 import (
 	"time"
 
+	"github.com/compose-network/publisher/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ssvlabs/rollup-shared-publisher/metrics"
 )
 
 // MetricsRecorder defines the interface for recording consensus metrics

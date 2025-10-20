@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 const unknownString = "Unknown"

@@ -3,8 +3,8 @@ package publisher
 import (
 	"time"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/transport"
 )
 
 // Option configures the publisher

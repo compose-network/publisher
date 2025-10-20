@@ -2,18 +2,18 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    monitor: 'rollup-shared-publisher'
+    monitor: 'publisher'
     environment: 'production'
 
 scrape_configs:
   # Shared Publisher metrics
-  - job_name: 'shared-publisher'
+  - job_name: 'publisher'
     static_configs:
-      - targets: ['shared-publisher:8081']
+      - targets: ['publisher:8081']
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
-        replacement: 'shared-publisher'
+        replacement: 'publisher'
 
   # Container metrics from cAdvisor
   - job_name: 'cadvisor'

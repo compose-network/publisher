@@ -12,27 +12,27 @@ import (
 	"syscall"
 	"time"
 
-	apisrv "github.com/ssvlabs/rollup-shared-publisher/server/api"
-	apimw "github.com/ssvlabs/rollup-shared-publisher/server/api/middleware"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock"
-	sbadapter "github.com/ssvlabs/rollup-shared-publisher/x/superblock/adapter"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
-	proofshttp "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/http"
-	proofclient "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/prover"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/queue"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/slot"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport"
+	apisrv "github.com/compose-network/publisher/server/api"
+	apimw "github.com/compose-network/publisher/server/api/middleware"
+	"github.com/compose-network/publisher/x/superblock"
+	sbadapter "github.com/compose-network/publisher/x/superblock/adapter"
+	"github.com/compose-network/publisher/x/superblock/proofs"
+	"github.com/compose-network/publisher/x/superblock/proofs/collector"
+	proofshttp "github.com/compose-network/publisher/x/superblock/proofs/http"
+	proofclient "github.com/compose-network/publisher/x/superblock/proofs/prover"
+	"github.com/compose-network/publisher/x/superblock/queue"
+	"github.com/compose-network/publisher/x/superblock/slot"
+	"github.com/compose-network/publisher/x/transport"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
-	"github.com/ssvlabs/rollup-shared-publisher/metrics"
-	"github.com/ssvlabs/rollup-shared-publisher/shared-publisher-leader-app/config"
-	"github.com/ssvlabs/rollup-shared-publisher/x/auth"
-	"github.com/ssvlabs/rollup-shared-publisher/x/consensus"
-	"github.com/ssvlabs/rollup-shared-publisher/x/publisher"
-	"github.com/ssvlabs/rollup-shared-publisher/x/transport/tcp"
+	"github.com/compose-network/publisher/metrics"
+	"github.com/compose-network/publisher/publisher-leader-app/config"
+	"github.com/compose-network/publisher/x/auth"
+	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/publisher"
+	"github.com/compose-network/publisher/x/transport/tcp"
 )
 
 // App represents the shared publisher application
@@ -112,9 +112,9 @@ func (a *App) initialize(ctx context.Context) error {
 
 	coordinatorConfig := superblock.DefaultConfig()
 	coordinatorConfig.Slot = slot.Config{
-		Duration:    12 * time.Second,
+		Duration:    6 * time.Second,
 		SealCutover: 2.0 / 3.0,
-		GenesisTime: time.Now(),
+		GenesisTime: time.Unix(1760599941, 0), // Custom genesis time
 	}
 	coordinatorConfig.Queue = queue.Config{
 		MaxSize:           1000,

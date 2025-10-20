@@ -24,4 +24,4 @@ spec:
                 - name: replaceWith
                   value: 'tag: {{workflow.parameters.imageTag}}'
                 - name: commitMessage
-                  value: 'Updated rollup-shared-publisher docker image to {{workflow.parameters.imageTag}}'
+                  value: 'Updated publisher docker image to {{workflow.parameters.imageTag}}'

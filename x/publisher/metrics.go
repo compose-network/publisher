@@ -1,8 +1,8 @@
 package publisher
 
 import (
+	metrics2 "github.com/compose-network/publisher/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	metrics2 "github.com/ssvlabs/rollup-shared-publisher/metrics"
 )
 
 // Metrics holds all publisher-level metrics

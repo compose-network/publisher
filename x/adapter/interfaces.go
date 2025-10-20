@@ -3,7 +3,7 @@ package adapter
 import (
 	"context"
 
-	pb "github.com/ssvlabs/rollup-shared-publisher/proto/rollup/v1"
+	pb "github.com/compose-network/publisher/proto/rollup/v1"
 )
 
 // Adapter defines the interface for a rollup-specific implementation that

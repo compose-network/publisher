@@ -10,9 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
 
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs"
-	apicollector "github.com/ssvlabs/rollup-shared-publisher/x/superblock/proofs/collector"
-	"github.com/ssvlabs/rollup-shared-publisher/x/superblock/store"
+	"github.com/compose-network/publisher/x/superblock/proofs"
+	apicollector "github.com/compose-network/publisher/x/superblock/proofs/collector"
+	"github.com/compose-network/publisher/x/superblock/store"
 )
 
 type proofPipeline struct {
