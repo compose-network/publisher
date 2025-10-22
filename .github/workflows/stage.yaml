@@ -51,4 +51,4 @@ jobs:
         uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
         with:
           argo_workflow_file: .argo/helmchart.yaml
-          parameters: '["chartDirs=rollup-shared-publisher"]'
+          parameters: '["chartDirs=publisher"]'
