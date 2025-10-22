@@ -96,6 +96,11 @@ log:
   # ENV: LOG_FILE
   # file: /var/log/publisher.log
 
+registry:
+  # Optional: path to a compose registry directory override
+  # ENV: REGISTRY_PATH
+  path: ""
+
 # Consensus configuration
 consensus:
   timeout: "60s"

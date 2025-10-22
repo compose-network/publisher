@@ -21,6 +21,13 @@ type Config struct {
 	Auth      AuthConfig         `mapstructure:"auth"      yaml:"auth"`
 	L1        l1cfg.Config       `mapstructure:"l1"        yaml:"l1"`
 	Proofs    sbcfg.ProofsConfig `mapstructure:"proofs"    yaml:"proofs"`
+	Registry  RegistryConfig     `mapstructure:"registry"  yaml:"registry"`
+}
+
+// RegistryConfig holds configuration for the embedded/disk registry
+type RegistryConfig struct {
+	// Path to a compose registry directory. If empty, embedded registry is used.
+	Path string `mapstructure:"path" yaml:"path" env:"REGISTRY_PATH"`
 }
 
 // ServerConfig holds server configuration
@@ -152,6 +159,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.trusted_sequencers", []map[string]string{})
 	v.SetDefault("auth.allow_untrusted", false)
 	v.SetDefault("auth.require_auth", true)
+
+	// Registry defaults
+	v.SetDefault("registry.path", "")
 
 	// L1 defaults
 	v.SetDefault("l1.enabled", true)

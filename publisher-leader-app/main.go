@@ -68,6 +68,12 @@ func initCommands() {
 	// Metrics flags
 	rootCmd.PersistentFlags().Bool("metrics", false, "enable metrics")
 	rootCmd.PersistentFlags().Int("metrics-port", 0, "metrics server port")
+
+	// Registry flags
+	rootCmd.PersistentFlags().String("registry.path", "", "path to override the registry directory")
+
+	// L1 flags
+	rootCmd.PersistentFlags().Uint64("l1.chain-id", 0, "L1 chain id used to select network from registry")
 }
 
 func initConfig() {
@@ -149,5 +155,14 @@ func applyFlags(cmd *cobra.Command, cfg *config.Config) {
 	}
 	if cmd.Flag("metrics-port").Changed {
 		cfg.Metrics.Port, _ = cmd.Flags().GetInt("metrics-port")
+	}
+
+	if cmd.Flag("registry.path").Changed {
+		cfg.Registry.Path, _ = cmd.Flags().GetString("registry.path")
+	}
+	if cmd.Flag("l1.chain-id").Changed {
+		if v, err := cmd.Flags().GetUint64("l1.chain-id"); err == nil {
+			cfg.L1.ChainID = v
+		}
 	}
 }

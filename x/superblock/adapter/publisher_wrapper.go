@@ -3,7 +3,6 @@ package adapter
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"reflect"
 	"sync"
 
@@ -16,16 +15,12 @@ import (
 	"github.com/compose-network/publisher/x/superblock/proofs"
 	"github.com/compose-network/publisher/x/superblock/proofs/collector"
 	"github.com/compose-network/publisher/x/superblock/queue"
-	"github.com/compose-network/publisher/x/superblock/registry"
+	sreg "github.com/compose-network/publisher/x/superblock/registry"
 	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/compose-network/publisher/x/superblock/wal"
 	"github.com/compose-network/publisher/x/transport"
 	"github.com/rs/zerolog"
 )
-
-// TODO: Mock IDs for testing
-var mockID1 = big.NewInt(77777).Bytes()
-var mockID2 = big.NewInt(88888).Bytes()
 
 // SuperblockPublisher wraps the base publisher with SBCP capabilities
 type SuperblockPublisher struct {
@@ -41,7 +36,7 @@ type SuperblockPublisher struct {
 	xtQueue         queue.XTRequestQueue
 	l1Publisher     l1.Publisher
 	walManager      wal.Manager
-	registryService registry.Service
+	registryService sreg.Service
 }
 
 // WrapPublisher creates a new SuperblockPublisher by wrapping an existing publisher
@@ -53,8 +48,11 @@ func WrapPublisher(
 	transport transport.Server,
 	collector collector.Service,
 	prover proofs.ProverClient,
+	regSvc sreg.Service,
 ) (*SuperblockPublisher, error) {
-	registryService := registry.NewMemoryService(log, [][]byte{mockID1, mockID2})
+	if config.L1.ChainID == 0 {
+		return nil, fmt.Errorf("l1.chain_id must be provided and non-zero")
+	}
 	l2BlockStore := store.NewMemoryL2BlockStore()
 	superblockStore := store.NewMemorySuperblockStore()
 	xtQueue := queue.NewMemoryXTRequestQueue(queue.DefaultConfig())
@@ -83,7 +81,7 @@ func WrapPublisher(
 		config,
 		log,
 		nil, // metrics
-		registryService,
+		regSvc,
 		l2BlockStore,
 		superblockStore,
 		xtQueue,
@@ -105,7 +103,7 @@ func WrapPublisher(
 		xtQueue:         xtQueue,
 		l1Publisher:     l1Pub,
 		walManager:      nil,
-		registryService: registryService,
+		registryService: regSvc,
 	}
 
 	// Register SBCP-specific handlers with the publisher's router
