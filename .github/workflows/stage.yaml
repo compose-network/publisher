@@ -2,7 +2,7 @@ name: Workflow main
 on:
   push:
     branches:
-      - "stage"
+      - "stage-disabled"
 jobs:
   build-image-and-deploy:
     container:
