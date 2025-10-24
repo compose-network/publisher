@@ -12,6 +12,10 @@ var (
 	testXTID           = XTId{1}
 )
 
+func chainID(id string) ChainID {
+	return ChainID(id)
+}
+
 type startMessageCall struct {
 	slot  Slot
 	seq   SequenceNumber
@@ -73,8 +77,8 @@ func instanceDataForChains(erChainID ChainID, nativeChains []ChainID) InstanceDa
 	return InstanceData{
 		Slot:           testSlot,
 		SequenceNumber: testSequenceNumber,
-		xTRequest:      xtReq,
-		xTId:           testXTID,
+		XTRequest:      xtReq,
+		XTId:           testXTID,
 	}
 }
 
@@ -92,7 +96,9 @@ func TestInstanceInitInstance(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	inst, data := newTestInstance(t, msg, ChainID(3), ChainID(1), ChainID(2))
+	erChain := chainID("er-chain")
+	natives := []ChainID{chainID("native-1"), chainID("native-2")}
+	inst, data := newTestInstance(t, msg, erChain, natives...)
 
 	require.Equal(t, DecisionResultUndecided, inst.IsDecided())
 
@@ -102,20 +108,23 @@ func TestInstanceInitInstance(t *testing.T) {
 	call := msg.startMessages[0]
 	require.Equal(t, data.Slot, call.slot)
 	require.Equal(t, data.SequenceNumber, call.seq)
-	require.Equal(t, data.xTId, call.xtID)
+	require.Equal(t, data.XTId, call.xtID)
+	require.Equal(t, data.XTRequest, call.xtReq)
 
 	err := inst.InitInstance()
 	require.ErrorIs(t, err, ErrInstanceAlreadyInitialized)
 	require.Len(t, msg.startMessages, 1)
+
+	require.Equal(t, data, inst.InstanceData())
 }
 
 func TestInstanceProcessVoteBeforeInit(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	inst, _ := newTestInstance(t, msg, ChainID(5), ChainID(1), ChainID(2))
+	inst, _ := newTestInstance(t, msg, chainID("er"), chainID("native-1"), chainID("native-2"))
 
-	err := inst.ProcessVote(ChainID(1), true)
+	err := inst.ProcessVote(chainID("native-1"), true)
 	require.ErrorIs(t, err, ErrInstanceNotWaitingForVotes)
 }
 
@@ -123,8 +132,8 @@ func TestInstanceProcessVoteFromERChain(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(10)
-	inst, _ := newTestInstance(t, msg, erChain, ChainID(1), ChainID(2))
+	erChain := chainID("er")
+	inst, _ := newTestInstance(t, msg, erChain, chainID("native-1"), chainID("native-2"))
 	mustInitInstance(t, inst)
 
 	err := inst.ProcessVote(erChain, true)
@@ -135,10 +144,10 @@ func TestInstanceProcessVoteUnknownChain(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	inst, _ := newTestInstance(t, msg, ChainID(4), ChainID(1), ChainID(2))
+	inst, _ := newTestInstance(t, msg, chainID("er"), chainID("native-1"), chainID("native-2"))
 	mustInitInstance(t, inst)
 
-	err := inst.ProcessVote(ChainID(99), true)
+	err := inst.ProcessVote(chainID("unknown"), true)
 	require.ErrorIs(t, err, ErrChainIDDoesNotBelongToInstance)
 }
 
@@ -146,8 +155,8 @@ func TestInstanceProcessVoteDuplicate(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	native := ChainID(1)
-	inst, _ := newTestInstance(t, msg, ChainID(4), native, ChainID(2))
+	native := chainID("native-1")
+	inst, _ := newTestInstance(t, msg, chainID("er"), native, chainID("native-2"))
 	mustInitInstance(t, inst)
 
 	mustCastVote(t, inst, native, true)
@@ -159,8 +168,8 @@ func TestInstanceProcessVoteFalseDecision(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	native := ChainID(1)
-	inst, _ := newTestInstance(t, msg, ChainID(4), native, ChainID(2))
+	native := chainID("native-1")
+	inst, _ := newTestInstance(t, msg, chainID("er"), native, chainID("native-2"))
 	mustInitInstance(t, inst)
 
 	mustCastVote(t, inst, native, false)
@@ -176,8 +185,8 @@ func TestInstanceProcessVoteAllTrue(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	natives := []ChainID{ChainID(1), ChainID(2)}
-	erChain := ChainID(4)
+	natives := []ChainID{chainID("native-1"), chainID("native-2")}
+	erChain := chainID("er")
 	inst, _ := newTestInstance(t, msg, erChain, natives...)
 	mustInitInstance(t, inst)
 
@@ -187,7 +196,7 @@ func TestInstanceProcessVoteAllTrue(t *testing.T) {
 
 	require.Len(t, msg.nativeDecided, 1)
 	require.True(t, msg.nativeDecided[0].decision)
-	require.Len(t, msg.decided, 0)
+	require.Empty(t, msg.decided)
 	require.Equal(t, DecisionResultUndecided, inst.IsDecided())
 }
 
@@ -195,9 +204,9 @@ func TestInstanceProcessWSDecidedNonERChain(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	inst, _ := newTestInstance(t, msg, ChainID(7), ChainID(1), ChainID(2))
+	inst, _ := newTestInstance(t, msg, chainID("er"), chainID("native-1"), chainID("native-2"))
 
-	err := inst.ProcessWSDecided(ChainID(1), true)
+	err := inst.ProcessWSDecided(chainID("native-1"), true)
 	require.ErrorIs(t, err, ErrOnlyERChainCanSendWSDecision)
 }
 
@@ -205,8 +214,8 @@ func TestInstanceProcessWSDecidedWhileInit(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(7)
-	inst, _ := newTestInstance(t, msg, erChain, ChainID(1), ChainID(2))
+	erChain := chainID("er")
+	inst, _ := newTestInstance(t, msg, erChain, chainID("native-1"), chainID("native-2"))
 
 	err := inst.ProcessWSDecided(erChain, true)
 	require.ErrorIs(t, err, ErrInstanceCantProcessWSDecision)
@@ -216,11 +225,11 @@ func TestInstanceProcessWSDecidedAfterDecision(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(7)
-	inst, _ := newTestInstance(t, msg, erChain, ChainID(1), ChainID(2))
+	erChain := chainID("er")
+	inst, _ := newTestInstance(t, msg, erChain, chainID("native-1"), chainID("native-2"))
 	mustInitInstance(t, inst)
 
-	mustCastVote(t, inst, ChainID(1), false)
+	mustCastVote(t, inst, chainID("native-1"), false)
 
 	err := inst.ProcessWSDecided(erChain, true)
 	require.ErrorIs(t, err, ErrInstanceCantProcessWSDecision)
@@ -244,8 +253,8 @@ func TestInstanceProcessWSDecidedFinalizes(t *testing.T) {
 			t.Parallel()
 
 			msg := &mockMessenger{}
-			erChain := ChainID(8)
-			natives := []ChainID{ChainID(1), ChainID(2)}
+			erChain := chainID("er")
+			natives := []ChainID{chainID("native-1"), chainID("native-2")}
 			inst, _ := newTestInstance(t, msg, erChain, natives...)
 			mustInitInstance(t, inst)
 
@@ -265,8 +274,8 @@ func TestInstanceTimeoutWaitingForVotes(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(9)
-	natives := []ChainID{ChainID(1), ChainID(2)}
+	erChain := chainID("er")
+	natives := []ChainID{chainID("native-1"), chainID("native-2")}
 	inst, _ := newTestInstance(t, msg, erChain, natives...)
 	mustInitInstance(t, inst)
 
@@ -284,8 +293,8 @@ func TestInstanceTimeoutWaitingForWS(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(11)
-	natives := []ChainID{ChainID(1), ChainID(2)}
+	erChain := chainID("er")
+	natives := []ChainID{chainID("native-1"), chainID("native-2")}
 	inst, _ := newTestInstance(t, msg, erChain, natives...)
 	mustInitInstance(t, inst)
 
@@ -297,7 +306,7 @@ func TestInstanceTimeoutWaitingForWS(t *testing.T) {
 	require.Equal(t, 1, nativeDecidedBefore)
 
 	require.NoError(t, inst.Timeout())
-	require.Len(t, msg.decided, 0)
+	require.Empty(t, msg.decided)
 	require.Len(t, msg.nativeDecided, nativeDecidedBefore)
 	require.Equal(t, DecisionResultUndecided, inst.IsDecided())
 }
@@ -306,9 +315,9 @@ func TestInstanceTimeoutAlreadyDecidedFalse(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(12)
-	native := ChainID(1)
-	inst, _ := newTestInstance(t, msg, erChain, native, ChainID(2))
+	erChain := chainID("er")
+	native := chainID("native-1")
+	inst, _ := newTestInstance(t, msg, erChain, native, chainID("native-2"))
 	mustInitInstance(t, inst)
 
 	mustCastVote(t, inst, native, false)
@@ -326,12 +335,14 @@ func TestInstanceTimeoutAlreadyTrue(t *testing.T) {
 	t.Parallel()
 
 	msg := &mockMessenger{}
-	erChain := ChainID(12)
-	native := ChainID(1)
-	inst, _ := newTestInstance(t, msg, erChain, native, ChainID(2))
+	erChain := chainID("er")
+	natives := []ChainID{chainID("native-1"), chainID("native-2")}
+	inst, _ := newTestInstance(t, msg, erChain, natives...)
 	mustInitInstance(t, inst)
 
-	mustCastVote(t, inst, native, true)
+	for _, cid := range natives {
+		mustCastVote(t, inst, cid, true)
+	}
 	require.NoError(t, inst.ProcessWSDecided(erChain, true))
 
 	decidedBefore := len(msg.decided)
