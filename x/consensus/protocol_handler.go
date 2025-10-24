@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	pb "github.com/compose-network/publisher/proto/rollup/v1"
@@ -62,12 +63,11 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 		return h.coordinator.RecordDecision(decided.XtId, decided.Decision)
 
 	case MsgNativeDecided:
-		nativeDecided := msg.GetNativeDecided()
-		return h.coordinator.RecordDecision(nativeDecided.XtId, nativeDecided.Decision)
+		return errors.New("NativeDecided messages are not supported by publisher")
 
 	case MsgWSDecided:
 		wsDecided := msg.GetWsDecided()
-		return h.coordinator.RecordDecision(wsDecided.XtId, wsDecided.Decision)
+		return h.coordinator.RecordWSDecision(wsDecided.XtId, from, wsDecided.Decision)
 
 	case MsgCIRCMessage:
 		circMsg := msg.GetCircMessage()

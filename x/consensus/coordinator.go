@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/compose-network/publisher/x/cdcp"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 
@@ -32,30 +33,59 @@ type coordinator struct {
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
 	shutdownOnce sync.Once
+
+	// CDCP
+	erChainID         cdcp.ChainID
+	wsClientID        string
+	cdcpMessenger     *CdcpMessenger
+	cdcpInstances     map[string]cdcp.Instance
+	cdcpTimer         map[string]*time.Timer
+	cdcpStartTime     map[string]time.Time
+	cdcpHasTerminated map[string]bool
 }
 
 // New creates a new coordinator instance
-func New(log zerolog.Logger, config Config) Coordinator {
-	return NewWithMetrics(log, config, NewMetrics())
+func New(
+	log zerolog.Logger,
+	config Config,
+	erClient cdcp.ChainID,
+	wsClientID string,
+) Coordinator {
+	return NewWithMetrics(log, config, NewMetrics(), erClient, wsClientID)
 }
 
 // NewWithMetrics creates a new coordinator instance with custom metrics recorder
 // TODO: check best practices for metrics recorder
-func NewWithMetrics(log zerolog.Logger, config Config, metrics MetricsRecorder) Coordinator {
+func NewWithMetrics(log zerolog.Logger,
+	config Config,
+	metrics MetricsRecorder,
+	erClient cdcp.ChainID,
+	wsClientID string,
+) Coordinator {
 	logger := log.With().
 		Str("component", "consensus-coordinator").
 		Str("role", config.Role.String()).
 		Str("node_id", config.NodeID).
 		Logger()
 
-	return &coordinator{
+	c := &coordinator{
 		config:       config,
 		stateManager: NewStateManager(),
 		callbackMgr:  NewCallbackManager(30*time.Second, logger),
 		metrics:      metrics,
 		log:          logger,
 		sentMap:      make(map[string]bool),
+		// CDCP
+		erChainID:     erClient,
+		wsClientID:    wsClientID,
+		cdcpMessenger: nil,
+		cdcpInstances: make(map[string]cdcp.Instance),
+		cdcpTimer:     make(map[string]*time.Timer),
 	}
+
+	c.cdcpMessenger = NewCdcpMessenger(context.Background(), c)
+
+	return c
 }
 
 // OnBlockCommitted selects committed xTs not yet sent and invokes block callback.
@@ -125,14 +155,20 @@ func (c *coordinator) OnL2BlockCommitted(ctx context.Context, block *pb.L2Block)
 
 // StartTransaction initiates a new 2PC transaction
 func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error {
-	xtID, err := xtReq.XtID()
-	if err != nil {
-		return fmt.Errorf("failed to generate xtID: %w", err)
-	}
 
 	chains := xtReq.ChainIDs()
 	if len(chains) == 0 {
 		return fmt.Errorf("no participating chains found")
+	}
+
+	// Check if it should be handled via CDCP
+	if c.chainsIncludeERChain(chains) {
+		return c.startCDCPTransaction(ctx, from, xtReq)
+	}
+
+	xtID, err := xtReq.XtID()
+	if err != nil {
+		return fmt.Errorf("failed to generate xtID: %w", err)
 	}
 
 	state, err := c.stateManager.AddState(xtID, xtReq, chains)
@@ -365,6 +401,16 @@ func (c *coordinator) SetDecisionCallback(fn DecisionFn) {
 // SetBlockCallback sets the block callback
 func (c *coordinator) SetBlockCallback(fn BlockFn) {
 	c.callbackMgr.SetBlockCallback(fn)
+}
+
+// SetNativeDecidedCallback sets the native decided callback
+func (c *coordinator) SetNativeDecidedCallback(fn NativeDecidedFn) {
+	c.callbackMgr.SetNativeDecidedCallback(fn)
+}
+
+// SetDecidedToNativeCallback sets the decided to native callback
+func (c *coordinator) SetDecidedToNativeCallback(fn DecisionFn) {
+	c.callbackMgr.SetDecidedToNativeCallback(fn)
 }
 
 // handleCommit handles a commit decision

@@ -12,10 +12,12 @@ import (
 
 // CallbackManager manages coordinator callbacks with error handling and timeouts
 type CallbackManager struct {
-	startFn    StartFn
-	voteFn     VoteFn
-	decisionFn DecisionFn
-	blockFn    BlockFn
+	startFn           StartFn
+	voteFn            VoteFn
+	decisionFn        DecisionFn
+	blockFn           BlockFn
+	nativeDecidedFn   NativeDecidedFn
+	decidedToNativeFn DecisionFn
 
 	timeout time.Duration
 	log     zerolog.Logger
@@ -49,6 +51,13 @@ func (cm *CallbackManager) SetBlockCallback(fn BlockFn) {
 	cm.blockFn = fn
 }
 
+func (cm *CallbackManager) SetNativeDecidedCallback(fn NativeDecidedFn) {
+	cm.nativeDecidedFn = fn
+}
+func (cm *CallbackManager) SetDecidedToNativeCallback(fn DecisionFn) {
+	cm.decidedToNativeFn = fn
+}
+
 // InvokeStart calls the start callback with timeout and error handling
 func (cm *CallbackManager) InvokeStart(ctx context.Context, from string, xtReq *pb.XTRequest) {
 	if cm.startFn == nil {
@@ -79,6 +88,26 @@ func (cm *CallbackManager) InvokeVote(xtID *pb.XtID, vote bool, duration time.Du
 
 	cm.invokeCallback("vote", xtID, func(ctx context.Context) error {
 		return cm.voteFn(ctx, xtID, vote)
+	})
+}
+
+func (cm *CallbackManager) InvokeNativeDecided(xtID *pb.XtID, decision bool) {
+	if cm.nativeDecidedFn == nil {
+		return
+	}
+
+	cm.invokeCallback("native_decided", xtID, func(ctx context.Context) error {
+		return cm.nativeDecidedFn(ctx, xtID, decision)
+	})
+}
+
+func (cm *CallbackManager) InvokeDecidedToNative(xtID *pb.XtID, decision bool) {
+	if cm.decidedToNativeFn == nil {
+		return
+	}
+
+	cm.invokeCallback("decided_to_native", xtID, func(ctx context.Context) error {
+		return cm.decidedToNativeFn(ctx, xtID, decision)
 	})
 }
 
