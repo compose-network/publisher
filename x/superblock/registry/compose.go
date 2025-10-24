@@ -57,11 +57,12 @@ func NewComposeService(registryPath string, composeNetworkName string, log zerol
 	rollups := make(map[string]*RollupInfo)
 	now := time.Now()
 	for _, ch := range chains {
-		log.Info().Str("chain", ch.Identifier()).Msg("loading chains from registry")
 		cfg, err := ch.LoadConfig()
 		if err != nil {
 			return nil, fmt.Errorf("load config for %s: %w", path.Join(net.Slug(), ch.Slug()), err)
 		}
+		log.Info().Str("chain", ch.Identifier()).Uint64("chainID", cfg.ChainID).Msg("loading chains from registry")
+
 		// Encode chain id as big-endian bytes to match existing usage
 		id := new(big.Int).SetUint64(cfg.ChainID).Bytes()
 
