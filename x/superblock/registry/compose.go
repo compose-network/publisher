@@ -23,7 +23,7 @@ type composeService struct {
 
 // NewComposeService creates a compose-backed registry service.
 // If registryPath is empty, the embedded registry is used.
-func NewComposeService(registryPath string, l1ChainID uint64, log zerolog.Logger) (*composeService, error) {
+func NewComposeService(registryPath string, composeNetworkName string, log zerolog.Logger) (*composeService, error) {
 	var r compreg.Registry
 	var err error
 	if registryPath != "" {
@@ -34,10 +34,13 @@ func NewComposeService(registryPath string, l1ChainID uint64, log zerolog.Logger
 	} else {
 		r = compreg.New()
 	}
+	if composeNetworkName == "" {
+		return nil, fmt.Errorf("empty compose network name")
+	}
 
-	net, err := r.GetNetworkById(l1ChainID)
+	net, err := r.GetNetworkBySlug(composeNetworkName)
 	if err != nil {
-		return nil, fmt.Errorf("resolve network for l1.chain_id=%d: %w", l1ChainID, err)
+		return nil, fmt.Errorf("failed to get compose network '%s' from registry, %w", composeNetworkName, err)
 	}
 
 	// Capture network-level config for later access (L1 RPC, SP contracts)

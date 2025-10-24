@@ -69,15 +69,7 @@ func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, 
 
 // initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
 func (a *App) initialize(ctx context.Context) error {
-	// Hydrate a.cfg.L1 before wiring the other components
-	// Transition period: prefer explicit --l1.chain-id / config, but default loudly to 560048 if missing
-	if a.cfg.L1.ChainID == 0 {
-		a.log.Warn().
-			Msg("l1.chain_id not provided; DEFAULTING to 560048 (hoodi). This flag will be mandatory soon.")
-		a.cfg.L1.ChainID = 560048
-	}
-
-	regSvc, err := sreg.NewComposeService(a.cfg.Registry.Path, a.cfg.L1.ChainID, a.log)
+	regSvc, err := sreg.NewComposeService(a.cfg.Registry.Path, a.cfg.L1.ComposeNetworkName, a.log)
 	if err != nil {
 		return fmt.Errorf("failed to create compose registry service: %w", err)
 	}

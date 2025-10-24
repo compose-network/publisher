@@ -84,6 +84,10 @@ type TrustedSequencer struct {
 	PublicKey string `mapstructure:"public_key" yaml:"public_key"`
 }
 
+type L2Config struct {
+	NetworkName string `mapstructure:"network_name" yaml:"network_name"`
+}
+
 // Load loads configuration from file and environment
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
@@ -118,6 +122,12 @@ func Load(configPath string) (*Config, error) {
 	if strings.TrimSpace(cfg.L1.SharedPublisherPkHex) == "" {
 		if v := strings.TrimSpace(os.Getenv("L1_SHARED_PUBLISHER_PK_HEX")); v != "" {
 			cfg.L1.SharedPublisherPkHex = v
+		}
+	}
+
+	if strings.TrimSpace(cfg.L1.ComposeNetworkName) == "" {
+		if v := strings.TrimSpace(os.Getenv("L1_COMPOSE_NETWORK_NAME")); v != "" {
+			cfg.L1.ComposeNetworkName = v
 		}
 	}
 
