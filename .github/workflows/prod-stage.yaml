@@ -1,7 +1,7 @@
 name: Stage Tag Workflow
 on:
   push:
-    branch:
+    branches:
       - "prod-stage"
 jobs:
   build-image-and-deploy:

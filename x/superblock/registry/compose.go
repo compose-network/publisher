@@ -42,6 +42,7 @@ func NewComposeService(registryPath string, composeNetworkName string, log zerol
 	if err != nil {
 		return nil, fmt.Errorf("failed to get compose network '%s' from registry, %w", composeNetworkName, err)
 	}
+	log.Info().Str("msg", "loaded compose network from registry").Str("network", net.Slug())
 
 	// Capture network-level config for later access (L1 RPC, SP contracts)
 	ncfg, err := net.LoadConfig()
@@ -56,6 +57,7 @@ func NewComposeService(registryPath string, composeNetworkName string, log zerol
 	rollups := make(map[string]*RollupInfo)
 	now := time.Now()
 	for _, ch := range chains {
+		log.Info().Str("msg", "loading chains from registry").Str("chain", ch.Identifier())
 		cfg, err := ch.LoadConfig()
 		if err != nil {
 			return nil, fmt.Errorf("load config for %s: %w", path.Join(net.Slug(), ch.Slug()), err)
