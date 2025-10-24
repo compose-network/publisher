@@ -29,3 +29,31 @@ jobs:
           parameters: '["gitopsRepo=gitops-production",
                       "imageTag=${GITHUB_SHA}",
                       "filePath=environments/aws/hoodi/compose/publisher.yaml"]'
+  publish-charts:
+    runs-on: self-hosted
+    container:
+      image: node:20
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: github self-hosted runner workspace fix for 'tj-actions/changed-files'
+        run: |
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          dir_names_exclude_current_dir: true
+          dir_names: true
+          files: 'charts/**'
+          files_ignore: |
+            charts/*/Chart.yaml
+            charts/*/CHANGELOG.md
+      - name: publish chart via argo
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
+        with:
+          argo_workflow_file: .argo/helmchart.yaml
+          parameters: '["chartDirs=publisher"]'
