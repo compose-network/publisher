@@ -64,6 +64,7 @@ func New(log zerolog.Logger, opts ...Option) (Publisher, error) {
 	router.Register(XTRequestType, p.handleXTRequest)
 	router.Register(VoteType, p.handleVote)
 	router.Register(BlockType, p.handleBlock)
+	router.Register(WSDecidedType, p.handleWSDecided)
 
 	config.Consensus.SetDecisionCallback(p.broadcastDecision)
 	config.Transport.SetHandler(p.HandleMessage)

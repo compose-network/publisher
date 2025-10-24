@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/cdcp"
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/superblock/l1"
 	l1events "github.com/compose-network/publisher/x/superblock/l1/events"
@@ -59,6 +60,10 @@ type Coordinator struct {
 
 	l1TrackMu sync.Mutex
 	l1Tracked map[uint64][]byte // superblock number -> tx hash
+
+	// CDCP
+	erChainID  cdcp.ChainID
+	wsClientID string
 }
 
 func NewCoordinator(
@@ -75,6 +80,8 @@ func NewCoordinator(
 	transport transport.Server,
 	collector apicollector.Service,
 	prover proofs.ProverClient,
+	erChainID cdcp.ChainID,
+	wsClientID string,
 ) *Coordinator {
 	slotImpl := slot.New(
 		config.Slot.GenesisTime,
@@ -101,6 +108,9 @@ func NewCoordinator(
 		stopCh:          make(chan struct{}),
 		stats:           make(map[string]interface{}),
 		l1Tracked:       make(map[uint64][]byte),
+		// CDCP
+		erChainID:  erChainID,
+		wsClientID: wsClientID,
 	}
 
 	c.setupStateCallbacks()
@@ -632,6 +642,8 @@ func (c *Coordinator) setupConsensusCallbacks() {
 	c.consensusCoord.SetStartCallback(c.handleConsensusStart)
 	c.consensusCoord.SetVoteCallback(c.handleConsensusVote)
 	c.consensusCoord.SetDecisionCallback(c.handleConsensusDecision)
+	c.consensusCoord.SetNativeDecidedCallback(c.handleNativeDecided)
+	c.consensusCoord.SetDecidedToNativeCallback(c.handleDecidedToNative)
 }
 
 func (c *Coordinator) onStateFree(from, to slot.State, slot uint64) {
@@ -666,6 +678,38 @@ func (c *Coordinator) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vo
 	}
 
 	return c.transport.Broadcast(ctx, voteMsg, "")
+}
+
+func (c *Coordinator) handleNativeDecided(ctx context.Context, xtID *pb.XtID, decided bool) error {
+	c.log.Info().Str("xt_id", xtID.Hex()).Bool("decided", decided).Msg("Sending NativeDecided to WS")
+
+	voteMsg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_NativeDecided{
+			NativeDecided: &pb.NativeDecided{
+				XtId:     xtID,
+				Decision: decided,
+			},
+		},
+	}
+
+	return c.transport.Send(ctx, c.wsClientID, voteMsg)
+}
+
+func (c *Coordinator) handleDecidedToNative(ctx context.Context, xtID *pb.XtID, decided bool) error {
+	c.log.Info().Str("xt_id", xtID.Hex()).Bool("decided", decided).Msg("Broadcasting Decide to native sequencers")
+
+	voteMsg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_Decided{
+			Decided: &pb.Decided{
+				XtId:     xtID,
+				Decision: decided,
+			},
+		},
+	}
+
+	return c.transport.Broadcast(ctx, voteMsg, c.wsClientID) // Broadcast, but exclude WS
 }
 
 func (c *Coordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {

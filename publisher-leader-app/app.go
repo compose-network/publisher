@@ -14,6 +14,7 @@ import (
 
 	apisrv "github.com/compose-network/publisher/server/api"
 	apimw "github.com/compose-network/publisher/server/api/middleware"
+	"github.com/compose-network/publisher/x/cdcp"
 	"github.com/compose-network/publisher/x/superblock"
 	sbadapter "github.com/compose-network/publisher/x/superblock/adapter"
 	"github.com/compose-network/publisher/x/superblock/proofs"
@@ -74,7 +75,7 @@ func (a *App) initialize(ctx context.Context) error {
 		Timeout:  a.cfg.Consensus.Timeout,
 		Role:     consensus.Leader,
 	}
-	coordinator := consensus.New(a.log, consensusConfig)
+	coordinator := consensus.New(a.log, consensusConfig, cdcp.ChainID(a.cfg.ERChainID), a.cfg.WSClientID)
 	a.coordinatorShutdownFn = coordinator.Stop
 
 	transportConfig := transport.Config{}
@@ -153,6 +154,8 @@ func (a *App) initialize(ctx context.Context) error {
 		tcpServer,
 		collectorSvc,
 		proverClient,
+		cdcp.ChainID(a.cfg.ERChainID),
+		a.cfg.WSClientID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create superblock publisher: %w", err)

@@ -92,4 +92,5 @@ var (
 	BlockType     = reflect.TypeOf((*pb.Message_Block)(nil))
 	DecidedType   = reflect.TypeOf((*pb.Message_Decided)(nil))
 	L2BlockType   = reflect.TypeOf((*pb.Message_L2Block)(nil))
+	WSDecidedType = reflect.TypeOf((*pb.Message_L2Block)(nil))
 )

@@ -13,14 +13,16 @@ import (
 
 // Config holds the complete application configuration
 type Config struct {
-	Server    ServerConfig       `mapstructure:"server"    yaml:"server"`
-	API       APIServerConfig    `mapstructure:"api"       yaml:"api"`
-	Consensus ConsensusConfig    `mapstructure:"consensus" yaml:"consensus"`
-	Metrics   MetricsConfig      `mapstructure:"metrics"   yaml:"metrics"`
-	Log       LogConfig          `mapstructure:"log"       yaml:"log"`
-	Auth      AuthConfig         `mapstructure:"auth"      yaml:"auth"`
-	L1        l1cfg.Config       `mapstructure:"l1"        yaml:"l1"`
-	Proofs    sbcfg.ProofsConfig `mapstructure:"proofs"    yaml:"proofs"`
+	Server     ServerConfig       `mapstructure:"server"    yaml:"server"`
+	API        APIServerConfig    `mapstructure:"api"       yaml:"api"`
+	Consensus  ConsensusConfig    `mapstructure:"consensus" yaml:"consensus"`
+	Metrics    MetricsConfig      `mapstructure:"metrics"   yaml:"metrics"`
+	Log        LogConfig          `mapstructure:"log"       yaml:"log"`
+	Auth       AuthConfig         `mapstructure:"auth"      yaml:"auth"`
+	L1         l1cfg.Config       `mapstructure:"l1"        yaml:"l1"`
+	Proofs     sbcfg.ProofsConfig `mapstructure:"proofs"    yaml:"proofs"`
+	ERChainID  string             `mapstructure:"erchainid"    yaml:"erchainid"`
+	WSClientID string             `mapstructure:"wsClientID" yaml:"wsClientID"`
 }
 
 // ServerConfig holds server configuration

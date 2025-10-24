@@ -48,10 +48,10 @@ type coordinator struct {
 func New(
 	log zerolog.Logger,
 	config Config,
-	erClient cdcp.ChainID,
+	erChainID cdcp.ChainID,
 	wsClientID string,
 ) Coordinator {
-	return NewWithMetrics(log, config, NewMetrics(), erClient, wsClientID)
+	return NewWithMetrics(log, config, NewMetrics(), erChainID, wsClientID)
 }
 
 // NewWithMetrics creates a new coordinator instance with custom metrics recorder
@@ -59,7 +59,7 @@ func New(
 func NewWithMetrics(log zerolog.Logger,
 	config Config,
 	metrics MetricsRecorder,
-	erClient cdcp.ChainID,
+	erChainID cdcp.ChainID,
 	wsClientID string,
 ) Coordinator {
 	logger := log.With().
@@ -76,7 +76,7 @@ func NewWithMetrics(log zerolog.Logger,
 		log:          logger,
 		sentMap:      make(map[string]bool),
 		// CDCP
-		erChainID:     erClient,
+		erChainID:     erChainID,
 		wsClientID:    wsClientID,
 		cdcpMessenger: nil,
 		cdcpInstances: make(map[string]cdcp.Instance),

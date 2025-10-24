@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/publisher/x/cdcp"
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/publisher"
 	"github.com/compose-network/publisher/x/superblock"
@@ -53,6 +54,8 @@ func WrapPublisher(
 	transport transport.Server,
 	collector collector.Service,
 	prover proofs.ProverClient,
+	erChainID cdcp.ChainID,
+	wsClientID string,
 ) (*SuperblockPublisher, error) {
 	registryService := registry.NewMemoryService(log, [][]byte{mockID1, mockID2})
 	l2BlockStore := store.NewMemoryL2BlockStore()
@@ -93,6 +96,8 @@ func WrapPublisher(
 		transport,
 		collector,
 		prover,
+		erChainID,
+		wsClientID,
 	)
 
 	wrapper := &SuperblockPublisher{
@@ -126,6 +131,8 @@ func WrapPublisher(
 
 	// Register Vote handler to route to coordinator
 	router.Register(publisher.VoteType, wrapper.handleVote)
+
+	router.Register(publisher.WSDecidedType, wrapper.handleWSDecided)
 
 	// Route consensus callbacks to SBCP coordinator
 	consensusCoord.SetVoteCallback(wrapper.handleConsensusVote)
@@ -241,6 +248,30 @@ func (sp *SuperblockPublisher) handleVote(ctx context.Context, from string, msg 
 		Str("chain", chainID).
 		Str("decision_state", decision.String()).
 		Msg("Vote processed by coordinator")
+	return nil
+}
+
+func (sp *SuperblockPublisher) handleWSDecided(ctx context.Context, from string, msg *pb.Message) error {
+	payload, ok := msg.Payload.(*pb.Message_WsDecided)
+	if !ok {
+		return fmt.Errorf("invalid payload type for Vote")
+	}
+
+	sp.log.Info().
+		Str("from", from).
+		Str("xt_id", payload.WsDecided.XtId.Hex()).
+		Bool("decision", payload.WsDecided.Decision).
+		Msg("Routing WSDecision to coordinator")
+
+	err := sp.coordinator.Consensus().RecordWSDecision(payload.WsDecided.XtId, from, payload.WsDecided.Decision)
+	if err != nil {
+		return err
+	}
+	sp.log.Info().
+		Str("xt_id", payload.WsDecided.XtId.Hex()).
+		Str("chain", from).
+		Bool("ws_decision", payload.WsDecided.Decision).
+		Msg("WSDecided processed by coordinator")
 	return nil
 }
 

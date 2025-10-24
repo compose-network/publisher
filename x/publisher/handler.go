@@ -114,6 +114,36 @@ func (p *publisher) handleVote(ctx context.Context, from string, msg *pb.Message
 	return nil
 }
 
+// handleWSDecided processes a WS decided message
+func (p *publisher) handleWSDecided(ctx context.Context, from string, msg *pb.Message) error {
+	payload, ok := msg.Payload.(*pb.Message_WsDecided)
+	if !ok {
+		return fmt.Errorf("invalid payload type for WSDecided")
+	}
+	decided := payload.WsDecided
+
+	log := p.log.With().
+		Str("from", from).
+		Str("xt_id", decided.XtId.Hex()).
+		Str("chain", from).
+		Bool("decision", decided.Decision).
+		Logger()
+
+	log.Debug().Msg("Received WSDecided")
+
+	err := p.consensus.RecordWSDecision(decided.XtId, from, decided.Decision)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to record vote")
+		return err
+	}
+
+	log.Info().
+		Bool("decision", decided.Decision).
+		Msg("Transaction WS decided")
+
+	return nil
+}
+
 // handleBlock processes block submissions from sequencers
 func (p *publisher) handleBlock(ctx context.Context, from string, msg *pb.Message) error {
 	payload, ok := msg.Payload.(*pb.Message_Block)
