@@ -22,6 +22,7 @@ type Instance interface {
 	ProcessWSDecided(chainID ChainID, decision bool) error
 	IsDecided() DecisionResult
 	Timeout() error
+	InstanceData() InstanceData
 }
 
 type Messenger interface {
@@ -66,7 +67,7 @@ func NewInstance(
 ) Instance {
 
 	chains := make(map[ChainID]struct{})
-	for _, req := range instanceData.xTRequest {
+	for _, req := range instanceData.XTRequest {
 		chains[req.ChainID] = struct{}{}
 	}
 
@@ -92,8 +93,8 @@ func (i *instance) InitInstance() error {
 
 	i.messenger.SendStartMessage(i.instanceData.Slot,
 		i.instanceData.SequenceNumber,
-		i.instanceData.xTRequest,
-		i.instanceData.xTId,
+		i.instanceData.XTRequest,
+		i.instanceData.XTId,
 	)
 	i.state = InstanceStateWaitingForVotes
 	return nil
@@ -108,7 +109,7 @@ func (i *instance) ProcessVote(chainID ChainID, vote bool) error {
 	}
 
 	// ER Chain can't send vote
-	if chainID == i.erChainID {
+	if chainID.Equal(&i.erChainID) {
 		return ErrERChainCannotSendVote
 	}
 
@@ -128,15 +129,15 @@ func (i *instance) ProcessVote(chainID ChainID, vote bool) error {
 		// If any vote is false, the decision is false
 		i.state = InstanceStateDecided
 		i.decision = DecisionResultRejected
-		i.messenger.SendDecided(i.instanceData.xTId, false)
-		i.messenger.SendNativeDecided(i.instanceData.xTId, false)
+		i.messenger.SendDecided(i.instanceData.XTId, false)
+		i.messenger.SendNativeDecided(i.instanceData.XTId, false)
 		return nil
 	}
 
 	if len(i.votes) == len(i.chains)-1 {
 		// All votes received (excluding ER chain)
 		i.state = InstanceStateWaitingForWSDecided
-		i.messenger.SendNativeDecided(i.instanceData.xTId, true)
+		i.messenger.SendNativeDecided(i.instanceData.XTId, true)
 		return nil
 	}
 
@@ -147,7 +148,7 @@ func (i *instance) ProcessWSDecided(chainID ChainID, decision bool) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if i.erChainID != chainID {
+	if !chainID.Equal(&i.erChainID) {
 		return ErrOnlyERChainCanSendWSDecision
 	}
 
@@ -156,19 +157,13 @@ func (i *instance) ProcessWSDecided(chainID ChainID, decision bool) error {
 	}
 
 	i.state = InstanceStateDecided
-	i.messenger.SendDecided(i.instanceData.xTId, decision)
+	i.messenger.SendDecided(i.instanceData.XTId, decision)
 	if decision {
 		i.decision = DecisionResultAccepted
 	} else {
 		i.decision = DecisionResultRejected
 	}
 	return nil
-}
-
-func (i *instance) IsDecided() DecisionResult {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	return i.decision
 }
 
 func (i *instance) Timeout() error {
@@ -182,7 +177,19 @@ func (i *instance) Timeout() error {
 
 	i.decision = DecisionResultRejected
 	i.state = InstanceStateDecided
-	i.messenger.SendDecided(i.instanceData.xTId, false)
-	i.messenger.SendNativeDecided(i.instanceData.xTId, false)
+	i.messenger.SendDecided(i.instanceData.XTId, false)
+	i.messenger.SendNativeDecided(i.instanceData.XTId, false)
 	return nil
+}
+
+func (i *instance) IsDecided() DecisionResult {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.decision
+}
+
+func (i *instance) InstanceData() InstanceData {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.instanceData
 }
