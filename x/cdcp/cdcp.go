@@ -2,8 +2,17 @@ package cdcp
 
 import (
 	"errors"
-	"fmt"
 	"sync"
+)
+
+var (
+	ErrInstanceAlreadyInitialized     = errors.New("instance already initialized")
+	ErrInstanceNotWaitingForVotes     = errors.New("instance not waiting for votes")
+	ErrERChainCannotSendVote          = errors.New("ER chain cannot send vote")
+	ErrChainIDDoesNotBelongToInstance = errors.New("chainID does not belong to instance")
+	ErrDuplicateVote                  = errors.New("duplicate vote")
+	ErrOnlyERChainCanSendWSDecision   = errors.New("only ER chain can send WS decision")
+	ErrInstanceAlreadyDecided         = errors.New("instance already decided")
 )
 
 type Instance interface {
@@ -77,7 +86,7 @@ func (i *instance) InitInstance() error {
 	defer i.mu.Unlock()
 
 	if i.state != InstanceStateInit {
-		return errors.New("instance already initialized")
+		return ErrInstanceAlreadyInitialized
 	}
 
 	i.messenger.SendStartMessage(i.instanceData.Slot,
@@ -94,22 +103,22 @@ func (i *instance) ProcessVote(chainID ChainID, vote bool) error {
 	defer i.mu.Unlock()
 
 	if i.state != InstanceStateWaitingForVotes {
-		return errors.New("instance not waiting for votes")
+		return ErrInstanceNotWaitingForVotes
 	}
 
 	// ER Chain can't send vote
 	if chainID == i.erChainID {
-		return fmt.Errorf("ER chain %v cannot send vote", chainID)
+		return ErrERChainCannotSendVote
 	}
 
 	// Chain must belong to the instance
 	if _, exists := i.chains[chainID]; !exists {
-		return fmt.Errorf("chainID %v does not belong to instance", chainID)
+		return ErrChainIDDoesNotBelongToInstance
 	}
 
 	// If vote already recorded, ignore duplicate
 	if _, exists := i.votes[chainID]; exists {
-		return fmt.Errorf("duplicate vote for chainID %v", chainID)
+		return ErrDuplicateVote
 	}
 
 	i.votes[chainID] = vote
@@ -138,11 +147,11 @@ func (i *instance) ProcessWSDecided(chainID ChainID, decision bool) error {
 	defer i.mu.Unlock()
 
 	if i.erChainID != chainID {
-		return fmt.Errorf("only ER chain %v can send WS decision", i.erChainID)
+		return ErrOnlyERChainCanSendWSDecision
 	}
 
 	if i.state == InstanceStateDecided {
-		return errors.New("instance already decided")
+		return ErrInstanceAlreadyDecided
 	}
 
 	i.state = InstanceStateDecided
