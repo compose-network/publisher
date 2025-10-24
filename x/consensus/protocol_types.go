@@ -10,11 +10,13 @@ const unknownString = "Unknown"
 type MessageType int
 
 const (
-	MsgUnknown     MessageType = iota
-	MsgXTRequest               // Cross-chain transaction request
-	MsgVote                    // Sequencer vote
-	MsgDecided                 // SP decision
-	MsgCIRCMessage             // Inter-rollup communication
+	MsgUnknown       MessageType = iota
+	MsgXTRequest                 // Cross-chain transaction request
+	MsgVote                      // Sequencer vote
+	MsgDecided                   // SP decision
+	MsgNativeDecided             // Native decided
+	MsgWSDecided                 // WS decided
+	MsgCIRCMessage               // Inter-rollup communication
 )
 
 // String returns a human-readable message type name
@@ -28,6 +30,10 @@ func (t MessageType) String() string {
 		return "Vote"
 	case MsgDecided:
 		return "Decided"
+	case MsgNativeDecided:
+		return "NativeDecided"
+	case MsgWSDecided:
+		return "WSDecided"
 	case MsgCIRCMessage:
 		return "CIRCMessage"
 	}
@@ -53,6 +59,10 @@ func ClassifyMessage(msg *pb.Message) MessageType {
 		return MsgVote
 	case *pb.Message_Decided:
 		return MsgDecided
+	case *pb.Message_NativeDecided:
+		return MsgNativeDecided
+	case *pb.Message_WsDecided:
+		return MsgWSDecided
 	case *pb.Message_CircMessage:
 		return MsgCIRCMessage
 	default:

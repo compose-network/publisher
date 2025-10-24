@@ -7,12 +7,11 @@
 package rollupv1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -507,6 +506,112 @@ func (x *Decided) GetDecision() bool {
 	return false
 }
 
+// Native decided message
+type NativeDecided struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	XtId          *XtID                  `protobuf:"bytes,1,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"` // Transaction ID
+	Decision      bool                   `protobuf:"varint,2,opt,name=decision,proto3" json:"decision,omitempty"`    // true = Commit, false = Abort
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NativeDecided) Reset() {
+	*x = NativeDecided{}
+	mi := &file_rollup_v1_messages_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NativeDecided) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NativeDecided) ProtoMessage() {}
+
+func (x *NativeDecided) ProtoReflect() protoreflect.Message {
+	mi := &file_rollup_v1_messages_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NativeDecided.ProtoReflect.Descriptor instead.
+func (*NativeDecided) Descriptor() ([]byte, []int) {
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *NativeDecided) GetXtId() *XtID {
+	if x != nil {
+		return x.XtId
+	}
+	return nil
+}
+
+func (x *NativeDecided) GetDecision() bool {
+	if x != nil {
+		return x.Decision
+	}
+	return false
+}
+
+// WS decided message
+type WSDecided struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	XtId          *XtID                  `protobuf:"bytes,1,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"` // Transaction ID
+	Decision      bool                   `protobuf:"varint,2,opt,name=decision,proto3" json:"decision,omitempty"`    // true = Commit, false = Abort
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WSDecided) Reset() {
+	*x = WSDecided{}
+	mi := &file_rollup_v1_messages_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WSDecided) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WSDecided) ProtoMessage() {}
+
+func (x *WSDecided) ProtoReflect() protoreflect.Message {
+	mi := &file_rollup_v1_messages_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WSDecided.ProtoReflect.Descriptor instead.
+func (*WSDecided) Descriptor() ([]byte, []int) {
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *WSDecided) GetXtId() *XtID {
+	if x != nil {
+		return x.XtId
+	}
+	return nil
+}
+
+func (x *WSDecided) GetDecision() bool {
+	if x != nil {
+		return x.Decision
+	}
+	return false
+}
+
 // Block submission from a sequencer to the SP
 type Block struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -519,7 +624,7 @@ type Block struct {
 
 func (x *Block) Reset() {
 	*x = Block{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[9]
+	mi := &file_rollup_v1_messages_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -531,7 +636,7 @@ func (x *Block) String() string {
 func (*Block) ProtoMessage() {}
 
 func (x *Block) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[9]
+	mi := &file_rollup_v1_messages_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -544,7 +649,7 @@ func (x *Block) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Block.ProtoReflect.Descriptor instead.
 func (*Block) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{9}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Block) GetChainId() []byte {
@@ -584,7 +689,7 @@ type CIRCMessage struct {
 
 func (x *CIRCMessage) Reset() {
 	*x = CIRCMessage{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[10]
+	mi := &file_rollup_v1_messages_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -596,7 +701,7 @@ func (x *CIRCMessage) String() string {
 func (*CIRCMessage) ProtoMessage() {}
 
 func (x *CIRCMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[10]
+	mi := &file_rollup_v1_messages_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -609,7 +714,7 @@ func (x *CIRCMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CIRCMessage.ProtoReflect.Descriptor instead.
 func (*CIRCMessage) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{10}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CIRCMessage) GetSourceChain() []byte {
@@ -673,7 +778,7 @@ type L2BlockRequest struct {
 
 func (x *L2BlockRequest) Reset() {
 	*x = L2BlockRequest{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[11]
+	mi := &file_rollup_v1_messages_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +790,7 @@ func (x *L2BlockRequest) String() string {
 func (*L2BlockRequest) ProtoMessage() {}
 
 func (x *L2BlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[11]
+	mi := &file_rollup_v1_messages_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +803,7 @@ func (x *L2BlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use L2BlockRequest.ProtoReflect.Descriptor instead.
 func (*L2BlockRequest) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{11}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *L2BlockRequest) GetChainId() []byte {
@@ -735,7 +840,7 @@ type StartSlot struct {
 
 func (x *StartSlot) Reset() {
 	*x = StartSlot{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[12]
+	mi := &file_rollup_v1_messages_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +852,7 @@ func (x *StartSlot) String() string {
 func (*StartSlot) ProtoMessage() {}
 
 func (x *StartSlot) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[12]
+	mi := &file_rollup_v1_messages_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +865,7 @@ func (x *StartSlot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartSlot.ProtoReflect.Descriptor instead.
 func (*StartSlot) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{12}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StartSlot) GetSlot() uint64 {
@@ -802,7 +907,7 @@ type RequestSeal struct {
 
 func (x *RequestSeal) Reset() {
 	*x = RequestSeal{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[13]
+	mi := &file_rollup_v1_messages_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -814,7 +919,7 @@ func (x *RequestSeal) String() string {
 func (*RequestSeal) ProtoMessage() {}
 
 func (x *RequestSeal) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[13]
+	mi := &file_rollup_v1_messages_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -827,7 +932,7 @@ func (x *RequestSeal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestSeal.ProtoReflect.Descriptor instead.
 func (*RequestSeal) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{13}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RequestSeal) GetSlot() uint64 {
@@ -857,7 +962,7 @@ type RollBackAndStartSlot struct {
 
 func (x *RollBackAndStartSlot) Reset() {
 	*x = RollBackAndStartSlot{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[14]
+	mi := &file_rollup_v1_messages_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -869,7 +974,7 @@ func (x *RollBackAndStartSlot) String() string {
 func (*RollBackAndStartSlot) ProtoMessage() {}
 
 func (x *RollBackAndStartSlot) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[14]
+	mi := &file_rollup_v1_messages_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +987,7 @@ func (x *RollBackAndStartSlot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollBackAndStartSlot.ProtoReflect.Descriptor instead.
 func (*RollBackAndStartSlot) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{14}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RollBackAndStartSlot) GetL2BlocksRequest() []*L2BlockRequest {
@@ -929,7 +1034,7 @@ type L2Block struct {
 
 func (x *L2Block) Reset() {
 	*x = L2Block{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[15]
+	mi := &file_rollup_v1_messages_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -941,7 +1046,7 @@ func (x *L2Block) String() string {
 func (*L2Block) ProtoMessage() {}
 
 func (x *L2Block) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[15]
+	mi := &file_rollup_v1_messages_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -954,7 +1059,7 @@ func (x *L2Block) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use L2Block.ProtoReflect.Descriptor instead.
 func (*L2Block) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{15}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *L2Block) GetSlot() uint64 {
@@ -1019,7 +1124,7 @@ type StartSC struct {
 
 func (x *StartSC) Reset() {
 	*x = StartSC{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[16]
+	mi := &file_rollup_v1_messages_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1031,7 +1136,7 @@ func (x *StartSC) String() string {
 func (*StartSC) ProtoMessage() {}
 
 func (x *StartSC) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[16]
+	mi := &file_rollup_v1_messages_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1044,7 +1149,7 @@ func (x *StartSC) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartSC.ProtoReflect.Descriptor instead.
 func (*StartSC) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{16}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *StartSC) GetSlot() uint64 {
@@ -1097,6 +1202,8 @@ type Message struct {
 	//	*Message_HandshakeResponse
 	//	*Message_Ping
 	//	*Message_Pong
+	//	*Message_NativeDecided
+	//	*Message_WsDecided
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1104,7 +1211,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[17]
+	mi := &file_rollup_v1_messages_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1116,7 +1223,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[17]
+	mi := &file_rollup_v1_messages_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1129,7 +1236,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{17}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Message) GetSenderId() string {
@@ -1272,6 +1379,24 @@ func (x *Message) GetPong() *Pong {
 	return nil
 }
 
+func (x *Message) GetNativeDecided() *NativeDecided {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_NativeDecided); ok {
+			return x.NativeDecided
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetWsDecided() *WSDecided {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_WsDecided); ok {
+			return x.WsDecided
+		}
+	}
+	return nil
+}
+
 type isMessage_Payload interface {
 	isMessage_Payload()
 }
@@ -1335,6 +1460,15 @@ type Message_Pong struct {
 	Pong *Pong `protobuf:"bytes,15,opt,name=pong,proto3,oneof"`
 }
 
+type Message_NativeDecided struct {
+	// Additional decided messages
+	NativeDecided *NativeDecided `protobuf:"bytes,16,opt,name=native_decided,json=nativeDecided,proto3,oneof"`
+}
+
+type Message_WsDecided struct {
+	WsDecided *WSDecided `protobuf:"bytes,17,opt,name=ws_decided,json=wsDecided,proto3,oneof"`
+}
+
 func (*Message_XtRequest) isMessage_Payload() {}
 
 func (*Message_Vote) isMessage_Payload() {}
@@ -1362,6 +1496,10 @@ func (*Message_HandshakeResponse) isMessage_Payload() {}
 func (*Message_Ping) isMessage_Payload() {}
 
 func (*Message_Pong) isMessage_Payload() {}
+
+func (*Message_NativeDecided) isMessage_Payload() {}
+
+func (*Message_WsDecided) isMessage_Payload() {}
 
 var File_rollup_v1_messages_proto protoreflect.FileDescriptor
 
@@ -1396,6 +1534,12 @@ const file_rollup_v1_messages_proto_rawDesc = "" +
 	"\x05xt_id\x18\x02 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x12\n" +
 	"\x04vote\x18\x03 \x01(\bR\x04vote\"K\n" +
 	"\aDecided\x12$\n" +
+	"\x05xt_id\x18\x01 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x1a\n" +
+	"\bdecision\x18\x02 \x01(\bR\bdecision\"Q\n" +
+	"\rNativeDecided\x12$\n" +
+	"\x05xt_id\x18\x01 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x1a\n" +
+	"\bdecision\x18\x02 \x01(\bR\bdecision\"M\n" +
+	"\tWSDecided\x12$\n" +
 	"\x05xt_id\x18\x01 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x1a\n" +
 	"\bdecision\x18\x02 \x01(\bR\bdecision\"z\n" +
 	"\x05Block\x12\x19\n" +
@@ -1443,7 +1587,7 @@ const file_rollup_v1_messages_proto_rawDesc = "" +
 	"\x12xt_sequence_number\x18\x02 \x01(\x04R\x10xtSequenceNumber\x123\n" +
 	"\n" +
 	"xt_request\x18\x03 \x01(\v2\x14.rollup.v1.XTRequestR\txtRequest\x12\x13\n" +
-	"\x05xt_id\x18\x04 \x01(\fR\x04xtId\"\xc0\x06\n" +
+	"\x05xt_id\x18\x04 \x01(\fR\x04xtId\"\xba\a\n" +
 	"\aMessage\x12\x1b\n" +
 	"\tsender_id\x18\x01 \x01(\tR\bsenderId\x125\n" +
 	"\n" +
@@ -1462,7 +1606,10 @@ const file_rollup_v1_messages_proto_rawDesc = "" +
 	"\x11handshake_request\x18\f \x01(\v2\x1b.rollup.v1.HandshakeRequestH\x00R\x10handshakeRequest\x12M\n" +
 	"\x12handshake_response\x18\r \x01(\v2\x1c.rollup.v1.HandshakeResponseH\x00R\x11handshakeResponse\x12%\n" +
 	"\x04ping\x18\x0e \x01(\v2\x0f.rollup.v1.PingH\x00R\x04ping\x12%\n" +
-	"\x04pong\x18\x0f \x01(\v2\x0f.rollup.v1.PongH\x00R\x04pongB\t\n" +
+	"\x04pong\x18\x0f \x01(\v2\x0f.rollup.v1.PongH\x00R\x04pong\x12A\n" +
+	"\x0enative_decided\x18\x10 \x01(\v2\x18.rollup.v1.NativeDecidedH\x00R\rnativeDecided\x125\n" +
+	"\n" +
+	"ws_decided\x18\x11 \x01(\v2\x14.rollup.v1.WSDecidedH\x00R\twsDecidedB\t\n" +
 	"\apayloadB\xa2\x01\n" +
 	"\rcom.rollup.v1B\rMessagesProtoP\x01Z=github.com/compose-network/publisher/proto/rollup/v1;rollupv1\xa2\x02\x03RXX\xaa\x02\tRollup.V1\xca\x02\tRollup\\V1\xe2\x02\x15Rollup\\V1\\GPBMetadata\xea\x02\n" +
 	"Rollup::V1b\x06proto3"
@@ -1479,7 +1626,7 @@ func file_rollup_v1_messages_proto_rawDescGZIP() []byte {
 	return file_rollup_v1_messages_proto_rawDescData
 }
 
-var file_rollup_v1_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_rollup_v1_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_rollup_v1_messages_proto_goTypes = []any{
 	(*HandshakeRequest)(nil),     // 0: rollup.v1.HandshakeRequest
 	(*HandshakeResponse)(nil),    // 1: rollup.v1.HandshakeResponse
@@ -1490,44 +1637,50 @@ var file_rollup_v1_messages_proto_goTypes = []any{
 	(*TransactionRequest)(nil),   // 6: rollup.v1.TransactionRequest
 	(*Vote)(nil),                 // 7: rollup.v1.Vote
 	(*Decided)(nil),              // 8: rollup.v1.Decided
-	(*Block)(nil),                // 9: rollup.v1.Block
-	(*CIRCMessage)(nil),          // 10: rollup.v1.CIRCMessage
-	(*L2BlockRequest)(nil),       // 11: rollup.v1.L2BlockRequest
-	(*StartSlot)(nil),            // 12: rollup.v1.StartSlot
-	(*RequestSeal)(nil),          // 13: rollup.v1.RequestSeal
-	(*RollBackAndStartSlot)(nil), // 14: rollup.v1.RollBackAndStartSlot
-	(*L2Block)(nil),              // 15: rollup.v1.L2Block
-	(*StartSC)(nil),              // 16: rollup.v1.StartSC
-	(*Message)(nil),              // 17: rollup.v1.Message
+	(*NativeDecided)(nil),        // 9: rollup.v1.NativeDecided
+	(*WSDecided)(nil),            // 10: rollup.v1.WSDecided
+	(*Block)(nil),                // 11: rollup.v1.Block
+	(*CIRCMessage)(nil),          // 12: rollup.v1.CIRCMessage
+	(*L2BlockRequest)(nil),       // 13: rollup.v1.L2BlockRequest
+	(*StartSlot)(nil),            // 14: rollup.v1.StartSlot
+	(*RequestSeal)(nil),          // 15: rollup.v1.RequestSeal
+	(*RollBackAndStartSlot)(nil), // 16: rollup.v1.RollBackAndStartSlot
+	(*L2Block)(nil),              // 17: rollup.v1.L2Block
+	(*StartSC)(nil),              // 18: rollup.v1.StartSC
+	(*Message)(nil),              // 19: rollup.v1.Message
 }
 var file_rollup_v1_messages_proto_depIdxs = []int32{
 	6,  // 0: rollup.v1.XTRequest.transactions:type_name -> rollup.v1.TransactionRequest
 	4,  // 1: rollup.v1.Vote.xt_id:type_name -> rollup.v1.XtID
 	4,  // 2: rollup.v1.Decided.xt_id:type_name -> rollup.v1.XtID
-	4,  // 3: rollup.v1.Block.included_xt_ids:type_name -> rollup.v1.XtID
-	4,  // 4: rollup.v1.CIRCMessage.xt_id:type_name -> rollup.v1.XtID
-	11, // 5: rollup.v1.StartSlot.l2_blocks_request:type_name -> rollup.v1.L2BlockRequest
-	11, // 6: rollup.v1.RollBackAndStartSlot.l2_blocks_request:type_name -> rollup.v1.L2BlockRequest
-	5,  // 7: rollup.v1.StartSC.xt_request:type_name -> rollup.v1.XTRequest
-	5,  // 8: rollup.v1.Message.xt_request:type_name -> rollup.v1.XTRequest
-	7,  // 9: rollup.v1.Message.vote:type_name -> rollup.v1.Vote
-	8,  // 10: rollup.v1.Message.decided:type_name -> rollup.v1.Decided
-	9,  // 11: rollup.v1.Message.block:type_name -> rollup.v1.Block
-	10, // 12: rollup.v1.Message.circ_message:type_name -> rollup.v1.CIRCMessage
-	12, // 13: rollup.v1.Message.start_slot:type_name -> rollup.v1.StartSlot
-	13, // 14: rollup.v1.Message.request_seal:type_name -> rollup.v1.RequestSeal
-	14, // 15: rollup.v1.Message.roll_back_and_start_slot:type_name -> rollup.v1.RollBackAndStartSlot
-	15, // 16: rollup.v1.Message.l2_block:type_name -> rollup.v1.L2Block
-	16, // 17: rollup.v1.Message.start_sc:type_name -> rollup.v1.StartSC
-	0,  // 18: rollup.v1.Message.handshake_request:type_name -> rollup.v1.HandshakeRequest
-	1,  // 19: rollup.v1.Message.handshake_response:type_name -> rollup.v1.HandshakeResponse
-	2,  // 20: rollup.v1.Message.ping:type_name -> rollup.v1.Ping
-	3,  // 21: rollup.v1.Message.pong:type_name -> rollup.v1.Pong
-	22, // [22:22] is the sub-list for method output_type
-	22, // [22:22] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	4,  // 3: rollup.v1.NativeDecided.xt_id:type_name -> rollup.v1.XtID
+	4,  // 4: rollup.v1.WSDecided.xt_id:type_name -> rollup.v1.XtID
+	4,  // 5: rollup.v1.Block.included_xt_ids:type_name -> rollup.v1.XtID
+	4,  // 6: rollup.v1.CIRCMessage.xt_id:type_name -> rollup.v1.XtID
+	13, // 7: rollup.v1.StartSlot.l2_blocks_request:type_name -> rollup.v1.L2BlockRequest
+	13, // 8: rollup.v1.RollBackAndStartSlot.l2_blocks_request:type_name -> rollup.v1.L2BlockRequest
+	5,  // 9: rollup.v1.StartSC.xt_request:type_name -> rollup.v1.XTRequest
+	5,  // 10: rollup.v1.Message.xt_request:type_name -> rollup.v1.XTRequest
+	7,  // 11: rollup.v1.Message.vote:type_name -> rollup.v1.Vote
+	8,  // 12: rollup.v1.Message.decided:type_name -> rollup.v1.Decided
+	11, // 13: rollup.v1.Message.block:type_name -> rollup.v1.Block
+	12, // 14: rollup.v1.Message.circ_message:type_name -> rollup.v1.CIRCMessage
+	14, // 15: rollup.v1.Message.start_slot:type_name -> rollup.v1.StartSlot
+	15, // 16: rollup.v1.Message.request_seal:type_name -> rollup.v1.RequestSeal
+	16, // 17: rollup.v1.Message.roll_back_and_start_slot:type_name -> rollup.v1.RollBackAndStartSlot
+	17, // 18: rollup.v1.Message.l2_block:type_name -> rollup.v1.L2Block
+	18, // 19: rollup.v1.Message.start_sc:type_name -> rollup.v1.StartSC
+	0,  // 20: rollup.v1.Message.handshake_request:type_name -> rollup.v1.HandshakeRequest
+	1,  // 21: rollup.v1.Message.handshake_response:type_name -> rollup.v1.HandshakeResponse
+	2,  // 22: rollup.v1.Message.ping:type_name -> rollup.v1.Ping
+	3,  // 23: rollup.v1.Message.pong:type_name -> rollup.v1.Pong
+	9,  // 24: rollup.v1.Message.native_decided:type_name -> rollup.v1.NativeDecided
+	10, // 25: rollup.v1.Message.ws_decided:type_name -> rollup.v1.WSDecided
+	26, // [26:26] is the sub-list for method output_type
+	26, // [26:26] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_rollup_v1_messages_proto_init() }
@@ -1535,7 +1688,7 @@ func file_rollup_v1_messages_proto_init() {
 	if File_rollup_v1_messages_proto != nil {
 		return
 	}
-	file_rollup_v1_messages_proto_msgTypes[17].OneofWrappers = []any{
+	file_rollup_v1_messages_proto_msgTypes[19].OneofWrappers = []any{
 		(*Message_XtRequest)(nil),
 		(*Message_Vote)(nil),
 		(*Message_Decided)(nil),
@@ -1550,6 +1703,8 @@ func file_rollup_v1_messages_proto_init() {
 		(*Message_HandshakeResponse)(nil),
 		(*Message_Ping)(nil),
 		(*Message_Pong)(nil),
+		(*Message_NativeDecided)(nil),
+		(*Message_WsDecided)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1557,7 +1712,7 @@ func file_rollup_v1_messages_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rollup_v1_messages_proto_rawDesc), len(file_rollup_v1_messages_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

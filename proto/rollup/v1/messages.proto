@@ -59,6 +59,18 @@ message Decided {
   bool decision = 2; // true = Commit, false = Abort
 }
 
+// Native decided message
+message NativeDecided {
+  XtID xt_id = 1; // Transaction ID
+  bool decision = 2; // true = Commit, false = Abort
+}
+
+// WS decided message
+message WSDecided {
+  XtID xt_id = 1; // Transaction ID
+  bool decision = 2; // true = Commit, false = Abort
+}
+
 // Block submission from a sequencer to the SP
 message Block {
   bytes chain_id = 1; // Which chain's block
@@ -154,5 +166,9 @@ message Message {
     // Connection health check
     Ping ping = 14;
     Pong pong = 15;
+
+    // Additional decided messages
+    NativeDecided native_decided = 16;
+    WSDecided ws_decided = 17;
   }
 }
