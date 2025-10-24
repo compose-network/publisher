@@ -1,0 +1,31 @@
+name: Stage Tag Workflow
+on:
+  push:
+    branch:
+      - "prod-stage"
+jobs:
+  build-image-and-deploy:
+    container:
+      image: node:24
+    runs-on: self-hosted
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Extract tag name
+        id: extract_tag
+        run: |
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: build image
+        uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
+        with:
+          argo_workflow_file: .argo/build-image.yaml
+          parameters: '["imageTag=${GITHUB_SHA}}",
+                      "dockerBuildExtraArgs="]'
+
+      - name: deploy to prod hoodi
+        uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
+        with:
+          argo_workflow_file: .argo/deploy.yaml
+          parameters: '["gitopsRepo=gitops-production",
+                      "imageTag=${GITHUB_SHA}",
+                      "filePath=environments/aws/hoodi/compose/publisher.yaml"]'
