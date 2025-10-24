@@ -38,7 +38,7 @@ spec:
         - - name: bump-chart-version
             templateRef:
               name: cwft-git
-              template: push-with-githubapp
+              template: push-with-githubapp-compose-network
               clusterScope: true
             arguments:
               artifacts:

@@ -19,6 +19,9 @@ type Config struct {
 	Confirmations uint64 `mapstructure:"confirmations"  yaml:"confirmations"`  // for Confirmed status
 	FinalityDepth uint64 `mapstructure:"finality_depth" yaml:"finality_depth"` // for Finalized status
 
+	// compose.network name from registry
+	ComposeNetworkName string `mapstructure:"compose_network_name" yaml:"compose_network_name"` // optional, for registry lookups
+
 	// Gas/fees configuration (EIP-1559)
 	UseEIP1559        bool   `mapstructure:"use_eip1559"          yaml:"use_eip1559"`
 	MaxFeePerGasWei   string `mapstructure:"max_fee_per_gas_wei"  yaml:"max_fee_per_gas_wei"`  // optional cap
