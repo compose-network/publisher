@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrInstanceCantProcessWSDecision  = errors.New("can not process WS decision")
 	ErrInstanceAlreadyInitialized     = errors.New("instance already initialized")
 	ErrInstanceNotWaitingForVotes     = errors.New("instance not waiting for votes")
 	ErrERChainCannotSendVote          = errors.New("ER chain cannot send vote")
@@ -150,8 +151,8 @@ func (i *instance) ProcessWSDecided(chainID ChainID, decision bool) error {
 		return ErrOnlyERChainCanSendWSDecision
 	}
 
-	if i.state == InstanceStateDecided {
-		return ErrInstanceAlreadyDecided
+	if i.state == InstanceStateInit || i.state == InstanceStateDecided {
+		return ErrInstanceCantProcessWSDecision
 	}
 
 	i.state = InstanceStateDecided
