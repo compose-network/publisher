@@ -7,7 +7,6 @@ vaultSecretPath: "stage/optimism-stack/rollup"
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
-
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
   repository: 764289642555.dkr.ecr.us-west-2.amazonaws.com/rollup-shared-publisher
