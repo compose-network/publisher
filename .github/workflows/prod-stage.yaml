@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - "prod-stage"
-      - "feat/add-new-registry"
 jobs:
   build-image-and-deploy:
     container:
