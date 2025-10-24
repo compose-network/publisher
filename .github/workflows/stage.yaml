@@ -48,6 +48,7 @@ jobs:
             charts/*/Chart.yaml
             charts/*/CHANGELOG.md
       - name: publish chart via argo
+        if: steps.changed-files.outputs.any_changed == 'true'
         uses: ssvlabs/github-actions/actions/argo-workflow-submit@v0.2.0
         with:
           argo_workflow_file: .argo/helmchart.yaml
