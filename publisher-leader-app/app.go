@@ -32,6 +32,7 @@ import (
 	"github.com/compose-network/publisher/x/auth"
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/publisher"
+	sreg "github.com/compose-network/publisher/x/superblock/registry"
 	"github.com/compose-network/publisher/x/transport/tcp"
 )
 
@@ -68,6 +69,51 @@ func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, 
 
 // initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
 func (a *App) initialize(ctx context.Context) error {
+	// Hydrate a.cfg.L1 before wiring the other components
+	// Transition period: prefer explicit --l1.chain-id / config, but default loudly to 560048 if missing
+	if a.cfg.L1.ChainID == 0 {
+		a.log.Warn().
+			Msg("l1.chain_id not provided; DEFAULTING to 560048 (hoodi). This flag will be mandatory soon.")
+		a.cfg.L1.ChainID = 560048
+	}
+
+	regSvc, err := sreg.NewComposeService(a.cfg.Registry.Path, a.cfg.L1.ChainID, a.log)
+	if err != nil {
+		return fmt.Errorf("failed to create compose registry service: %w", err)
+	}
+
+	// Fill RPCEndpoint from registry if empty
+	if strings.TrimSpace(a.cfg.L1.RPCEndpoint) == "" {
+		if v := strings.TrimSpace(regSvc.L1PublicRPC()); v != "" {
+			a.log.Info().Str("rpc_endpoint", v).Msg("Using L1 RPC endpoint from registry")
+			a.cfg.L1.RPCEndpoint = v
+		}
+	} else {
+		if v := strings.TrimSpace(regSvc.L1PublicRPC()); v != "" && v != strings.TrimSpace(a.cfg.L1.RPCEndpoint) {
+			a.log.Warn().
+				Str("config_rpc_endpoint", a.cfg.L1.RPCEndpoint).
+				Str("registry_rpc_endpoint", v).
+				Msg("Configured L1 RPC endpoint differs from registry")
+		}
+	}
+
+	// Fill DisputeGameFactory from registry if empty
+	if strings.TrimSpace(a.cfg.L1.DisputeGameFactory) == "" {
+		v := strings.TrimSpace(regSvc.PublisherDisputeGameFactory())
+		if v != "" {
+			a.log.Info().Str("dispute_game_factory", v).Msg("Using DisputeGameFactory from registry")
+			a.cfg.L1.DisputeGameFactory = v
+		}
+	} else {
+		v := strings.TrimSpace(regSvc.PublisherDisputeGameFactory())
+		if v != "" && !strings.EqualFold(v, strings.TrimSpace(a.cfg.L1.DisputeGameFactory)) {
+			a.log.Warn().
+				Str("config_dgf", a.cfg.L1.DisputeGameFactory).
+				Str("registry_dgf", v).
+				Msg("Configured DisputeGameFactory differs from registry")
+		}
+	}
+
 	consensusConfig := consensus.Config{
 		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
 		IsLeader: true,
@@ -153,6 +199,7 @@ func (a *App) initialize(ctx context.Context) error {
 		tcpServer,
 		collectorSvc,
 		proverClient,
+		regSvc,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create superblock publisher: %w", err)
