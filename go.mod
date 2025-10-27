@@ -3,7 +3,7 @@ module github.com/compose-network/publisher
 go 1.24.5
 
 require (
-	github.com/compose-network/registry v0.0.0-20251024084329-4477883677e4
+	github.com/compose-network/registry v0.1.0
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.1
