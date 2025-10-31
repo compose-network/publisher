@@ -1,4 +1,4 @@
-package manager
+package periodrunner
 
 import (
 	"context"
@@ -7,103 +7,51 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	DefaultEpochsPerPeriod = 10 // Number of Ethereum epochs that consists a periodDuration
-	EthSlotsPerEpoch       = uint64(32)
-	EthSlotDuration        = 12 * time.Second
-)
-
-var (
-	// DefaultGenesisTime is a time.Time variable that represents 2025/10/29 00:00:00 UTC
-	DefaultGenesisTime = time.Date(2025, 10, 29, 0, 0, 0, 0, time.UTC)
-)
-
-type PeriodRunnerBuilder func(cfg PeriodRunnerConfig) PeriodRunner
-
-// PeriodRunner drives onNewPeriod notifications.
-type PeriodRunner interface {
-	SetHandler(PeriodCallback)
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
-	PeriodForTime(t time.Time) (uint64, time.Time)
-}
-
-// PeriodInfo represents an SBCP period.
-type PeriodInfo struct {
-	PeriodID  uint64
-	StartedAt time.Time
-	Duration  time.Duration
-}
-
-// PeriodCallback is a hook invoked by PeriodRunner whenever a new SBCP periodDuration starts.
-type PeriodCallback func(context.Context, PeriodInfo) error
-
-// PeriodRunnerConfig configures a PeriodRunner.
-type PeriodRunnerConfig struct {
-	Handler     PeriodCallback
-	Epochs      uint64
-	GenesisTime time.Time
-	Now         func() time.Time // Defaults to time.Now if nil
-	Logger      zerolog.Logger
-}
-
-func DefaultPeriodRunnerConfig(logger zerolog.Logger) PeriodRunnerConfig {
-	return PeriodRunnerConfig{
-		Handler:     nil,
-		Epochs:      DefaultEpochsPerPeriod,
-		GenesisTime: DefaultGenesisTime,
-		Now:         time.Now,
-		Logger:      logger.With().Str("component", "period-runner").Logger(),
-	}
-}
-
-func (p *PeriodRunnerConfig) IsEmpty() bool {
-	return p.Handler == nil &&
-		p.Epochs == 0 &&
-		p.GenesisTime.IsZero() &&
-		p.Now == nil &&
-		p.Logger.GetLevel() == zerolog.NoLevel
-}
-
-// LocalPeriodRunner implements PeriodRunner, emitting events according to a genesis time in an Ethereum epoch cadence.
-// Event is emitted whenever genesis + K * periodDuration, for K = 0,1,2,...
+// LocalPeriodRunner implements PeriodRunner, emitting events according to a genesis time in an Ethereum-epoch cadence.
+// An event is emitted at genesis + K * periodDuration, for K = 0,1,2,...
 type LocalPeriodRunner struct {
-	handler        PeriodCallback
+	// Log and lifecycle
+	log     zerolog.Logger
+	cancel  context.CancelFunc
+	started bool
+	// Handler
+	handler PeriodCallback
+	// Time management
 	periodDuration time.Duration
 	now            func() time.Time
 	genesisTime    time.Time
-	log            zerolog.Logger
-	cancel         context.CancelFunc
-	started        bool
 }
 
 // NewLocalPeriodRunner constructs a LocalPeriodRunner using local time.
 // If config.Handler is nil, SetHandler must be called before Start.
 func NewLocalPeriodRunner(cfg PeriodRunnerConfig) PeriodRunner {
 
+	// Default Now and EpochsPerPeriod
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-
-	if cfg.Epochs == 0 {
-		cfg.Epochs = DefaultEpochsPerPeriod
+	if cfg.EpochsPerPeriod == 0 {
+		cfg.EpochsPerPeriod = DefaultEpochsPerPeriod
 	}
-	period := time.Duration(cfg.Epochs) * time.Duration(EthSlotsPerEpoch) * EthSlotDuration
+	// Compute period duration
+	periodDuration := time.Duration(cfg.EpochsPerPeriod) * time.Duration(EthSlotsPerEpoch) * EthSlotDuration
 
 	return &LocalPeriodRunner{
 		handler:        cfg.Handler,
-		periodDuration: period,
+		periodDuration: periodDuration,
 		now:            cfg.Now,
 		genesisTime:    cfg.GenesisTime,
 		log:            cfg.Logger,
 	}
 }
 
+// SetHandler sets the handler to be called whenever a new period ticks.
+// It should be called before Start; otherwise Start will panic.
 func (r *LocalPeriodRunner) SetHandler(handler PeriodCallback) {
 	r.handler = handler
 }
 
-// Start begins emitting periodDuration events until the context is cancelled or Stop is called.
+// Start begins emitting period events until the context is canceled or Stop is called.
 func (r *LocalPeriodRunner) Start(ctx context.Context) error {
 	if r.handler == nil {
 		panic("manager: LocalPeriodRunner requires a handler to start")
@@ -139,6 +87,8 @@ func (r *LocalPeriodRunner) Stop(context.Context) error {
 	return nil
 }
 
+// run is invoked in Start and calls the handler whenever there is a new period.
+// Track lastEmitted to ensure all missed periods are emitted up to the latest one.
 func (r *LocalPeriodRunner) run(ctx context.Context) {
 	now := r.now()
 	var lastEmitted uint64
@@ -202,6 +152,7 @@ func (r *LocalPeriodRunner) run(ctx context.Context) {
 	}
 }
 
+// emit triggers the handler with the provided PeriodInfo.
 func (r *LocalPeriodRunner) emit(ctx context.Context, periodID uint64, startedAt time.Time) error {
 	info := PeriodInfo{
 		PeriodID:  periodID,
@@ -216,6 +167,7 @@ func (r *LocalPeriodRunner) emit(ctx context.Context, periodID uint64, startedAt
 	return nil
 }
 
+// PeriodForTime returns the period ID and the corresponding period start time for the given timestamp.
 func (r *LocalPeriodRunner) PeriodForTime(t time.Time) (uint64, time.Time) {
 	if t.Before(r.genesisTime) {
 		return 0, r.genesisTime
@@ -227,6 +179,7 @@ func (r *LocalPeriodRunner) PeriodForTime(t time.Time) (uint64, time.Time) {
 	return currentPeriod, start
 }
 
+// periodStart returns the start time for the given period ID.
 func (r *LocalPeriodRunner) periodStart(periodID uint64) time.Time {
 	return r.genesisTime.Add(time.Duration(periodID) * r.periodDuration)
 }

@@ -1,4 +1,4 @@
-package manager
+package periodrunner
 
 import (
 	"context"
@@ -38,9 +38,9 @@ func TestLocalPeriodRunnerInitialEmissionFromGenesis(t *testing.T) {
 			events <- info
 			return nil
 		},
-		Epochs:      epochs,
-		GenesisTime: genesis,
-		Now:         now,
+		EpochsPerPeriod: epochs,
+		GenesisTime:     genesis,
+		Now:             now,
 	})
 	runner.(*LocalPeriodRunner).periodDuration = period
 
@@ -100,9 +100,9 @@ func TestLocalPeriodRunnerWaitsForGenesis(t *testing.T) {
 			events <- info
 			return nil
 		},
-		Epochs:      1,
-		GenesisTime: genesis,
-		Now:         now,
+		EpochsPerPeriod: 1,
+		GenesisTime:     genesis,
+		Now:             now,
 	})
 	runner.(*LocalPeriodRunner).periodDuration = period
 
