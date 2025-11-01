@@ -51,9 +51,8 @@ type APIServerConfig struct {
 
 // ConsensusConfig holds consensus configuration
 type ConsensusConfig struct {
-	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout" env:"CONSENSUS_TIMEOUT"`
-	// Optional: present for completeness; leader app always runs in leader mode
-	Role string `mapstructure:"role"    yaml:"role"    env:"CONSENSUS_ROLE"`
+	InstanceTimeout time.Duration `mapstructure:"instance_timeout" yaml:"instance_timeout" env:"CONSENSUS_INSTANCE_TIMEOUT"`
+	EpochPerPediods uint64        `mapstructure:"epochs_per_period" yaml:"epochs_per_period" env:"CONSENSUS_EPOCHS_PER_PERIOD"`
 }
 
 // MetricsConfig holds metrics configuration
@@ -225,7 +224,7 @@ func (c *Config) validateServer() error {
 }
 
 func (c *Config) validateConsensus() error {
-	if c.Consensus.Timeout <= 0 {
+	if c.Consensus.InstanceTimeout <= 0 {
 		return fmt.Errorf("consensus.timeout must be positive")
 	}
 	return nil
@@ -289,8 +288,7 @@ func Default() *Config {
 			MaxHeaderBytes:    1 << 20,
 		},
 		Consensus: ConsensusConfig{
-			Timeout: 60 * time.Second,
-			Role:    "leader",
+			InstanceTimeout: 60 * time.Second,
 		},
 		Metrics: MetricsConfig{
 			Enabled: true,

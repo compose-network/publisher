@@ -55,9 +55,6 @@ func (c *Config) apply() error {
 	if c.Queue == nil {
 		return errors.New("sbcp-controller: queue is required")
 	}
-	if c.InstanceStarter == nil {
-		return errors.New("sbcp-controller: instance starter is required")
-	}
 	if c.Now == nil {
 		c.Now = time.Now
 	}

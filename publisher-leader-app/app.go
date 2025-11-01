@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,12 +13,10 @@ import (
 
 	apisrv "github.com/compose-network/publisher/server/api"
 	apimw "github.com/compose-network/publisher/server/api/middleware"
+	publishermanager "github.com/compose-network/publisher/x/publisher-manager"
 	"github.com/compose-network/publisher/x/superblock"
-	sbadapter "github.com/compose-network/publisher/x/superblock/adapter"
-	"github.com/compose-network/publisher/x/superblock/proofs"
 	"github.com/compose-network/publisher/x/superblock/proofs/collector"
 	proofshttp "github.com/compose-network/publisher/x/superblock/proofs/http"
-	proofclient "github.com/compose-network/publisher/x/superblock/proofs/prover"
 	"github.com/compose-network/publisher/x/superblock/queue"
 	"github.com/compose-network/publisher/x/superblock/slot"
 	"github.com/compose-network/publisher/x/transport"
@@ -31,16 +28,19 @@ import (
 	"github.com/compose-network/publisher/publisher-leader-app/config"
 	"github.com/compose-network/publisher/x/auth"
 	"github.com/compose-network/publisher/x/consensus"
-	"github.com/compose-network/publisher/x/publisher"
+	//"github.com/compose-network/publisher/x/publisher"
 	sreg "github.com/compose-network/publisher/x/superblock/registry"
 	"github.com/compose-network/publisher/x/transport/tcp"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // App represents the shared publisher application
 type App struct {
-	cfg       *config.Config
-	publisher publisher.Publisher
+	cfg *config.Config
+	//publisher publisher.Publisher
+	pmgr      publishermanager.PublisherManager
 	log       zerolog.Logger
+	tcpServer transport.Server
 
 	// API server (HTTP)
 	apiServer *apisrv.Server
@@ -117,7 +117,7 @@ func (a *App) initialize(ctx context.Context) error {
 	consensusConfig := consensus.Config{
 		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
 		IsLeader: true,
-		Timeout:  a.cfg.Consensus.Timeout,
+		Timeout:  a.cfg.Consensus.InstanceTimeout,
 		Role:     consensus.Leader,
 	}
 	coordinator := consensus.New(a.log, consensusConfig)
@@ -171,40 +171,61 @@ func (a *App) initialize(ctx context.Context) error {
 
 	collectorSvc := collector.New(ctx, a.log)
 
-	var proverClient proofs.ProverClient
-	if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
-		pc, err := proofclient.NewHTTPClient(a.cfg.Proofs.Prover.BaseURL, nil, a.log)
-		if err != nil {
-			return fmt.Errorf("failed to create prover client: %w", err)
-		}
-		proverClient = pc
-	}
+	//var proverClient proofs.ProverClient
+	//if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
+	//	pc, err := proofclient.NewHTTPClient(a.cfg.Proofs.Prover.BaseURL, nil, a.log)
+	//	if err != nil {
+	//		return fmt.Errorf("failed to create prover client: %w", err)
+	//	}
+	//	proverClient = pc
+	//}
 
-	pub, err := publisher.New(
-		a.log,
-		publisher.WithTransport(tcpServer),
-		publisher.WithConsensus(coordinator),
-		publisher.WithTimeout(a.cfg.Consensus.Timeout),
-		publisher.WithMetrics(a.cfg.Metrics.Enabled),
+	//pub, err := publisher.New(
+	//	a.log,
+	//	publisher.WithTransport(tcpServer),
+	//	publisher.WithConsensus(coordinator),
+	//	publisher.WithTimeout(a.cfg.Consensus.InstanceTimeout),
+	//	publisher.WithMetrics(a.cfg.Metrics.Enabled),
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("failed to create publisher: %w", err)
+	//}
+	//
+	//sbPub, err := sbadapter.WrapPublisher(
+	//	pub,
+	//	coordinatorConfig,
+	//	a.log,
+	//	coordinator,
+	//	tcpServer,
+	//	collectorSvc,
+	//	proverClient,
+	//	regSvc,
+	//)
+	//if err != nil {
+	//	return fmt.Errorf("failed to create superblock publisher: %w", err)
+	//}
+	//a.publisher = sbPub
+
+	publisherMgr, err := publishermanager.New(
+		publishermanager.Config{
+			Context:         ctx,
+			Logger:          a.log,
+			Broadcaster:     tcpServer,
+			InstanceTimeout: a.cfg.Consensus.InstanceTimeout,
+			EpochsPerPeriod: a.cfg.Consensus.EpochPerPediods,
+		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create publisher: %w", err)
+		return fmt.Errorf("failed to create publisher manager: %w", err)
 	}
-
-	sbPub, err := sbadapter.WrapPublisher(
-		pub,
-		coordinatorConfig,
-		a.log,
-		coordinator,
-		tcpServer,
-		collectorSvc,
-		proverClient,
-		regSvc,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create superblock publisher: %w", err)
+	if publisherMgr == nil {
+		return fmt.Errorf("failed to create publisher manager: nil instance returned")
 	}
-	a.publisher = sbPub
+	a.pmgr = publisherMgr
+	a.tcpServer = tcpServer
+	a.tcpServer.SetHandler(func(ctx context.Context, from string, msg *pb.Message) error {
+		return a.pmgr.HandleMessage(ctx, from, msg)
+	})
 
 	// API server (shared HTTP surface)
 	apiCfg := apisrv.Config{
@@ -245,8 +266,19 @@ func (a *App) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
 
-	if err := a.publisher.Start(runCtx); err != nil {
-		return fmt.Errorf("failed to start publisher: %w", err)
+	//if a.publisher != nil {
+	//	if err := a.publisher.Start(runCtx); err != nil {
+	//		return fmt.Errorf("failed to start publisher: %w", err)
+	//	}
+	//}
+	if a.tcpServer != nil {
+		if err := a.tcpServer.Start(runCtx); err != nil {
+			return fmt.Errorf("failed to start TCP server: %w", err)
+		}
+	}
+
+	if err := a.pmgr.Start(runCtx); err != nil {
+		return fmt.Errorf("failed to start publisher manager: %w", err)
 	}
 
 	go a.metricsReporter(runCtx)
@@ -300,9 +332,25 @@ func (a *App) shutdown() error {
 	}
 
 	// Shutdown publisher
-	if err := a.publisher.Stop(shutdownCtx); err != nil {
-		a.log.Error().Err(err).Msg("Publisher shutdown error")
-		return err
+	//if a.publisher != nil {
+	//	if err := a.publisher.Stop(shutdownCtx); err != nil {
+	//		a.log.Error().Err(err).Msg("Publisher shutdown error")
+	//		return err
+	//	}
+	//}
+
+	var shutdownErr error
+	if err := a.pmgr.Stop(shutdownCtx); err != nil {
+		a.log.Error().Err(err).Msg("Publisher manager shutdown error")
+		shutdownErr = err
+	}
+	if a.tcpServer != nil {
+		if err := a.tcpServer.Stop(shutdownCtx); err != nil {
+			a.log.Error().Err(err).Msg("TCP server shutdown error")
+			if shutdownErr == nil {
+				shutdownErr = err
+			}
+		}
 	}
 
 	// Run shutdown functions
@@ -313,7 +361,7 @@ func (a *App) shutdown() error {
 	}
 
 	a.log.Info().Msg("Graceful shutdown complete")
-	return nil
+	return shutdownErr
 }
 
 // handleHealth responds to health check requests.
@@ -324,62 +372,70 @@ func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleReady(w http.ResponseWriter, r *http.Request) {
-	stats := a.publisher.GetStats()
-	connections := stats["active_connections"].(int)
+	return
 
-	status := "ready"
-	code := http.StatusOK
-
-	if connections == 0 {
-		status = "no_connections"
-		code = http.StatusServiceUnavailable
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	fmt.Fprintf(w, `{"status":"%s","connections":%d}`, status, connections)
+	//stats := a.publisher.GetStats()
+	//connections := stats["active_connections"].(int)
+	//
+	//status := "ready"
+	//code := http.StatusOK
+	//
+	//if connections == 0 {
+	//	status = "no_connections"
+	//	code = http.StatusServiceUnavailable
+	//}
+	//
+	//w.Header().Set("Content-Type", "application/json")
+	//w.WriteHeader(code)
+	//fmt.Fprintf(w, `{"status":"%s","connections":%d}`, status, connections)
 }
 
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
-	stats := a.publisher.GetStats()
-	stats["app_version"] = Version
-	stats["app_build_time"] = BuildTime
-	stats["app_git_commit"] = GitCommit
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	return
+	//
+	//stats := a.publisher.GetStats()
+	//stats["app_version"] = Version
+	//stats["app_build_time"] = BuildTime
+	//stats["app_git_commit"] = GitCommit
+	//
+	//w.Header().Set("Content-Type", "application/json")
+	//json.NewEncoder(w).Encode(stats)
 }
 
 // GetStats returns application statistics.
 func (a *App) GetStats() map[string]interface{} {
-	stats := a.publisher.GetStats()
-	stats["app_version"] = Version
-	stats["app_build_time"] = BuildTime
-	stats["app_git_commit"] = GitCommit
-	return stats
+	return nil
+	//stats := a.publisher.GetStats()
+	//stats["app_version"] = Version
+	//stats["app_build_time"] = BuildTime
+	//stats["app_git_commit"] = GitCommit
+	//return stats
 }
 
 // metricsReporter periodically reports application statistics.
 func (a *App) metricsReporter(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			stats := a.GetStats()
-
-			a.log.Info().
-				Str("mode", "leader").
-				Int("active_connections", stats["active_connections"].(int)).
-				Uint64("messages_processed", stats["messages_processed"].(uint64)).
-				Uint64("broadcasts_sent", stats["broadcasts_sent"].(uint64)).
-				Int("chains_count", stats["chains_count"].(int)).
-				Int("active_2pc_transactions", stats["active_2pc_transactions"].(int)).
-				Float64("uptime_seconds", stats["uptime_seconds"].(float64)).
-				Msg("Shared Publisher statistics")
-		}
-	}
+	//ticker := time.NewTicker(30 * time.Second)
+	//defer ticker.Stop()
+	//
+	//for {
+	//	select {
+	//	case <-ctx.Done():
+	//		return
+	//	case <-ticker.C:
+	//		if a.publisher == nil {
+	//			continue
+	//		}
+	//		stats := a.GetStats()
+	//
+	//		a.log.Info().
+	//			Str("mode", "leader").
+	//			Int("active_connections", stats["active_connections"].(int)).
+	//			Uint64("messages_processed", stats["messages_processed"].(uint64)).
+	//			Uint64("broadcasts_sent", stats["broadcasts_sent"].(uint64)).
+	//			Int("chains_count", stats["chains_count"].(int)).
+	//			Int("active_2pc_transactions", stats["active_2pc_transactions"].(int)).
+	//			Float64("uptime_seconds", stats["uptime_seconds"].(float64)).
+	//			Msg("Shared Publisher statistics")
+	//	}
+	//}
 }

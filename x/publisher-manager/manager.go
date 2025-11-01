@@ -43,14 +43,17 @@ func New(cfg Config) (PublisherManager, error) {
 		cfg.Broadcaster,
 	)
 
-	periodRunner := periodrunner.NewLocalPeriodRunner(
-		periodrunner.DefaultPeriodRunnerConfig(cfg.Logger.With().Str("component", "period-runner").Logger()),
-	)
+	periodRunnerConfig := periodrunner.DefaultPeriodRunnerConfig(cfg.Logger.With().Str("component", "period-runner").Logger())
+	periodRunnerConfig.EpochsPerPeriod = cfg.EpochsPerPeriod
+
+	periodRunner := periodrunner.NewLocalPeriodRunner(periodRunnerConfig)
 	currentPeriodID, _ := periodRunner.PeriodForTime(time.Now())
 
-	scpSupervisor := scpsupervisor.New(scpsupervisor.DefaultConfig(
+	scpsupervisorConfig := scpsupervisor.DefaultConfig(
 		cfg.Logger.With().Str("component", "scp-instance-scpSupervisor").Logger(),
-		msgr))
+		msgr)
+	scpsupervisorConfig.InstanceTimeout = cfg.InstanceTimeout
+	scpSupervisor := scpsupervisor.New(scpsupervisorConfig)
 
 	sbcpCtrl, err := sbcpcontroller.New(sbcpcontroller.DefaultConfig(
 		cfg.Logger.With().Str("component", "sbcp-sbcpController").Logger(),
