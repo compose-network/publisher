@@ -4,6 +4,7 @@ go 1.24.5
 
 require (
 	github.com/compose-network/registry v0.0.0-20251019130932-f9a7f7dd297b
+	github.com/compose-network/specs/compose v0.0.0-20251101114235-09620b435316
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.1
@@ -13,7 +14,8 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.10
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -64,5 +66,4 @@ require (
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
