@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Config contains all dependencies for Supervisor.
+// Config contains all dependencies for SCPSupervisor.
 type Config struct {
 	Logger zerolog.Logger
 
@@ -37,7 +37,7 @@ type Config struct {
 // DefaultConfig returns a config with sensible defaults for optional fields.
 func DefaultConfig(logger zerolog.Logger, network scp.PublisherNetwork) Config {
 	return Config{
-		Logger:           logger.With().Str("component", "scp-instance-supervisor").Logger(),
+		Logger:           logger.With().Str("component", "scp-instance-scpSupervisor").Logger(),
 		Factory:          scp.NewPublisherInstance,
 		Network:          network,
 		TimerFactory:     SystemTimerFactory{},

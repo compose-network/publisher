@@ -81,6 +81,47 @@ type noopNetwork struct{}
 func (noopNetwork) SendStartInstance(compose.Instance)   {}
 func (noopNetwork) SendDecided(compose.InstanceID, bool) {}
 
+type stubTimer struct {
+	mu        sync.Mutex
+	stopCalls int
+}
+
+func (t *stubTimer) Stop() bool {
+	t.mu.Lock()
+	t.stopCalls++
+	t.mu.Unlock()
+	return true
+}
+
+func (t *stubTimer) Stops() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.stopCalls
+}
+
+type stubTimerFactory struct {
+	mu      sync.Mutex
+	timers  []*stubTimer
+	trigger []func()
+}
+
+func (f *stubTimerFactory) AfterFunc(_ time.Duration, fn func()) Timer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	timer := &stubTimer{}
+	f.timers = append(f.timers, timer)
+	f.trigger = append(f.trigger, fn)
+	return timer
+}
+
+func (f *stubTimerFactory) Timers() []*stubTimer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*stubTimer, len(f.timers))
+	copy(out, f.timers)
+	return out
+}
+
 type fakeClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -163,4 +204,54 @@ func TestHistoryPrunesByRetention(t *testing.T) {
 	require.Len(t, hist, 2)
 	require.Equal(t, byte(0xB2), hist[0].Instance.ID[0])
 	require.Equal(t, byte(0xB3), hist[1].Instance.ID[0])
+}
+
+func TestStopFinalizesActiveInstances(t *testing.T) {
+	t.Parallel()
+
+	clock := newFakeClock(time.Unix(0, 0))
+	factory := &stubSCPFactory{}
+	timerFactory := &stubTimerFactory{}
+
+	cfg := DefaultConfig(zerolog.Nop(), noopNetwork{})
+	cfg.Factory = factory.New
+	cfg.TimerFactory = timerFactory
+	cfg.InstanceTimeout = time.Second
+	cfg.Now = clock.Now
+	sup := New(cfg)
+
+	var finalizedMu sync.Mutex
+	finalized := make([]compose.Instance, 0, 1)
+	sup.SetOnFinalizeHook(func(instance compose.Instance) {
+		finalizedMu.Lock()
+		finalized = append(finalized, instance)
+		finalizedMu.Unlock()
+	})
+
+	ctx := context.Background()
+	var id compose.InstanceID
+	id[0] = 0xCC
+	instance := compose.Instance{ID: id}
+	queued := &queue.QueuedXTRequest{SubmittedAt: clock.Now()}
+	require.NoError(t, sup.StartInstance(ctx, queued, instance))
+
+	require.NoError(t, sup.Stop(ctx))
+
+	finalizedMu.Lock()
+	require.Len(t, finalized, 1)
+	require.Equal(t, instance.ID, finalized[0].ID)
+	finalizedMu.Unlock()
+
+	hist := sup.History()
+	require.Len(t, hist, 1)
+	require.Equal(t, DecisionSourceTimeout, hist[0].Source)
+	require.False(t, hist[0].Accepted)
+
+	timers := timerFactory.Timers()
+	require.Len(t, timers, 1)
+	require.GreaterOrEqual(t, timers[0].Stops(), 1)
+
+	// Second stop should be a no-op
+	require.NoError(t, sup.Stop(ctx))
+	require.GreaterOrEqual(t, timers[0].Stops(), 1)
 }

@@ -10,9 +10,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Supervisor manages multiple SCP instances.
+// SCPSupervisor manages multiple SCP instances.
 // The supervisor holds an OnFinalizeHook that is called whenever an instance finalizes.
-type Supervisor interface {
+type SCPSupervisor interface {
 	// StartInstance attempts to start a new SCP instance (with SCPFactory), returning an error if an instance with the same ID is already active.
 	StartInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) error
 	// HandleVote processes an incoming vote for an active SCP instance.
@@ -20,6 +20,8 @@ type Supervisor interface {
 	// History provides a list of completed SCP instances. Note that this list is cleaned up over time.
 	History() []CompletedInstance
 	SetOnFinalizeHook(OnFinalizeHook)
+	// Stop stops the scpSupervisor, best-effort finalizing active instances.
+	Stop(ctx context.Context) error
 }
 
 // OnFinalizeHook is called when an SCP instance finalizes.

@@ -14,14 +14,14 @@ import (
 )
 
 // ErrInstanceAlreadyActive indicates an SCP instance with the same InstanceID is active.
-var ErrInstanceAlreadyActive = errors.New("instance-supervisor: scp instance already active")
+var ErrInstanceAlreadyActive = errors.New("instance-scpSupervisor: scp instance already active")
 
 // ErrInstanceNotFound indicates that an SCP instance was not found.
-var ErrInstanceNotFound = errors.New("instance-supervisor: instance not found")
+var ErrInstanceNotFound = errors.New("instance-scpSupervisor: instance not found")
 
-// supervisor implements Supervisor, managing the lifecycle of multiple SCP instances (start, votes, timeout, and finalization).
+// scpSupervisor implements SCPSupervisor, managing the lifecycle of multiple SCP instances (start, votes, timeout, and finalization).
 // Whenever an instance finalizes (or can't be properly started), the OnFinalize hook is invoked.
-type supervisor struct {
+type scpSupervisor struct {
 	mu     sync.RWMutex
 	logger zerolog.Logger
 
@@ -46,10 +46,10 @@ type supervisor struct {
 	OnFinalize OnFinalizeHook
 }
 
-// New creates a Supervisor using the provided config.
+// New creates a SCPSupervisor using the provided config.
 // Required fields: Factory, Network.
-func New(cfg Config) Supervisor {
-	return &supervisor{
+func New(cfg Config) SCPSupervisor {
+	return &scpSupervisor{
 		mu:     sync.RWMutex{},
 		logger: cfg.Logger,
 		// Dependencies
@@ -70,14 +70,14 @@ func New(cfg Config) Supervisor {
 	}
 }
 
-func (s *supervisor) SetOnFinalizeHook(hook OnFinalizeHook) {
+func (s *scpSupervisor) SetOnFinalizeHook(hook OnFinalizeHook) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.OnFinalize = hook
 }
 
 // StartInstance creates and runs a new SCP instance
-func (s *supervisor) StartInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) error {
+func (s *scpSupervisor) StartInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -116,7 +116,7 @@ func (s *supervisor) StartInstance(ctx context.Context, queued *queue.QueuedXTRe
 }
 
 // HandleVote routes a vote to the appropriate instance and checks for finalization.
-func (s *supervisor) HandleVote(ctx context.Context, vote *pb.Vote) error {
+func (s *scpSupervisor) HandleVote(ctx context.Context, vote *pb.Vote) error {
 	s.mu.RLock()
 	key := instanceIDString(vote.InstanceId)
 	entry := s.active[key]
@@ -135,7 +135,7 @@ func (s *supervisor) HandleVote(ctx context.Context, vote *pb.Vote) error {
 
 // handleTimeout is invoked after an instance timeout.
 // It calls the Timeout method and tries to finalize.
-func (s *supervisor) handleTimeout(entry *ActiveInstance) {
+func (s *scpSupervisor) handleTimeout(entry *ActiveInstance) {
 	ctx := context.Background()
 	if err := entry.Runner.Timeout(); err != nil {
 		s.logger.Error().Err(err).Str("instance_id", entry.Key).Msg("timeout callback failed")
@@ -145,7 +145,7 @@ func (s *supervisor) handleTimeout(entry *ActiveInstance) {
 }
 
 // tryFinalize checks if the instance has finalized and, if so, performs cleanup and notification.
-func (s *supervisor) tryFinalize(ctx context.Context, entry *ActiveInstance, source DecisionSource) {
+func (s *scpSupervisor) tryFinalize(ctx context.Context, entry *ActiveInstance, source DecisionSource) {
 	state := entry.Runner.DecisionState()
 	if state == compose.DecisionStatePending {
 		return
@@ -178,7 +178,7 @@ func (s *supervisor) tryFinalize(ctx context.Context, entry *ActiveInstance, sou
 }
 
 // History returns a shallow copy of decisions.
-func (s *supervisor) History() []CompletedInstance {
+func (s *scpSupervisor) History() []CompletedInstance {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]CompletedInstance, len(s.history))
@@ -186,9 +186,35 @@ func (s *supervisor) History() []CompletedInstance {
 	return out
 }
 
+// Stop stops the scpSupervisor, best-effort finalizing active instances.
+func (s *scpSupervisor) Stop(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	s.mu.RLock()
+	active := make([]*ActiveInstance, 0, len(s.active))
+	for _, entry := range s.active {
+		active = append(active, entry)
+	}
+	s.mu.RUnlock()
+
+	for _, entry := range active {
+		if entry.Timer != nil {
+			entry.Timer.Stop()
+		}
+		if err := entry.Runner.Timeout(); err != nil {
+			s.logger.Error().Err(err).Str("instance_id", entry.Key).Msg("failed to trigger timeout during stop")
+		}
+		s.tryFinalize(ctx, entry, DecisionSourceTimeout)
+	}
+
+	return nil
+}
+
 // pruneHistoryLocked prunes history both by max size and oldness.
 // Caller must hold s.mu.
-func (s *supervisor) pruneHistoryLocked() {
+func (s *scpSupervisor) pruneHistoryLocked() {
 	if len(s.history) == 0 {
 		return
 	}
