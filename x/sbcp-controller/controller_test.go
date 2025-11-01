@@ -306,3 +306,46 @@ func newTestQueue() queue.XTRequestQueue {
 	cfg.RequestExpiration = 0
 	return queue.NewMemoryXTRequestQueue(cfg)
 }
+
+func TestStopPreventsFurtherProcessing(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pub := newStubPublisher()
+	starter := newStubInstanceStarter()
+	q := newTestQueue()
+
+	logger := zerolog.New(io.Discard).Level(zerolog.Disabled)
+	cfg := Config{Logger: logger, Publisher: pub, Queue: q, InstanceStarter: starter}
+
+	ctrl, err := New(cfg)
+	require.NoError(t, err)
+
+	pub.allowStart = false
+	require.NoError(t, ctrl.EnqueueXTRequest(ctx, newTestXTRequest(13, 14), "peer"))
+	size, err := q.Size(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, size)
+
+	require.NoError(t, ctrl.Stop(ctx))
+
+	require.ErrorIs(t, ctrl.EnqueueXTRequest(ctx, newTestXTRequest(15, 16), "peer"), ErrStopped)
+
+	pub.allowStart = true
+	pub.setStartInstanceResults([]startInstanceResult{{instance: newInstance(0x33)}})
+
+	callsBefore := starter.calls()
+	require.NoError(t, ctrl.TryProcessQueue(ctx))
+	require.Equal(t, callsBefore, starter.calls())
+
+	require.NoError(t, ctrl.NotifyInstanceDecided(ctx, newInstance(0x33)))
+	require.Equal(t, callsBefore, starter.calls())
+	require.Equal(t, 1, pub.decideInstanceCalls())
+
+	sizeAfter, err := q.Size(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, sizeAfter)
+
+	// Stop is idempotent
+	require.NoError(t, ctrl.Stop(ctx))
+}

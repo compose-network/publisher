@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Config captures dependencies required to build a Controller.
+// Config captures dependencies required to build a SBCPController.
 type Config struct {
 	Logger zerolog.Logger
 
