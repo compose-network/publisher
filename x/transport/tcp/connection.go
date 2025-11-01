@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/auth"
 	"github.com/compose-network/publisher/x/transport"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 )

@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/transport"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Server implements high-performance TCP server

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 
 	"github.com/compose-network/publisher/x/transport"

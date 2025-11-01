@@ -3,7 +3,7 @@ package queue
 import (
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 type QueuedXTRequest struct {

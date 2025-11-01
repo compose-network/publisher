@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/auth"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/ethereum/go-ethereum/common"
 )
 
