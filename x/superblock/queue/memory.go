@@ -40,14 +40,14 @@ func (pq *PriorityQueue) Pop() interface{} {
 type MemoryXTRequestQueue struct {
 	mu       sync.RWMutex
 	queue    PriorityQueue
-	maxSize  int
 	heapInit bool
+	config   Config
 }
 
 func NewMemoryXTRequestQueue(config Config) *MemoryXTRequestQueue {
 	return &MemoryXTRequestQueue{
-		queue:   make(PriorityQueue, 0),
-		maxSize: config.MaxSize,
+		queue:  make(PriorityQueue, 0),
+		config: config,
 	}
 }
 
@@ -62,8 +62,8 @@ func (q *MemoryXTRequestQueue) Enqueue(_ context.Context, request *QueuedXTReque
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if len(q.queue) >= q.maxSize {
-		return fmt.Errorf("queue full: %d/%d", len(q.queue), q.maxSize)
+	if len(q.queue) >= q.config.MaxSize {
+		return fmt.Errorf("queue full: %d/%d", len(q.queue), q.config.MaxSize)
 	}
 
 	q.ensureHeap()
@@ -127,21 +127,23 @@ func (q *MemoryXTRequestQueue) RemoveExpired(context.Context) (int, error) {
 	return removed, nil
 }
 
-func (q *MemoryXTRequestQueue) RequeueForSlot(_ context.Context, requests []*QueuedXTRequest) error {
+func (q *MemoryXTRequestQueue) Requeue(_ context.Context, request *QueuedXTRequest) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	for _, request := range requests {
-		if len(q.queue) >= q.maxSize {
-			return fmt.Errorf("queue full during requeue: %d/%d", len(q.queue), q.maxSize)
-		}
-
-		request.Attempts++
-		request.Priority -= int64(request.Attempts * 10) // Lower priority for retries
-
-		q.queue = append(q.queue, request)
+	if len(q.queue) >= q.config.MaxSize {
+		return fmt.Errorf("queue full during requeue: %d/%d", len(q.queue), q.config.MaxSize)
 	}
+
+	request.Attempts++
+	request.Priority -= int64(request.Attempts * 10) // Lower priority for retries
+
+	q.queue = append(q.queue, request)
 
 	q.heapInit = false
 	return nil
+}
+
+func (q *MemoryXTRequestQueue) Config() Config {
+	return q.config
 }

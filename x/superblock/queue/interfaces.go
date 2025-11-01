@@ -10,5 +10,6 @@ type XTRequestQueue interface {
 	Peek(ctx context.Context) (*QueuedXTRequest, error)
 	Size(ctx context.Context) (int, error)
 	RemoveExpired(ctx context.Context) (int, error)
-	RequeueForSlot(ctx context.Context, requests []*QueuedXTRequest) error
+	Requeue(ctx context.Context, request *QueuedXTRequest) error
+	Config() Config
 }
