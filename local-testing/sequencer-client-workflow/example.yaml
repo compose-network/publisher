@@ -1,0 +1,20 @@
+sp_addr: 127.0.0.1:8089
+client_id: workflow-client
+wait_window: 5s
+actions:
+  - type: submit-xt
+    chains:
+      - chain_id: 1
+        random_bytes: 128
+      - chain_id: 2
+        random_count: 2
+  - type: send-vote
+    chain_id: 1
+    vote: true
+    timeout: 1s
+  - type: send-vote
+    chain_id: 2
+    vote: true
+    timeout: 1s
+  - type: wait
+    duration: 30s

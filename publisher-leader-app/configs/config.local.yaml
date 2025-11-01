@@ -1,0 +1,25 @@
+server:
+  listen_addr: ":8089"
+
+api:
+  listen_addr: ":8081"
+
+metrics:
+  enabled: true
+  port: 8081
+  path: /metrics
+
+consensus:
+  instance_timeout: 3s
+  epochs_per_period: 1
+
+l1:
+  enabled: false          # Skip L1 publishing for local testing
+
+proofs:
+  enabled: false          # Disable prover pipeline locally
+  require_proof: false
+
+# Enable only if you want authenticated handshakes (recommended for protocol testing)
+auth:
+  enabled: false
