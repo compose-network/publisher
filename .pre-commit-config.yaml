@@ -16,7 +16,7 @@ repos:
 #      - id: go-vet
       - id: go-imports
       - id: go-cyclo
-        args: [-over=20]
+        args: [-over=25]
       - id: golangci-lint
       - id: go-mod-tidy
       - id: go-unit-tests

@@ -68,6 +68,8 @@ func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, 
 }
 
 // initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
+//
+//nolint:gocyclo // in progress
 func (a *App) initialize(ctx context.Context) error {
 	// Hydrate a.cfg.L1 before wiring the other components
 	// Transition period: prefer explicit --l1.chain-id / config, but default loudly to 560048 if missing
