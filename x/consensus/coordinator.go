@@ -22,11 +22,11 @@ type coordinator struct {
 	metrics      MetricsRecorder
 	log          zerolog.Logger
 
-	// Track committed xTs already sent with a block to avoid duplicates
 	sentMu  sync.Mutex
 	sentMap map[string]bool
 
-	// Lifecycle management
+	circBuffer *circMessageBuffer
+
 	started      atomic.Bool
 	stopped      atomic.Bool
 	stopCh       chan struct{}
@@ -55,6 +55,7 @@ func NewWithMetrics(log zerolog.Logger, config Config, metrics MetricsRecorder) 
 		metrics:      metrics,
 		log:          logger,
 		sentMap:      make(map[string]bool),
+		circBuffer:   newCircMessageBuffer(logger),
 	}
 }
 
@@ -140,7 +141,6 @@ func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *
 		return err
 	}
 
-	// Timeout only for leader; followers rely on the SP decision
 	if c.config.Role == Leader {
 		state.Timer = time.AfterFunc(c.config.Timeout, func() {
 			c.handleTimeout(xtID)
@@ -155,7 +155,8 @@ func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *
 		Dur("timeout", c.config.Timeout).
 		Msg("Started 2PC transaction")
 
-	// Invoke start callback
+	c.circBuffer.ProcessBuffered(xtID, state, c.log)
+
 	c.callbackMgr.InvokeStart(ctx, from, xtReq)
 
 	return nil
@@ -295,9 +296,12 @@ func (c *coordinator) GetState(xtID *pb.XtID) (*TwoPCState, bool) {
 // RecordCIRCMessage records a CIRC message for a transaction
 func (c *coordinator) RecordCIRCMessage(circMessage *pb.CIRCMessage) error {
 	xtID := circMessage.XtId
+	xtIDHex := xtID.Hex()
+
 	state, exists := c.stateManager.GetState(xtID)
 	if !exists {
-		return fmt.Errorf("transaction %s not found", xtID.Hex())
+		c.circBuffer.Add(circMessage)
+		return nil
 	}
 
 	sourceChainID := ChainKeyBytes(circMessage.SourceChain)
@@ -306,20 +310,15 @@ func (c *coordinator) RecordCIRCMessage(circMessage *pb.CIRCMessage) error {
 	defer state.mu.Unlock()
 
 	if _, isParticipant := state.ParticipatingChains[sourceChainID]; !isParticipant {
-		return fmt.Errorf("chain %s not participating in transaction %s", sourceChainID, xtID.Hex())
+		return fmt.Errorf("chain %s not participating in transaction %s", sourceChainID, xtIDHex)
 	}
 
-	// Add message to queue
-	messages, ok := state.CIRCMessages[sourceChainID]
-	if !ok {
-		messages = make([]*pb.CIRCMessage, 0)
-	}
-	messages = append(messages, circMessage)
-	state.CIRCMessages[sourceChainID] = messages
+	messages := state.CIRCMessages[sourceChainID]
+	state.CIRCMessages[sourceChainID] = append(messages, circMessage)
 
 	sourceChainIDInt := new(big.Int).SetBytes(circMessage.SourceChain)
 	c.log.Info().
-		Str("xt_id", xtID.Hex()).
+		Str("xt_id", xtIDHex).
 		Str("chain_id", sourceChainIDInt.String()).
 		Msg("Recorded CIRC message")
 
