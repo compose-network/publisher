@@ -74,8 +74,11 @@ type SCPInstance struct {
 	ParticipatingChains [][]byte
 	Votes               map[string]bool
 	Decision            *bool
-	StartTime           time.Time
-	DecisionTime        *time.Time
+	// DecisionReason records why the decision was made (commit/abort/forced abort).
+	// This is used for diagnostics to explain inclusion/exclusion in RequestSeal.
+	DecisionReason string
+	StartTime      time.Time
+	DecisionTime   *time.Time
 }
 
 func NewStateMachine(slot Slot, log zerolog.Logger) *StateMachine {
@@ -210,7 +213,14 @@ func (sm *StateMachine) StartSCP(instance *SCPInstance) error {
 	return nil
 }
 
+// ProcessSCPDecision sets the decision for an SCP instance.
+// Prefer ProcessSCPDecisionWithReason to capture an explicit reason in logs.
 func (sm *StateMachine) ProcessSCPDecision(xtID []byte, decision bool) error {
+	return sm.ProcessSCPDecisionWithReason(xtID, decision, "decision")
+}
+
+// ProcessSCPDecisionWithReason sets the decision and records a diagnostic reason.
+func (sm *StateMachine) ProcessSCPDecisionWithReason(xtID []byte, decision bool, reason string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -220,12 +230,14 @@ func (sm *StateMachine) ProcessSCPDecision(xtID []byte, decision bool) error {
 	}
 
 	instance.Decision = &decision
+	instance.DecisionReason = reason
 	now := time.Now()
 	instance.DecisionTime = &now
 
 	sm.log.Info().
 		Str("xt_id", fmt.Sprintf("%x", xtID)).
 		Bool("decision", decision).
+		Str("reason", reason).
 		Uint64("slot", sm.currentSlot).
 		Msg("SCP decision processed")
 
@@ -259,6 +271,62 @@ func (sm *StateMachine) RequestSeal(includedXTs [][]byte) error {
 		Uint64("slot", sm.currentSlot).
 		Int("included_xts_count", len(includedXTs)).
 		Msg("Sealing slot")
+
+	// Diagnostic: enumerate inclusion/exclusion reasons per XT in this slot
+	// Build a quick set of included xt ids for containment checks
+	included := make(map[string]struct{}, len(includedXTs))
+	for _, id := range includedXTs {
+		if len(id) == 0 {
+			continue
+		}
+		included[string(id)] = struct{}{}
+	}
+
+	for _, inst := range sm.scpInstances {
+		xtIDStr := fmt.Sprintf("%x", inst.XtID)
+		if _, ok := included[string(inst.XtID)]; ok {
+			sm.log.Info().
+				Str("xt_id", xtIDStr).
+				Uint64("slot", sm.currentSlot).
+				Msg("XT included at seal")
+			continue
+		}
+
+		// Not included: log reason
+		reason := inst.DecisionReason
+		if inst.Decision == nil {
+			// This should not happen because coordinator forces abort of undecided before seal
+			if reason == "" {
+				reason = "undecided_at_seal"
+			}
+			sm.log.Warn().
+				Str("xt_id", xtIDStr).
+				Uint64("slot", sm.currentSlot).
+				Str("reason", reason).
+				Msg("XT excluded at seal (no decision)")
+			continue
+		}
+
+		// Decision exists but is false or excluded due to mismatch
+		if !*inst.Decision {
+			if reason == "" {
+				reason = "decision_abort"
+			}
+			sm.log.Info().
+				Str("xt_id", xtIDStr).
+				Uint64("slot", sm.currentSlot).
+				Str("reason", reason).
+				Msg("XT excluded at seal")
+			continue
+		}
+
+		// Decision was true but not in included set (should not happen)
+		sm.log.Warn().
+			Str("xt_id", xtIDStr).
+			Uint64("slot", sm.currentSlot).
+			Str("reason", "decision_commit_but_missing_from_included_set").
+			Msg("XT expected to be included but missing")
+	}
 
 	return nil
 }

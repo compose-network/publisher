@@ -350,8 +350,12 @@ func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, xtID
 		sp.log.Error().Err(err).Msg("Failed to broadcast decision")
 	}
 
-	// Update SBCP slot state machine
-	if err := sp.coordinator.StateMachine().ProcessSCPDecision(xtID.Hash, decision); err != nil {
+	// Update SBCP slot state machine with diagnostic reason
+	reason := "consensus_decision_commit"
+	if !decision {
+		reason = "consensus_decision_abort"
+	}
+	if err := sp.coordinator.StateMachine().ProcessSCPDecisionWithReason(xtID.Hash, decision, reason); err != nil {
 		sp.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Failed to update SCP state")
 	}
 

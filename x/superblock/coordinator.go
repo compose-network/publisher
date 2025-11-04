@@ -705,7 +705,12 @@ func (c *Coordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID
 		return err
 	}
 
-	return c.stateMachine.ProcessSCPDecision(xtID.Hash, decision)
+	// Tag reason for diagnostics
+	reason := "consensus_decision_commit"
+	if !decision {
+		reason = "consensus_decision_abort"
+	}
+	return c.stateMachine.ProcessSCPDecisionWithReason(xtID.Hash, decision, reason)
 }
 
 // forceAbortUndecided marks undecided SCP instances as decided=false and broadcasts Decided(false)
@@ -730,7 +735,7 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 			}
 
 			// Update state machine
-			if err := c.stateMachine.ProcessSCPDecision(inst.XtID, false); err != nil {
+			if err := c.stateMachine.ProcessSCPDecisionWithReason(inst.XtID, false, "forced_abort_at_seal"); err != nil {
 				c.log.Error().
 					Err(err).
 					Str("xt_id", fmt.Sprintf("%x", inst.XtID)).
@@ -860,8 +865,18 @@ func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SC
 
 func (c *Coordinator) sendRequestSealMessages(ctx context.Context, slot uint64, includedXTs [][]byte) {
 
+	// Prepare hex-encoded xT identifiers for visibility in logs
+	xtIDs := make([]string, 0, len(includedXTs))
+	for _, id := range includedXTs {
+		if len(id) == 0 {
+			continue
+		}
+		xtIDs = append(xtIDs, fmt.Sprintf("%x", id))
+	}
+
 	c.log.Info().Uint64("slot", slot).
-		Int("included_xts", len(includedXTs)).
+		Int("included_xts_count", len(xtIDs)).
+		Strs("included_xts", xtIDs).
 		Msg("Broadcasting RequestSeal message")
 
 	requestSealMsg := &pb.Message{
