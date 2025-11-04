@@ -268,8 +268,10 @@ func (c *Coordinator) slotExecutionLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.log.Warn().Msg("Context done")
 			return
 		case <-c.stopCh:
+			c.log.Warn().Msg("Channel stopped")
 			return
 		case <-ticker.C:
 			if err := c.processSlotTick(ctx); err != nil {
@@ -299,6 +301,10 @@ func (c *Coordinator) processSlotTick(ctx context.Context) error {
 
 func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint64) error {
 	if currentSlot <= c.stateMachine.GetCurrentSlot() {
+		c.log.Warn().
+			Uint64("current_slot", currentSlot).
+			Uint64("state_machine_slot", c.stateMachine.GetCurrentSlot()).
+			Msg("State machine has ahead slot; skipping start")
 		return nil
 	}
 
@@ -320,7 +326,13 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 	// L2BlocksRequest reflects actual chain heads (prevents block-number
 	// mismatches on first/early slots or after restarts).
 	for _, chainID := range activeRollups {
-		if latest, err := c.l2BlockStore.GetLatestL2Block(ctx, chainID); err == nil && latest != nil {
+		latest, err := c.l2BlockStore.GetLatestL2Block(ctx, chainID)
+		if err != nil {
+			c.log.Warn().Err(err).
+				Str("chain_id", consensus.ChainKeyBytes(chainID)).
+				Msg("Failed to get latest L2 block for chain; skipping head seed")
+		}
+		if err == nil && latest != nil {
 			c.stateMachine.SeedLastHead(latest)
 		}
 	}
@@ -350,6 +362,8 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 
 func (c *Coordinator) handleFreeState(ctx context.Context, currentSlot uint64) error {
 	if c.slot.IsSealTime() {
+		c.log.Info().Uint64("current_slot", currentSlot).
+			Msg("Seal cutover reached (in free state); requesting seal")
 		return c.requestSeal(ctx, currentSlot)
 	}
 
@@ -372,6 +386,8 @@ func (c *Coordinator) handleFreeState(ctx context.Context, currentSlot uint64) e
 
 func (c *Coordinator) handleLockedState(ctx context.Context, currentSlot uint64) error {
 	if c.slot.IsSealTime() {
+		c.log.Info().Uint64("current_slot", currentSlot).
+			Msg("Seal cutover reached (in locked state); requesting seal")
 		return c.requestSeal(ctx, currentSlot)
 	}
 
@@ -388,6 +404,9 @@ func (c *Coordinator) handleSealingState(ctx context.Context, currentSlot uint64
 	managerCurrentSlot := c.slot.GetCurrent()
 
 	if managerCurrentSlot > stateMachineSlot {
+		c.log.Warn().Uint64("current_slot", currentSlot).
+			Uint64("state_machine_slot", stateMachineSlot).
+			Msg("Slot timeout reached during sealing; handling timeout")
 		return c.handleSlotTimeout(ctx, stateMachineSlot)
 	}
 
@@ -825,6 +844,7 @@ func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SC
 	// Check if transaction already exists in consensus layer
 	xtID, err := instance.Request.XtID()
 	if err != nil {
+		c.log.Error().Err(err).Str("xt_id", xtIDStr).Msg("Failed to compute XT ID for SCP start")
 		return
 	}
 
@@ -839,6 +859,11 @@ func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SC
 }
 
 func (c *Coordinator) sendRequestSealMessages(ctx context.Context, slot uint64, includedXTs [][]byte) {
+
+	c.log.Info().Uint64("slot", slot).
+		Int("included_xts", len(includedXTs)).
+		Msg("Broadcasting RequestSeal message")
+
 	requestSealMsg := &pb.Message{
 		SenderId: "publisher",
 		Payload: &pb.Message_RequestSeal{

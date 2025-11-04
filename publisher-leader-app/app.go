@@ -68,6 +68,8 @@ func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, 
 }
 
 // initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
+//
+//nolint:gocyclo // in progress
 func (a *App) initialize(ctx context.Context) error {
 	regSvc, err := sreg.NewComposeService(a.cfg.Registry.Path, a.cfg.L1.ComposeNetworkName, a.log)
 	if err != nil {

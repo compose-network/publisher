@@ -37,6 +37,10 @@ type SuperblockPublisher struct {
 	l1Publisher     l1.Publisher
 	walManager      wal.Manager
 	registryService sreg.Service
+
+	// allowlist of accepted chain-ids (string(key) of []byte big-endian)
+	// when empty or nil, filtering is disabled
+	allowedChains map[string]struct{}
 }
 
 // WrapPublisher creates a new SuperblockPublisher by wrapping an existing publisher
@@ -104,6 +108,21 @@ func WrapPublisher(
 		l1Publisher:     l1Pub,
 		walManager:      nil,
 		registryService: regSvc,
+		allowedChains:   nil,
+	}
+
+	// Build a simple allowlist of active chains from registry; if it fails, leave filtering disabled
+	if regSvc != nil {
+		if ids, err := regSvc.GetActiveRollups(context.Background()); err != nil {
+			log.Warn().Err(err).Msg("Failed to load active rollups for allowlist; chain-id filtering disabled")
+		} else if len(ids) > 0 {
+			m := make(map[string]struct{}, len(ids))
+			for _, id := range ids {
+				m[string(id)] = struct{}{}
+			}
+			wrapper.allowedChains = m
+			log.Info().Int("chains", len(m)).Msg("Chain-id allowlist enabled")
+		}
 	}
 
 	// Register SBCP-specific handlers with the publisher's router
@@ -190,6 +209,19 @@ func (sp *SuperblockPublisher) handleXTRequest(ctx context.Context, from string,
 	if !ok {
 		return fmt.Errorf("invalid payload type for XTRequest")
 	}
+	// filter unknown chain-ids early to prevent failing slots later on
+	if len(sp.allowedChains) > 0 {
+		for _, tx := range payload.XtRequest.Transactions {
+			if _, ok := sp.allowedChains[string(tx.ChainId)]; !ok {
+				sp.log.Warn().
+					Str("from", from).
+					Str("chain", fmt.Sprintf("%x", tx.ChainId)).
+					Str("sender_id", msg.SenderId).
+					Msg("Rejecting XTRequest: unknown chain-id")
+				return nil
+			}
+		}
+	}
 	return sp.queueXTRequest(ctx, from, payload.XtRequest)
 }
 
@@ -198,6 +230,16 @@ func (sp *SuperblockPublisher) handleL2Block(ctx context.Context, from string, m
 	if !ok {
 		return fmt.Errorf("invalid payload type for L2Block")
 	}
+	if len(sp.allowedChains) > 0 {
+		if _, ok := sp.allowedChains[string(payload.L2Block.ChainId)]; !ok {
+			sp.log.Warn().
+				Str("from", from).
+				Str("chain", fmt.Sprintf("%x", payload.L2Block.ChainId)).
+				Str("sender_id", msg.SenderId).
+				Msg("Rejecting L2Block: unknown chain-id")
+			return nil
+		}
+	}
 	return sp.coordinator.HandleL2Block(ctx, from, payload.L2Block)
 }
 
@@ -205,6 +247,29 @@ func (sp *SuperblockPublisher) handleCIRCMessage(ctx context.Context, from strin
 	payload, ok := msg.Payload.(*pb.Message_CircMessage)
 	if !ok {
 		return fmt.Errorf("invalid payload type for CIRCMessage")
+	}
+
+	if len(sp.allowedChains) > 0 {
+		if _, ok := sp.allowedChains[string(payload.CircMessage.SourceChain)]; !ok {
+			sp.log.Warn().
+				Str("from", from).
+				Str("source_chain", fmt.Sprintf("%x", payload.CircMessage.SourceChain)).
+				Str("dest_chain", fmt.Sprintf("%x", payload.CircMessage.DestinationChain)).
+				Str("xt_id", payload.CircMessage.XtId.Hex()).
+				Str("sender_id", msg.SenderId).
+				Msg("Rejecting CIRC message: unknown source chain-id")
+			return nil
+		}
+		if _, ok := sp.allowedChains[string(payload.CircMessage.DestinationChain)]; !ok {
+			sp.log.Warn().
+				Str("from", from).
+				Str("source_chain", fmt.Sprintf("%x", payload.CircMessage.SourceChain)).
+				Str("dest_chain", fmt.Sprintf("%x", payload.CircMessage.DestinationChain)).
+				Str("xt_id", payload.CircMessage.XtId.Hex()).
+				Str("sender_id", msg.SenderId).
+				Msg("Rejecting CIRC message: unknown destination chain-id")
+			return nil
+		}
 	}
 
 	sp.log.Debug().
@@ -221,6 +286,18 @@ func (sp *SuperblockPublisher) handleVote(ctx context.Context, from string, msg 
 	payload, ok := msg.Payload.(*pb.Message_Vote)
 	if !ok {
 		return fmt.Errorf("invalid payload type for Vote")
+	}
+
+	if len(sp.allowedChains) > 0 {
+		if _, ok := sp.allowedChains[string(payload.Vote.SenderChainId)]; !ok {
+			sp.log.Warn().
+				Str("from", from).
+				Str("chain", fmt.Sprintf("%x", payload.Vote.SenderChainId)).
+				Str("xt_id", payload.Vote.XtId.Hex()).
+				Bool("vote", payload.Vote.Vote).
+				Msg("Rejecting Vote: unknown chain-id")
+			return nil
+		}
 	}
 
 	sp.log.Info().
