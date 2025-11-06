@@ -100,7 +100,11 @@ func (ct *ConnectionTask) Execute(ctx context.Context) {
 	log.Info().Msg("Handling new connection")
 
 	defer func() {
-		ct.conn.Close()
+		if impl, ok := ct.conn.(*connection); ok {
+			impl.CloseWithReason(pb.DisconnectMessage_REQUESTED, "server closing connection")
+		} else {
+			ct.conn.Close()
+		}
 		ct.manager.Remove(ct.conn.ID())
 		log.Info().Msg("Connection closed")
 	}()
@@ -130,7 +134,7 @@ func (ct *ConnectionTask) Execute(ctx context.Context) {
 				return
 			}
 
-			// Handle ping/pong messages at transport level
+			// Handle ping/pong and disconnect messages at transport level
 			switch payload := msg.Payload.(type) {
 			case *pb.Message_Ping:
 				// Received ping, send pong
@@ -151,6 +155,13 @@ func (ct *ConnectionTask) Execute(ctx context.Context) {
 				// Received pong, connection is alive
 				log.Debug().Msg("Received pong from client")
 				continue
+			case *pb.Message_Disconnect:
+				// Client requested disconnect
+				log.Info().
+					Str("reason", payload.Disconnect.Reason.String()).
+					Str("details", payload.Disconnect.Details).
+					Msg("Client sent disconnect")
+				return
 			}
 
 			if ct.handler != nil {
