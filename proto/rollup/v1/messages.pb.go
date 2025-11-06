@@ -22,1060 +22,8 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Connection-level authentication handshake messages
-type HandshakeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                 // Client timestamp for replay protection
-	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // Client's public key (33 bytes compressed)
-	Signature     []byte                 `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`                  // ECDSA signature over timestamp
-	ClientId      string                 `protobuf:"bytes,4,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`    // Optional client identifier
-	Nonce         []byte                 `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`                          // Random nonce for replay protection
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *HandshakeRequest) Reset() {
-	*x = HandshakeRequest{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HandshakeRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HandshakeRequest) ProtoMessage() {}
-
-func (x *HandshakeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HandshakeRequest.ProtoReflect.Descriptor instead.
-func (*HandshakeRequest) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *HandshakeRequest) GetTimestamp() int64 {
-	if x != nil {
-		return x.Timestamp
-	}
-	return 0
-}
-
-func (x *HandshakeRequest) GetPublicKey() []byte {
-	if x != nil {
-		return x.PublicKey
-	}
-	return nil
-}
-
-func (x *HandshakeRequest) GetSignature() []byte {
-	if x != nil {
-		return x.Signature
-	}
-	return nil
-}
-
-func (x *HandshakeRequest) GetClientId() string {
-	if x != nil {
-		return x.ClientId
-	}
-	return ""
-}
-
-func (x *HandshakeRequest) GetNonce() []byte {
-	if x != nil {
-		return x.Nonce
-	}
-	return nil
-}
-
-// HandshakeResponse is sent from the server to the client after a handshake request.
-type HandshakeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`                   // Whether authentication succeeded
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`                          // Error message if rejected
-	SessionId     string                 `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // Unique session identifier
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *HandshakeResponse) Reset() {
-	*x = HandshakeResponse{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HandshakeResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HandshakeResponse) ProtoMessage() {}
-
-func (x *HandshakeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HandshakeResponse.ProtoReflect.Descriptor instead.
-func (*HandshakeResponse) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *HandshakeResponse) GetAccepted() bool {
-	if x != nil {
-		return x.Accepted
-	}
-	return false
-}
-
-func (x *HandshakeResponse) GetError() string {
-	if x != nil {
-		return x.Error
-	}
-	return ""
-}
-
-func (x *HandshakeResponse) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-// Connection health check messages
-type Ping struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"` // Timestamp for latency measurement
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Ping) Reset() {
-	*x = Ping{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Ping) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Ping) ProtoMessage() {}
-
-func (x *Ping) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Ping.ProtoReflect.Descriptor instead.
-func (*Ping) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *Ping) GetTimestamp() int64 {
-	if x != nil {
-		return x.Timestamp
-	}
-	return 0
-}
-
-// Pong is a response to a Ping message.
-type Pong struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"` // Echo back the timestamp from Ping
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Pong) Reset() {
-	*x = Pong{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Pong) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Pong) ProtoMessage() {}
-
-func (x *Pong) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Pong.ProtoReflect.Descriptor instead.
-func (*Pong) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *Pong) GetTimestamp() int64 {
-	if x != nil {
-		return x.Timestamp
-	}
-	return 0
-}
-
-// Transaction ID (SHA256 hash)
-type XtID struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hash          []byte                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"` // 32-byte SHA256 hash
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *XtID) Reset() {
-	*x = XtID{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *XtID) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*XtID) ProtoMessage() {}
-
-func (x *XtID) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use XtID.ProtoReflect.Descriptor instead.
-func (*XtID) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *XtID) GetHash() []byte {
-	if x != nil {
-		return x.Hash
-	}
-	return nil
-}
-
-// Cross-chain transaction request
-type XTRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Transactions  []*TransactionRequest  `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *XTRequest) Reset() {
-	*x = XTRequest{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *XTRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*XTRequest) ProtoMessage() {}
-
-func (x *XTRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use XTRequest.ProtoReflect.Descriptor instead.
-func (*XTRequest) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *XTRequest) GetTransactions() []*TransactionRequest {
-	if x != nil {
-		return x.Transactions
-	}
-	return nil
-}
-
-// TransactionRequest represents a single transaction request for a specific chain
-type TransactionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ChainId       []byte                 `protobuf:"bytes,1,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
-	Transaction   [][]byte               `protobuf:"bytes,2,rep,name=transaction,proto3" json:"transaction,omitempty"` // RLP encoded Ethereum transactions
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TransactionRequest) Reset() {
-	*x = TransactionRequest{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TransactionRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TransactionRequest) ProtoMessage() {}
-
-func (x *TransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TransactionRequest.ProtoReflect.Descriptor instead.
-func (*TransactionRequest) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *TransactionRequest) GetChainId() []byte {
-	if x != nil {
-		return x.ChainId
-	}
-	return nil
-}
-
-func (x *TransactionRequest) GetTransaction() [][]byte {
-	if x != nil {
-		return x.Transaction
-	}
-	return nil
-}
-
-// 2PC Vote message from a sequencer to the SP
-type Vote struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SenderChainId []byte                 `protobuf:"bytes,1,opt,name=sender_chain_id,json=senderChainId,proto3" json:"sender_chain_id,omitempty"` // Which chain is voting
-	XtId          *XtID                  `protobuf:"bytes,2,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"`                              // Transaction ID
-	Vote          bool                   `protobuf:"varint,3,opt,name=vote,proto3" json:"vote,omitempty"`                                         // true = Commit, false = Abort
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Vote) Reset() {
-	*x = Vote{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Vote) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Vote) ProtoMessage() {}
-
-func (x *Vote) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Vote.ProtoReflect.Descriptor instead.
-func (*Vote) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *Vote) GetSenderChainId() []byte {
-	if x != nil {
-		return x.SenderChainId
-	}
-	return nil
-}
-
-func (x *Vote) GetXtId() *XtID {
-	if x != nil {
-		return x.XtId
-	}
-	return nil
-}
-
-func (x *Vote) GetVote() bool {
-	if x != nil {
-		return x.Vote
-	}
-	return false
-}
-
-// 2PC Decision message from the SP to sequencers
-type Decided struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	XtId          *XtID                  `protobuf:"bytes,1,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"` // Transaction ID
-	Decision      bool                   `protobuf:"varint,2,opt,name=decision,proto3" json:"decision,omitempty"`    // true = Commit, false = Abort
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Decided) Reset() {
-	*x = Decided{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Decided) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Decided) ProtoMessage() {}
-
-func (x *Decided) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Decided.ProtoReflect.Descriptor instead.
-func (*Decided) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *Decided) GetXtId() *XtID {
-	if x != nil {
-		return x.XtId
-	}
-	return nil
-}
-
-func (x *Decided) GetDecision() bool {
-	if x != nil {
-		return x.Decision
-	}
-	return false
-}
-
-// Block submission from a sequencer to the SP
-type Block struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ChainId       []byte                 `protobuf:"bytes,1,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`                     // Which chain's block
-	BlockData     []byte                 `protobuf:"bytes,2,opt,name=block_data,json=blockData,proto3" json:"block_data,omitempty"`               // The actual block data
-	IncludedXtIds []*XtID                `protobuf:"bytes,3,rep,name=included_xt_ids,json=includedXtIds,proto3" json:"included_xt_ids,omitempty"` // Which xTs are included
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Block) Reset() {
-	*x = Block{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Block) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Block) ProtoMessage() {}
-
-func (x *Block) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Block.ProtoReflect.Descriptor instead.
-func (*Block) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *Block) GetChainId() []byte {
-	if x != nil {
-		return x.ChainId
-	}
-	return nil
-}
-
-func (x *Block) GetBlockData() []byte {
-	if x != nil {
-		return x.BlockData
-	}
-	return nil
-}
-
-func (x *Block) GetIncludedXtIds() []*XtID {
-	if x != nil {
-		return x.IncludedXtIds
-	}
-	return nil
-}
-
-// Direct CIRC message exchange between sequencers (without SP involvement)
-type CIRCMessage struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	SourceChain      []byte                 `protobuf:"bytes,1,opt,name=source_chain,json=sourceChain,proto3" json:"source_chain,omitempty"`
-	DestinationChain []byte                 `protobuf:"bytes,2,opt,name=destination_chain,json=destinationChain,proto3" json:"destination_chain,omitempty"`
-	Source           [][]byte               `protobuf:"bytes,3,rep,name=source,proto3" json:"source,omitempty"`
-	Receiver         [][]byte               `protobuf:"bytes,4,rep,name=receiver,proto3" json:"receiver,omitempty"`
-	XtId             *XtID                  `protobuf:"bytes,5,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"`
-	Label            string                 `protobuf:"bytes,6,opt,name=label,proto3" json:"label,omitempty"`
-	Data             [][]byte               `protobuf:"bytes,7,rep,name=data,proto3" json:"data,omitempty"` // ABI encoded data
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *CIRCMessage) Reset() {
-	*x = CIRCMessage{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CIRCMessage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CIRCMessage) ProtoMessage() {}
-
-func (x *CIRCMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CIRCMessage.ProtoReflect.Descriptor instead.
-func (*CIRCMessage) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *CIRCMessage) GetSourceChain() []byte {
-	if x != nil {
-		return x.SourceChain
-	}
-	return nil
-}
-
-func (x *CIRCMessage) GetDestinationChain() []byte {
-	if x != nil {
-		return x.DestinationChain
-	}
-	return nil
-}
-
-func (x *CIRCMessage) GetSource() [][]byte {
-	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-func (x *CIRCMessage) GetReceiver() [][]byte {
-	if x != nil {
-		return x.Receiver
-	}
-	return nil
-}
-
-func (x *CIRCMessage) GetXtId() *XtID {
-	if x != nil {
-		return x.XtId
-	}
-	return nil
-}
-
-func (x *CIRCMessage) GetLabel() string {
-	if x != nil {
-		return x.Label
-	}
-	return ""
-}
-
-func (x *CIRCMessage) GetData() [][]byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-// Auxiliary message for requesting specific L2 blocks
-type L2BlockRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ChainId       []byte                 `protobuf:"bytes,1,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
-	BlockNumber   uint64                 `protobuf:"varint,2,opt,name=block_number,json=blockNumber,proto3" json:"block_number,omitempty"`
-	ParentHash    []byte                 `protobuf:"bytes,3,opt,name=parent_hash,json=parentHash,proto3" json:"parent_hash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *L2BlockRequest) Reset() {
-	*x = L2BlockRequest{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *L2BlockRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*L2BlockRequest) ProtoMessage() {}
-
-func (x *L2BlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use L2BlockRequest.ProtoReflect.Descriptor instead.
-func (*L2BlockRequest) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *L2BlockRequest) GetChainId() []byte {
-	if x != nil {
-		return x.ChainId
-	}
-	return nil
-}
-
-func (x *L2BlockRequest) GetBlockNumber() uint64 {
-	if x != nil {
-		return x.BlockNumber
-	}
-	return 0
-}
-
-func (x *L2BlockRequest) GetParentHash() []byte {
-	if x != nil {
-		return x.ParentHash
-	}
-	return nil
-}
-
-// Message sent by SP to start a new slot
-type StartSlot struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Slot                 uint64                 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`                                                               // Current slot number
-	NextSuperblockNumber uint64                 `protobuf:"varint,2,opt,name=next_superblock_number,json=nextSuperblockNumber,proto3" json:"next_superblock_number,omitempty"` // Superblock number SP aims to produce
-	LastSuperblockHash   []byte                 `protobuf:"bytes,3,opt,name=last_superblock_hash,json=lastSuperblockHash,proto3" json:"last_superblock_hash,omitempty"`        // Hash of the last valid superblock
-	L2BlocksRequest      []*L2BlockRequest      `protobuf:"bytes,4,rep,name=l2_blocks_request,json=l2BlocksRequest,proto3" json:"l2_blocks_request,omitempty"`                 // L2 blocks to be built by each rollup
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
-}
-
-func (x *StartSlot) Reset() {
-	*x = StartSlot{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartSlot) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartSlot) ProtoMessage() {}
-
-func (x *StartSlot) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartSlot.ProtoReflect.Descriptor instead.
-func (*StartSlot) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *StartSlot) GetSlot() uint64 {
-	if x != nil {
-		return x.Slot
-	}
-	return 0
-}
-
-func (x *StartSlot) GetNextSuperblockNumber() uint64 {
-	if x != nil {
-		return x.NextSuperblockNumber
-	}
-	return 0
-}
-
-func (x *StartSlot) GetLastSuperblockHash() []byte {
-	if x != nil {
-		return x.LastSuperblockHash
-	}
-	return nil
-}
-
-func (x *StartSlot) GetL2BlocksRequest() []*L2BlockRequest {
-	if x != nil {
-		return x.L2BlocksRequest
-	}
-	return nil
-}
-
-// Message sent by SP to request sequencers seal their blocks
-type RequestSeal struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Slot          uint64                 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`                                 // Current slot number
-	IncludedXts   [][]byte               `protobuf:"bytes,2,rep,name=included_xts,json=includedXts,proto3" json:"included_xts,omitempty"` // List of included cross-chain transaction IDs
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RequestSeal) Reset() {
-	*x = RequestSeal{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RequestSeal) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RequestSeal) ProtoMessage() {}
-
-func (x *RequestSeal) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RequestSeal.ProtoReflect.Descriptor instead.
-func (*RequestSeal) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *RequestSeal) GetSlot() uint64 {
-	if x != nil {
-		return x.Slot
-	}
-	return 0
-}
-
-func (x *RequestSeal) GetIncludedXts() [][]byte {
-	if x != nil {
-		return x.IncludedXts
-	}
-	return nil
-}
-
-// Message sent by SP to rollback and restart from a valid state
-type RollBackAndStartSlot struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	L2BlocksRequest      []*L2BlockRequest      `protobuf:"bytes,1,rep,name=l2_blocks_request,json=l2BlocksRequest,proto3" json:"l2_blocks_request,omitempty"`                 // L2 blocks to build from valid state
-	CurrentSlot          uint64                 `protobuf:"varint,2,opt,name=current_slot,json=currentSlot,proto3" json:"current_slot,omitempty"`                              // Current slot number
-	NextSuperblockNumber uint64                 `protobuf:"varint,3,opt,name=next_superblock_number,json=nextSuperblockNumber,proto3" json:"next_superblock_number,omitempty"` // Next superblock number to produce
-	LastSuperblockHash   []byte                 `protobuf:"bytes,4,opt,name=last_superblock_hash,json=lastSuperblockHash,proto3" json:"last_superblock_hash,omitempty"`        // Hash of last valid superblock
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
-}
-
-func (x *RollBackAndStartSlot) Reset() {
-	*x = RollBackAndStartSlot{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RollBackAndStartSlot) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RollBackAndStartSlot) ProtoMessage() {}
-
-func (x *RollBackAndStartSlot) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RollBackAndStartSlot.ProtoReflect.Descriptor instead.
-func (*RollBackAndStartSlot) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *RollBackAndStartSlot) GetL2BlocksRequest() []*L2BlockRequest {
-	if x != nil {
-		return x.L2BlocksRequest
-	}
-	return nil
-}
-
-func (x *RollBackAndStartSlot) GetCurrentSlot() uint64 {
-	if x != nil {
-		return x.CurrentSlot
-	}
-	return 0
-}
-
-func (x *RollBackAndStartSlot) GetNextSuperblockNumber() uint64 {
-	if x != nil {
-		return x.NextSuperblockNumber
-	}
-	return 0
-}
-
-func (x *RollBackAndStartSlot) GetLastSuperblockHash() []byte {
-	if x != nil {
-		return x.LastSuperblockHash
-	}
-	return nil
-}
-
-// L2 Block submission from sequencer to SP
-type L2Block struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Slot            uint64                 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`                                               // Slot this block belongs to
-	ChainId         []byte                 `protobuf:"bytes,2,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`                           // Chain identifier
-	BlockNumber     uint64                 `protobuf:"varint,3,opt,name=block_number,json=blockNumber,proto3" json:"block_number,omitempty"`              // L2 block number
-	BlockHash       []byte                 `protobuf:"bytes,4,opt,name=block_hash,json=blockHash,proto3" json:"block_hash,omitempty"`                     // Hash of this L2 block
-	ParentBlockHash []byte                 `protobuf:"bytes,5,opt,name=parent_block_hash,json=parentBlockHash,proto3" json:"parent_block_hash,omitempty"` // Hash of parent L2 block
-	IncludedXts     [][]byte               `protobuf:"bytes,6,rep,name=included_xts,json=includedXts,proto3" json:"included_xts,omitempty"`               // Included cross-chain transaction IDs
-	Block           []byte                 `protobuf:"bytes,7,opt,name=block,proto3" json:"block,omitempty"`                                              // Encoded Ethereum block data (RLP encoded)
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *L2Block) Reset() {
-	*x = L2Block{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *L2Block) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*L2Block) ProtoMessage() {}
-
-func (x *L2Block) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use L2Block.ProtoReflect.Descriptor instead.
-func (*L2Block) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *L2Block) GetSlot() uint64 {
-	if x != nil {
-		return x.Slot
-	}
-	return 0
-}
-
-func (x *L2Block) GetChainId() []byte {
-	if x != nil {
-		return x.ChainId
-	}
-	return nil
-}
-
-func (x *L2Block) GetBlockNumber() uint64 {
-	if x != nil {
-		return x.BlockNumber
-	}
-	return 0
-}
-
-func (x *L2Block) GetBlockHash() []byte {
-	if x != nil {
-		return x.BlockHash
-	}
-	return nil
-}
-
-func (x *L2Block) GetParentBlockHash() []byte {
-	if x != nil {
-		return x.ParentBlockHash
-	}
-	return nil
-}
-
-func (x *L2Block) GetIncludedXts() [][]byte {
-	if x != nil {
-		return x.IncludedXts
-	}
-	return nil
-}
-
-func (x *L2Block) GetBlock() []byte {
-	if x != nil {
-		return x.Block
-	}
-	return nil
-}
-
-// SCP message to start cross-chain transaction coordination
-type StartSC struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Slot             uint64                 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`                                                   // Current slot number
-	XtSequenceNumber uint64                 `protobuf:"varint,2,opt,name=xt_sequence_number,json=xtSequenceNumber,proto3" json:"xt_sequence_number,omitempty"` // Sequence number for ordering within slot
-	XtRequest        *XTRequest             `protobuf:"bytes,3,opt,name=xt_request,json=xtRequest,proto3" json:"xt_request,omitempty"`                         // The cross-chain transaction request
-	XtId             []byte                 `protobuf:"bytes,4,opt,name=xt_id,json=xtId,proto3" json:"xt_id,omitempty"`                                        // 32-byte SHA256 hash over xTRequest
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *StartSC) Reset() {
-	*x = StartSC{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartSC) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartSC) ProtoMessage() {}
-
-func (x *StartSC) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartSC.ProtoReflect.Descriptor instead.
-func (*StartSC) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *StartSC) GetSlot() uint64 {
-	if x != nil {
-		return x.Slot
-	}
-	return 0
-}
-
-func (x *StartSC) GetXtSequenceNumber() uint64 {
-	if x != nil {
-		return x.XtSequenceNumber
-	}
-	return 0
-}
-
-func (x *StartSC) GetXtRequest() *XTRequest {
-	if x != nil {
-		return x.XtRequest
-	}
-	return nil
-}
-
-func (x *StartSC) GetXtId() []byte {
-	if x != nil {
-		return x.XtId
-	}
-	return nil
-}
-
-// Wrapper for all messages
+// Message is the main wrapper for all protocol messages
+// This allows multiplexing different message types over a single connection
 type Message struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	SenderId string                 `protobuf:"bytes,1,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"` // Identifier of the sender
@@ -1097,6 +45,7 @@ type Message struct {
 	//	*Message_HandshakeResponse
 	//	*Message_Ping
 	//	*Message_Pong
+	//	*Message_Disconnect
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1104,7 +53,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_rollup_v1_messages_proto_msgTypes[17]
+	mi := &file_rollup_v1_messages_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1116,7 +65,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_rollup_v1_messages_proto_msgTypes[17]
+	mi := &file_rollup_v1_messages_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1129,7 +78,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{17}
+	return file_rollup_v1_messages_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Message) GetSenderId() string {
@@ -1272,11 +221,21 @@ func (x *Message) GetPong() *Pong {
 	return nil
 }
 
+func (x *Message) GetDisconnect() *DisconnectMessage {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_Disconnect); ok {
+			return x.Disconnect
+		}
+	}
+	return nil
+}
+
 type isMessage_Payload interface {
 	isMessage_Payload()
 }
 
 type Message_XtRequest struct {
+	// SCP (Synchronous Composability Protocol) messages
 	XtRequest *XTRequest `protobuf:"bytes,2,opt,name=xt_request,json=xtRequest,proto3,oneof"`
 }
 
@@ -1289,7 +248,7 @@ type Message_Decided struct {
 }
 
 type Message_Block struct {
-	Block *Block `protobuf:"bytes,5,opt,name=block,proto3,oneof"`
+	Block *Block `protobuf:"bytes,5,opt,name=block,proto3,oneof"` // Deprecated
 }
 
 type Message_CircMessage struct {
@@ -1297,7 +256,7 @@ type Message_CircMessage struct {
 }
 
 type Message_StartSlot struct {
-	// SBCP messages
+	// SBCP (Superblock Construction Protocol) messages
 	StartSlot *StartSlot `protobuf:"bytes,7,opt,name=start_slot,json=startSlot,proto3,oneof"`
 }
 
@@ -1318,7 +277,7 @@ type Message_StartSc struct {
 }
 
 type Message_HandshakeRequest struct {
-	// Connection-level authentication
+	// Transport-level messages
 	HandshakeRequest *HandshakeRequest `protobuf:"bytes,12,opt,name=handshake_request,json=handshakeRequest,proto3,oneof"`
 }
 
@@ -1327,12 +286,15 @@ type Message_HandshakeResponse struct {
 }
 
 type Message_Ping struct {
-	// Connection health check
 	Ping *Ping `protobuf:"bytes,14,opt,name=ping,proto3,oneof"`
 }
 
 type Message_Pong struct {
 	Pong *Pong `protobuf:"bytes,15,opt,name=pong,proto3,oneof"`
+}
+
+type Message_Disconnect struct {
+	Disconnect *DisconnectMessage `protobuf:"bytes,16,opt,name=disconnect,proto3,oneof"`
 }
 
 func (*Message_XtRequest) isMessage_Payload() {}
@@ -1363,87 +325,13 @@ func (*Message_Ping) isMessage_Payload() {}
 
 func (*Message_Pong) isMessage_Payload() {}
 
+func (*Message_Disconnect) isMessage_Payload() {}
+
 var File_rollup_v1_messages_proto protoreflect.FileDescriptor
 
 const file_rollup_v1_messages_proto_rawDesc = "" +
 	"\n" +
-	"\x18rollup/v1/messages.proto\x12\trollup.v1\"\xa0\x01\n" +
-	"\x10HandshakeRequest\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12\x1d\n" +
-	"\n" +
-	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x1c\n" +
-	"\tsignature\x18\x03 \x01(\fR\tsignature\x12\x1b\n" +
-	"\tclient_id\x18\x04 \x01(\tR\bclientId\x12\x14\n" +
-	"\x05nonce\x18\x05 \x01(\fR\x05nonce\"d\n" +
-	"\x11HandshakeResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x03 \x01(\tR\tsessionId\"$\n" +
-	"\x04Ping\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\"$\n" +
-	"\x04Pong\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\"\x1a\n" +
-	"\x04XtID\x12\x12\n" +
-	"\x04hash\x18\x01 \x01(\fR\x04hash\"N\n" +
-	"\tXTRequest\x12A\n" +
-	"\ftransactions\x18\x01 \x03(\v2\x1d.rollup.v1.TransactionRequestR\ftransactions\"Q\n" +
-	"\x12TransactionRequest\x12\x19\n" +
-	"\bchain_id\x18\x01 \x01(\fR\achainId\x12 \n" +
-	"\vtransaction\x18\x02 \x03(\fR\vtransaction\"h\n" +
-	"\x04Vote\x12&\n" +
-	"\x0fsender_chain_id\x18\x01 \x01(\fR\rsenderChainId\x12$\n" +
-	"\x05xt_id\x18\x02 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x12\n" +
-	"\x04vote\x18\x03 \x01(\bR\x04vote\"K\n" +
-	"\aDecided\x12$\n" +
-	"\x05xt_id\x18\x01 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x1a\n" +
-	"\bdecision\x18\x02 \x01(\bR\bdecision\"z\n" +
-	"\x05Block\x12\x19\n" +
-	"\bchain_id\x18\x01 \x01(\fR\achainId\x12\x1d\n" +
-	"\n" +
-	"block_data\x18\x02 \x01(\fR\tblockData\x127\n" +
-	"\x0fincluded_xt_ids\x18\x03 \x03(\v2\x0f.rollup.v1.XtIDR\rincludedXtIds\"\xe1\x01\n" +
-	"\vCIRCMessage\x12!\n" +
-	"\fsource_chain\x18\x01 \x01(\fR\vsourceChain\x12+\n" +
-	"\x11destination_chain\x18\x02 \x01(\fR\x10destinationChain\x12\x16\n" +
-	"\x06source\x18\x03 \x03(\fR\x06source\x12\x1a\n" +
-	"\breceiver\x18\x04 \x03(\fR\breceiver\x12$\n" +
-	"\x05xt_id\x18\x05 \x01(\v2\x0f.rollup.v1.XtIDR\x04xtId\x12\x14\n" +
-	"\x05label\x18\x06 \x01(\tR\x05label\x12\x12\n" +
-	"\x04data\x18\a \x03(\fR\x04data\"o\n" +
-	"\x0eL2BlockRequest\x12\x19\n" +
-	"\bchain_id\x18\x01 \x01(\fR\achainId\x12!\n" +
-	"\fblock_number\x18\x02 \x01(\x04R\vblockNumber\x12\x1f\n" +
-	"\vparent_hash\x18\x03 \x01(\fR\n" +
-	"parentHash\"\xce\x01\n" +
-	"\tStartSlot\x12\x12\n" +
-	"\x04slot\x18\x01 \x01(\x04R\x04slot\x124\n" +
-	"\x16next_superblock_number\x18\x02 \x01(\x04R\x14nextSuperblockNumber\x120\n" +
-	"\x14last_superblock_hash\x18\x03 \x01(\fR\x12lastSuperblockHash\x12E\n" +
-	"\x11l2_blocks_request\x18\x04 \x03(\v2\x19.rollup.v1.L2BlockRequestR\x0fl2BlocksRequest\"D\n" +
-	"\vRequestSeal\x12\x12\n" +
-	"\x04slot\x18\x01 \x01(\x04R\x04slot\x12!\n" +
-	"\fincluded_xts\x18\x02 \x03(\fR\vincludedXts\"\xe8\x01\n" +
-	"\x14RollBackAndStartSlot\x12E\n" +
-	"\x11l2_blocks_request\x18\x01 \x03(\v2\x19.rollup.v1.L2BlockRequestR\x0fl2BlocksRequest\x12!\n" +
-	"\fcurrent_slot\x18\x02 \x01(\x04R\vcurrentSlot\x124\n" +
-	"\x16next_superblock_number\x18\x03 \x01(\x04R\x14nextSuperblockNumber\x120\n" +
-	"\x14last_superblock_hash\x18\x04 \x01(\fR\x12lastSuperblockHash\"\xdf\x01\n" +
-	"\aL2Block\x12\x12\n" +
-	"\x04slot\x18\x01 \x01(\x04R\x04slot\x12\x19\n" +
-	"\bchain_id\x18\x02 \x01(\fR\achainId\x12!\n" +
-	"\fblock_number\x18\x03 \x01(\x04R\vblockNumber\x12\x1d\n" +
-	"\n" +
-	"block_hash\x18\x04 \x01(\fR\tblockHash\x12*\n" +
-	"\x11parent_block_hash\x18\x05 \x01(\fR\x0fparentBlockHash\x12!\n" +
-	"\fincluded_xts\x18\x06 \x03(\fR\vincludedXts\x12\x14\n" +
-	"\x05block\x18\a \x01(\fR\x05block\"\x95\x01\n" +
-	"\aStartSC\x12\x12\n" +
-	"\x04slot\x18\x01 \x01(\x04R\x04slot\x12,\n" +
-	"\x12xt_sequence_number\x18\x02 \x01(\x04R\x10xtSequenceNumber\x123\n" +
-	"\n" +
-	"xt_request\x18\x03 \x01(\v2\x14.rollup.v1.XTRequestR\txtRequest\x12\x13\n" +
-	"\x05xt_id\x18\x04 \x01(\fR\x04xtId\"\xc0\x06\n" +
+	"\x18rollup/v1/messages.proto\x12\trollup.v1\x1a\x19rollup/v1/transport.proto\x1a\x19rollup/v1/consensus.proto\x1a\x14rollup/v1/sbcp.proto\"\x80\a\n" +
 	"\aMessage\x12\x1b\n" +
 	"\tsender_id\x18\x01 \x01(\tR\bsenderId\x125\n" +
 	"\n" +
@@ -1462,7 +350,10 @@ const file_rollup_v1_messages_proto_rawDesc = "" +
 	"\x11handshake_request\x18\f \x01(\v2\x1b.rollup.v1.HandshakeRequestH\x00R\x10handshakeRequest\x12M\n" +
 	"\x12handshake_response\x18\r \x01(\v2\x1c.rollup.v1.HandshakeResponseH\x00R\x11handshakeResponse\x12%\n" +
 	"\x04ping\x18\x0e \x01(\v2\x0f.rollup.v1.PingH\x00R\x04ping\x12%\n" +
-	"\x04pong\x18\x0f \x01(\v2\x0f.rollup.v1.PongH\x00R\x04pongB\t\n" +
+	"\x04pong\x18\x0f \x01(\v2\x0f.rollup.v1.PongH\x00R\x04pong\x12>\n" +
+	"\n" +
+	"disconnect\x18\x10 \x01(\v2\x1c.rollup.v1.DisconnectMessageH\x00R\n" +
+	"disconnectB\t\n" +
 	"\apayloadB\xa2\x01\n" +
 	"\rcom.rollup.v1B\rMessagesProtoP\x01Z=github.com/compose-network/publisher/proto/rollup/v1;rollupv1\xa2\x02\x03RXX\xaa\x02\tRollup.V1\xca\x02\tRollup\\V1\xe2\x02\x15Rollup\\V1\\GPBMetadata\xea\x02\n" +
 	"Rollup::V1b\x06proto3"
@@ -1479,55 +370,46 @@ func file_rollup_v1_messages_proto_rawDescGZIP() []byte {
 	return file_rollup_v1_messages_proto_rawDescData
 }
 
-var file_rollup_v1_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_rollup_v1_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_rollup_v1_messages_proto_goTypes = []any{
-	(*HandshakeRequest)(nil),     // 0: rollup.v1.HandshakeRequest
-	(*HandshakeResponse)(nil),    // 1: rollup.v1.HandshakeResponse
-	(*Ping)(nil),                 // 2: rollup.v1.Ping
-	(*Pong)(nil),                 // 3: rollup.v1.Pong
-	(*XtID)(nil),                 // 4: rollup.v1.XtID
-	(*XTRequest)(nil),            // 5: rollup.v1.XTRequest
-	(*TransactionRequest)(nil),   // 6: rollup.v1.TransactionRequest
-	(*Vote)(nil),                 // 7: rollup.v1.Vote
-	(*Decided)(nil),              // 8: rollup.v1.Decided
-	(*Block)(nil),                // 9: rollup.v1.Block
-	(*CIRCMessage)(nil),          // 10: rollup.v1.CIRCMessage
-	(*L2BlockRequest)(nil),       // 11: rollup.v1.L2BlockRequest
-	(*StartSlot)(nil),            // 12: rollup.v1.StartSlot
-	(*RequestSeal)(nil),          // 13: rollup.v1.RequestSeal
-	(*RollBackAndStartSlot)(nil), // 14: rollup.v1.RollBackAndStartSlot
-	(*L2Block)(nil),              // 15: rollup.v1.L2Block
-	(*StartSC)(nil),              // 16: rollup.v1.StartSC
-	(*Message)(nil),              // 17: rollup.v1.Message
+	(*Message)(nil),              // 0: rollup.v1.Message
+	(*XTRequest)(nil),            // 1: rollup.v1.XTRequest
+	(*Vote)(nil),                 // 2: rollup.v1.Vote
+	(*Decided)(nil),              // 3: rollup.v1.Decided
+	(*Block)(nil),                // 4: rollup.v1.Block
+	(*CIRCMessage)(nil),          // 5: rollup.v1.CIRCMessage
+	(*StartSlot)(nil),            // 6: rollup.v1.StartSlot
+	(*RequestSeal)(nil),          // 7: rollup.v1.RequestSeal
+	(*RollBackAndStartSlot)(nil), // 8: rollup.v1.RollBackAndStartSlot
+	(*L2Block)(nil),              // 9: rollup.v1.L2Block
+	(*StartSC)(nil),              // 10: rollup.v1.StartSC
+	(*HandshakeRequest)(nil),     // 11: rollup.v1.HandshakeRequest
+	(*HandshakeResponse)(nil),    // 12: rollup.v1.HandshakeResponse
+	(*Ping)(nil),                 // 13: rollup.v1.Ping
+	(*Pong)(nil),                 // 14: rollup.v1.Pong
+	(*DisconnectMessage)(nil),    // 15: rollup.v1.DisconnectMessage
 }
 var file_rollup_v1_messages_proto_depIdxs = []int32{
-	6,  // 0: rollup.v1.XTRequest.transactions:type_name -> rollup.v1.TransactionRequest
-	4,  // 1: rollup.v1.Vote.xt_id:type_name -> rollup.v1.XtID
-	4,  // 2: rollup.v1.Decided.xt_id:type_name -> rollup.v1.XtID
-	4,  // 3: rollup.v1.Block.included_xt_ids:type_name -> rollup.v1.XtID
-	4,  // 4: rollup.v1.CIRCMessage.xt_id:type_name -> rollup.v1.XtID
-	11, // 5: rollup.v1.StartSlot.l2_blocks_request:type_name -> rollup.v1.L2BlockRequest
-	11, // 6: rollup.v1.RollBackAndStartSlot.l2_blocks_request:type_name -> rollup.v1.L2BlockRequest
-	5,  // 7: rollup.v1.StartSC.xt_request:type_name -> rollup.v1.XTRequest
-	5,  // 8: rollup.v1.Message.xt_request:type_name -> rollup.v1.XTRequest
-	7,  // 9: rollup.v1.Message.vote:type_name -> rollup.v1.Vote
-	8,  // 10: rollup.v1.Message.decided:type_name -> rollup.v1.Decided
-	9,  // 11: rollup.v1.Message.block:type_name -> rollup.v1.Block
-	10, // 12: rollup.v1.Message.circ_message:type_name -> rollup.v1.CIRCMessage
-	12, // 13: rollup.v1.Message.start_slot:type_name -> rollup.v1.StartSlot
-	13, // 14: rollup.v1.Message.request_seal:type_name -> rollup.v1.RequestSeal
-	14, // 15: rollup.v1.Message.roll_back_and_start_slot:type_name -> rollup.v1.RollBackAndStartSlot
-	15, // 16: rollup.v1.Message.l2_block:type_name -> rollup.v1.L2Block
-	16, // 17: rollup.v1.Message.start_sc:type_name -> rollup.v1.StartSC
-	0,  // 18: rollup.v1.Message.handshake_request:type_name -> rollup.v1.HandshakeRequest
-	1,  // 19: rollup.v1.Message.handshake_response:type_name -> rollup.v1.HandshakeResponse
-	2,  // 20: rollup.v1.Message.ping:type_name -> rollup.v1.Ping
-	3,  // 21: rollup.v1.Message.pong:type_name -> rollup.v1.Pong
-	22, // [22:22] is the sub-list for method output_type
-	22, // [22:22] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	1,  // 0: rollup.v1.Message.xt_request:type_name -> rollup.v1.XTRequest
+	2,  // 1: rollup.v1.Message.vote:type_name -> rollup.v1.Vote
+	3,  // 2: rollup.v1.Message.decided:type_name -> rollup.v1.Decided
+	4,  // 3: rollup.v1.Message.block:type_name -> rollup.v1.Block
+	5,  // 4: rollup.v1.Message.circ_message:type_name -> rollup.v1.CIRCMessage
+	6,  // 5: rollup.v1.Message.start_slot:type_name -> rollup.v1.StartSlot
+	7,  // 6: rollup.v1.Message.request_seal:type_name -> rollup.v1.RequestSeal
+	8,  // 7: rollup.v1.Message.roll_back_and_start_slot:type_name -> rollup.v1.RollBackAndStartSlot
+	9,  // 8: rollup.v1.Message.l2_block:type_name -> rollup.v1.L2Block
+	10, // 9: rollup.v1.Message.start_sc:type_name -> rollup.v1.StartSC
+	11, // 10: rollup.v1.Message.handshake_request:type_name -> rollup.v1.HandshakeRequest
+	12, // 11: rollup.v1.Message.handshake_response:type_name -> rollup.v1.HandshakeResponse
+	13, // 12: rollup.v1.Message.ping:type_name -> rollup.v1.Ping
+	14, // 13: rollup.v1.Message.pong:type_name -> rollup.v1.Pong
+	15, // 14: rollup.v1.Message.disconnect:type_name -> rollup.v1.DisconnectMessage
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_rollup_v1_messages_proto_init() }
@@ -1535,7 +417,10 @@ func file_rollup_v1_messages_proto_init() {
 	if File_rollup_v1_messages_proto != nil {
 		return
 	}
-	file_rollup_v1_messages_proto_msgTypes[17].OneofWrappers = []any{
+	file_rollup_v1_transport_proto_init()
+	file_rollup_v1_consensus_proto_init()
+	file_rollup_v1_sbcp_proto_init()
+	file_rollup_v1_messages_proto_msgTypes[0].OneofWrappers = []any{
 		(*Message_XtRequest)(nil),
 		(*Message_Vote)(nil),
 		(*Message_Decided)(nil),
@@ -1550,6 +435,7 @@ func file_rollup_v1_messages_proto_init() {
 		(*Message_HandshakeResponse)(nil),
 		(*Message_Ping)(nil),
 		(*Message_Pong)(nil),
+		(*Message_Disconnect)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1557,7 +443,7 @@ func file_rollup_v1_messages_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rollup_v1_messages_proto_rawDesc), len(file_rollup_v1_messages_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
