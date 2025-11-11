@@ -4,6 +4,7 @@ FROM golang:1.25-alpine@sha256:b6ed3fd0452c0e9bcdef5597f29cc1418f61672e9d3a2f55b
 # Install dependencies
 RUN apk add --no-cache git make gcc musl-dev
 
+
 WORKDIR /build
 
 # Copy go mod files first for better caching
