@@ -20,7 +20,7 @@ type Config struct {
 	FinalityDepth uint64 `mapstructure:"finality_depth" yaml:"finality_depth"` // for Finalized status
 
 	// compose.network name from registry
-	ComposeNetworkName string `mapstructure:"compose_network_name" yaml:"compose_network_name"` // optional, for registry lookups
+	ComposeNetworkName string `mapstructure:"compose_network_name" yaml:"compose_network_name"` // optional
 
 	// Gas/fees configuration (EIP-1559)
 	UseEIP1559        bool   `mapstructure:"use_eip1559"          yaml:"use_eip1559"`

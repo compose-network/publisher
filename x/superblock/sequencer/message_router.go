@@ -3,6 +3,7 @@ package sequencer
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	pb "github.com/compose-network/publisher/proto/rollup/v1"
@@ -17,6 +18,7 @@ type MessageRouter struct {
 	log         zerolog.Logger
 
 	// Metrics
+	mu           sync.RWMutex
 	routingStats map[ProtocolType]int64
 }
 
@@ -43,7 +45,9 @@ func (mr *MessageRouter) Route(ctx context.Context, from string, msg *pb.Message
 	}
 
 	// Update metrics
+	mr.mu.Lock()
 	mr.routingStats[protocolType]++
+	mr.mu.Unlock()
 
 	// Route to the appropriate handler
 	var err error
@@ -112,10 +116,12 @@ func (mr *MessageRouter) GetStats() map[string]interface{} {
 	}
 
 	// Add routing counts
+	mr.mu.RLock()
 	routingCounts := make(map[string]int64)
 	for protocol, count := range mr.routingStats {
 		routingCounts[protocol.String()] = count
 	}
+	mr.mu.RUnlock()
 	stats["routing_counts"] = routingCounts
 
 	return stats
@@ -123,6 +129,8 @@ func (mr *MessageRouter) GetStats() map[string]interface{} {
 
 // Reset clears routing statistics
 func (mr *MessageRouter) Reset() {
+	mr.mu.Lock()
 	mr.routingStats = make(map[ProtocolType]int64)
+	mr.mu.Unlock()
 	mr.log.Debug().Msg("Message router statistics reset")
 }
