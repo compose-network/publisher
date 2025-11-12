@@ -39,13 +39,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pr-number: ${{ github.event.issue.number }}
 
-      # Step 3: Checkout PR code (uses our action)
-      - name: Checkout PR code
-        uses: compose-network/github-actions/actions/checkout-pr@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          pr-number: ${{ github.event.issue.number }}
-
       # Step 4: Run local testnet (uses our action)
       - name: Run local testnet
         uses: compose-network/github-actions/actions/local-testnet@main
