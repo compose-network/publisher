@@ -6,7 +6,6 @@ import (
 
 	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/superblock"
-	"github.com/compose-network/publisher/x/superblock/slot"
 )
 
 type XTInterceptor struct {
@@ -36,29 +35,29 @@ func (i *XTInterceptor) Handle(ctx context.Context, from string, msg *pb.Message
 	xtReq := payload.XtRequest
 	xtID, _ := xtReq.XtID()
 
-	// Check if we're in a slot and Free state
-	if i.coordinator.GetSlotState() == slot.StateFree {
+	currentSlot := i.coordinator.GetCurrentSlot()
+	slotState := i.coordinator.GetSlotState()
+
+	if currentSlot > 0 {
 		i.coordinator.Logger().Info().
 			Str("xt_id", xtID.Hex()).
-			Uint64("slot", i.coordinator.GetCurrentSlot()).
-			Msg("Queueing XT for slot processing")
+			Uint64("slot", currentSlot).
+			Str("slot_state", slotState.String()).
+			Msg("Queueing XT for SBCP processing")
 
-		// Mark as slot-managed
 		if i.trackFn != nil {
 			i.trackFn(xtID.Hex())
 		}
 
-		// Queue it
 		return i.coordinator.SubmitXTRequest(ctx, from, xtReq)
 	}
 
-	// Not in slot or not Free - pass through
 	if i.fallback != nil {
 		i.coordinator.Logger().Debug().
 			Str("xt_id", xtID.Hex()).
-			Msg("Passing XT to publisher (not in Free state)")
+			Msg("Passing XT to fallback (no active slot)")
 		return i.fallback(ctx, from, msg)
 	}
 
-	return fmt.Errorf("cannot process XTRequest in state %s", i.coordinator.GetSlotState())
+	return fmt.Errorf("cannot process XTRequest: no active slot and no fallback")
 }
