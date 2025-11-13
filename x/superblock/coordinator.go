@@ -976,6 +976,13 @@ func (c *Coordinator) requeueRequest(ctx context.Context, xtID []byte) error {
 		}
 	}
 
+	if retryReq == nil {
+		c.log.Warn().Msgf("Unable to find queued request for %x xtID", xtID)
+		return nil
+	}
+
+	c.log.Info().Msgf("Requeue XT with %x xtID", xtID)
+
 	return c.xtQueue.RequeueForSlot(ctx, []*queue.QueuedXTRequest{retryReq})
 }
 
