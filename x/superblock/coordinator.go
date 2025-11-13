@@ -1,6 +1,7 @@
 package superblock
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -742,6 +743,11 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 					Msg("Failed to process forced abort decision")
 				errs = append(errs, fmt.Errorf("update state forced abort %x: %w", inst.XtID, err))
 			}
+
+			err := c.requeueRequest(ctx, inst.XtID)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	if len(errs) > 0 {
@@ -955,6 +961,22 @@ func (c *Coordinator) requeueAttemptedRequests(ctx context.Context) error {
 	// Clear current map to avoid double requeue
 	c.currentExecution.AttemptedRequests = make(map[string]*queue.QueuedXTRequest)
 	return c.xtQueue.RequeueForSlot(ctx, reqs)
+}
+
+func (c *Coordinator) requeueRequest(ctx context.Context, xtID []byte) error {
+	if c.currentExecution == nil || len(c.currentExecution.AttemptedRequests) == 0 {
+		return nil
+	}
+
+	var retryReq *queue.QueuedXTRequest
+	for _, r := range c.currentExecution.AttemptedRequests {
+		if bytes.Equal(r.XtID, xtID) {
+			retryReq = r
+			break
+		}
+	}
+
+	return c.xtQueue.RequeueForSlot(ctx, []*queue.QueuedXTRequest{retryReq})
 }
 
 func (c *Coordinator) handleSlotTimeout(ctx context.Context, slotNumber uint64) error {
