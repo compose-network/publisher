@@ -744,7 +744,15 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 				errs = append(errs, fmt.Errorf("update state forced abort %x: %w", inst.XtID, err))
 			}
 
-			err := c.requeueRequest(ctx, inst.XtID)
+			xtID, err := inst.Request.XtID()
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+
+			c.consensusCoord.RemoveState(xtID)
+
+			err = c.requeueRequest(ctx, inst.XtID)
 			if err != nil {
 				errs = append(errs, err)
 			}

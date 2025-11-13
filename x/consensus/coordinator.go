@@ -265,10 +265,7 @@ func (c *coordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
 	// RequestSeal handler to avoid race conditions.
 	c.callbackMgr.InvokeDecision(xtID, decision, duration)
 
-	// Schedule cleanup
-	time.AfterFunc(5*time.Minute, func() {
-		c.stateManager.RemoveState(xtID)
-	})
+	c.stateManager.RemoveState(xtID)
 
 	return nil
 }
@@ -291,6 +288,10 @@ func (c *coordinator) GetActiveTransactions() []*pb.XtID {
 // GetState retrieves a transaction state
 func (c *coordinator) GetState(xtID *pb.XtID) (*TwoPCState, bool) {
 	return c.stateManager.GetState(xtID)
+}
+
+func (c *coordinator) RemoveState(xtID *pb.XtID) {
+	c.stateManager.RemoveState(xtID)
 }
 
 // RecordCIRCMessage records a CIRC message for a transaction
@@ -388,10 +389,7 @@ func (c *coordinator) handleCommit(xtID *pb.XtID, state *TwoPCState) DecisionSta
 
 	c.callbackMgr.InvokeDecision(xtID, true, duration)
 
-	// Schedule cleanup
-	time.AfterFunc(5*time.Minute, func() {
-		c.stateManager.RemoveState(xtID)
-	})
+	c.stateManager.RemoveState(xtID)
 
 	return StateCommit
 }
@@ -413,10 +411,7 @@ func (c *coordinator) handleAbort(xtID *pb.XtID, state *TwoPCState) DecisionStat
 		c.callbackMgr.InvokeVote(xtID, false, duration)
 	}
 
-	// Schedule cleanup
-	time.AfterFunc(5*time.Minute, func() {
-		c.stateManager.RemoveState(xtID)
-	})
+	c.stateManager.RemoveState(xtID)
 
 	return StateAbort
 }
