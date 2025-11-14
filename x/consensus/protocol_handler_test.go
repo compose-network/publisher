@@ -97,6 +97,10 @@ func (m *mockCoordinator) OnL2BlockCommitted(ctx context.Context, block *pb.L2Bl
 	return args.Error(0)
 }
 
+func (m *mockCoordinator) RemoveState(xtID *pb.XtID) {
+	m.Called(xtID)
+}
+
 func TestProtocolHandler_CanHandle(t *testing.T) {
 	t.Parallel()
 	handler := NewProtocolHandler(nil, zerolog.Nop())

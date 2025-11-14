@@ -744,7 +744,15 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 				errs = append(errs, fmt.Errorf("update state forced abort %x: %w", inst.XtID, err))
 			}
 
-			err := c.requeueRequest(ctx, inst.XtID)
+			xtID, err := inst.Request.XtID()
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+
+			c.consensusCoord.RemoveState(xtID)
+
+			err = c.requeueRequest(ctx, inst.XtID)
 			if err != nil {
 				errs = append(errs, err)
 			}
@@ -977,11 +985,11 @@ func (c *Coordinator) requeueRequest(ctx context.Context, xtID []byte) error {
 	}
 
 	if retryReq == nil {
-		c.log.Warn().Msgf("Unable to find queued request for %x xtID", xtID)
+		c.log.Warn().Hex("xt_id", xtID).Msg("Unable to find queued request")
 		return nil
 	}
 
-	c.log.Info().Msgf("Requeue XT with %x xtID", xtID)
+	c.log.Info().Hex("xt_id", xtID).Msg("Requeueing XT request")
 
 	return c.xtQueue.RequeueForSlot(ctx, []*queue.QueuedXTRequest{retryReq})
 }

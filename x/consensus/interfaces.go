@@ -18,6 +18,7 @@ type Coordinator interface {
 	GetTransactionState(xtID *pb.XtID) (DecisionState, error)
 	GetActiveTransactions() []*pb.XtID
 	GetState(xtID *pb.XtID) (*TwoPCState, bool)
+	RemoveState(xtID *pb.XtID)
 
 	// CIRC message handling
 	RecordCIRCMessage(circMessage *pb.CIRCMessage) error
