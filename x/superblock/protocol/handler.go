@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 
 	pb "github.com/compose-network/publisher/proto/rollup/v1"
@@ -41,10 +42,76 @@ func (h *handler) Handle(ctx context.Context, from string, msg *pb.Message) erro
 		return fmt.Errorf("invalid or unsupported SBCP message from %s", from)
 	}
 
+	// High-level envelope log for any SBCP message
 	h.log.Debug().
 		Str("from", from).
 		Str("message_type", msgType.String()).
 		Msg("Handling SBCP message")
+
+	// Add verbose, message-specific context to help trace xTs/txs
+	switch msgType {
+	case MsgStartSC:
+		sc := msg.GetStartSc()
+		if sc != nil {
+			xtIDHex := hex.EncodeToString(sc.GetXtId())
+			txCount := 0
+			if sc.GetXtRequest() != nil {
+				txCount = len(sc.GetXtRequest().GetTransactions())
+			}
+			h.log.Info().
+				Str("from", from).
+				Uint64("slot", sc.GetSlot()).
+				Uint64("xt_sequence", sc.GetXtSequenceNumber()).
+				Str("xt_id", xtIDHex).
+				Int("transactions", txCount).
+				Msg("SBCP StartSC received")
+		}
+	case MsgRequestSeal:
+		rs := msg.GetRequestSeal()
+		if rs != nil {
+			included := bytesSliceToHex(rs.GetIncludedXts())
+			h.log.Info().
+				Str("from", from).
+				Uint64("slot", rs.GetSlot()).
+				Int("included_xts_count", len(included)).
+				Strs("included_xts", included).
+				Msg("SBCP RequestSeal received")
+		}
+	case MsgL2Block:
+		lb := msg.GetL2Block()
+		if lb != nil {
+			included := bytesSliceToHex(lb.GetIncludedXts())
+			h.log.Info().
+				Str("from", from).
+				Uint64("slot", lb.GetSlot()).
+				Str("chain_id", hex.EncodeToString(lb.GetChainId())).
+				Uint64("block_number", lb.GetBlockNumber()).
+				Str("block_hash", hex.EncodeToString(lb.GetBlockHash())).
+				Int("included_xts_count", len(included)).
+				Strs("included_xts", included).
+				Msg("SBCP L2Block received")
+		}
+	case MsgStartSlot:
+		ss := msg.GetStartSlot()
+		if ss != nil {
+			h.log.Info().
+				Str("from", from).
+				Uint64("slot", ss.GetSlot()).
+				Uint64("next_superblock_number", ss.GetNextSuperblockNumber()).
+				Int("l2_block_requests", len(ss.GetL2BlocksRequest())).
+				Msg("SBCP StartSlot received")
+		}
+	case MsgRollBackAndStartSlot:
+		rb := msg.GetRollBackAndStartSlot()
+		if rb != nil {
+			h.log.Warn().
+				Str("from", from).
+				Uint64("current_slot", rb.GetCurrentSlot()).
+				Uint64("next_superblock_number", rb.GetNextSuperblockNumber()).
+				Int("l2_block_requests", len(rb.GetL2BlocksRequest())).
+				Msg("SBCP RollBackAndStartSlot received")
+		}
+	}
 
 	if h.validator == nil {
 		return h.handleMessage(ctx, from, msgType, msg)
@@ -91,4 +158,20 @@ func (h *handler) handleMessage(ctx context.Context, from string, msgType Messag
 	default:
 		return fmt.Errorf("no handler for message type %s", msgType)
 	}
+}
+
+// bytesSliceToHex converts a slice of byte-slices ([][]byte) into
+// their lower-hex string representation for structured logging.
+func bytesSliceToHex(items [][]byte) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, b := range items {
+		if len(b) == 0 {
+			continue
+		}
+		out = append(out, hex.EncodeToString(b))
+	}
+	return out
 }

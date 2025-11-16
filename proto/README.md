@@ -9,6 +9,17 @@ These definitions are managed on the [Buf Schema Registry](httpss://buf.build) a
 User facing documentation should not be placed here but instead goes in `buf.md` and in each protobuf package following
 the guidelines in https://docs.buf.build/bsr/documentation.
 
+## Structure
+
+The protobuf definitions are organized by layer:
+
+- **`rollup/v1/transport.proto`** - Connection-level messages (handshake, ping/pong, disconnect)
+- **`rollup/v1/consensus.proto`** - Synchronous Composability Protocol (SCP) messages (votes, decisions, CIRC)
+- **`rollup/v1/sbcp.proto`** - Superblock Construction Protocol (SBCP) messages (slots, L2 blocks)
+- **`rollup/v1/messages.proto`** - Main message wrapper that imports all protocol layers
+
+This structure matches the protocol specifications in `spec/` directory.
+
 ## Development
 
 The `Makefile` in this directory provides several commands to work with the protobuf files.

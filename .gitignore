@@ -32,9 +32,6 @@ go.work.sum
 .vscode/
 
 bin/
-
-# AI
-AGENTS.md
 CLAUDE.md
 *plan.md
 .claude/
