@@ -44,7 +44,7 @@ jobs:
 
       # Step 4: Run local testnet (uses our action)
       - name: Run local testnet
-        uses: compose-network/github-actions/actions/local-testnet@674bbbb0f446ea5c9357028175ed26aa66d22226
+        uses: compose-network/github-actions/actions/local-testnet@6dc3be0ccf02a6630b50991261d092e2fb98063d
         with:
           # Required: Repository branches
           op-geth-branch: 'stage'
