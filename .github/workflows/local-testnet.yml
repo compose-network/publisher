@@ -4,6 +4,9 @@ name: Secure Local Testnet on PR Comment
 # actions from the compose-network/github-actions repository.
 # All steps use composite actions from this repo to prevent malicious code execution.
 
+# SECURITY: Only compose-network/github-actions actions are allowed on this runner.
+# External actions are blocked. See: https://github.com/compose-network/github-actions/blob/main/SECURITY.md
+
 on:
   issue_comment:
     types: [created]
@@ -41,14 +44,14 @@ jobs:
 
       # Step 4: Run local testnet (uses our action)
       - name: Run local testnet
-        uses: compose-network/github-actions/actions/local-testnet@v0.4.0
+        uses: compose-network/github-actions/actions/local-testnet@31232e4955b5fb61f7791f7f1be1ddd5098308da
         with:
           # Required: Repository branches
           op-geth-branch: 'stage'
           publisher-branch: ${{ steps.pr-info.outputs.branch }}
 
           # Optional: Override Docker image tag
-          # local-testnet-image-tag: 'v1.2.3'
+          # local-testnet-image-tag: 'latest'
 
           # PR information for status updates
           pr-number: ${{ github.event.issue.number }}
