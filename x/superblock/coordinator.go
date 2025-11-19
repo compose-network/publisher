@@ -301,11 +301,15 @@ func (c *Coordinator) processSlotTick(ctx context.Context) error {
 }
 
 func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint64) error {
-	if currentSlot <= c.stateMachine.GetCurrentSlot() {
-		c.log.Warn().
-			Uint64("current_slot", currentSlot).
-			Uint64("state_machine_slot", c.stateMachine.GetCurrentSlot()).
-			Msg("State machine has ahead slot; skipping start")
+	stateMachineSlot := c.stateMachine.GetCurrentSlot()
+
+	if stateMachineSlot >= currentSlot {
+		if stateMachineSlot > currentSlot {
+			c.log.Warn().
+				Uint64("current_slot", currentSlot).
+				Uint64("state_machine_slot", stateMachineSlot).
+				Msg("State machine has ahead slot; skipping start")
+		}
 		return nil
 	}
 
