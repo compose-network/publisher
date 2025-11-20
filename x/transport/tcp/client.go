@@ -303,22 +303,31 @@ func (c *client) receiveLoop(ctx context.Context) {
 			c.log.Debug().Msg("Receive loop canceled")
 			return
 		default:
+			c.mu.RLock()
+			conn := c.conn
+			c.mu.RUnlock()
+
+			if conn == nil {
+				c.handleConnectionLoss(fmt.Errorf("connection is nil"))
+				return
+			}
+
 			// Set read timeout
 			if c.config.ReadTimeout > 0 {
 				deadline := time.Now().Add(c.config.ReadTimeout)
-				if err := c.conn.SetReadDeadline(deadline); err != nil {
+				if err := conn.SetReadDeadline(deadline); err != nil {
 					c.handleConnectionLoss(err)
 					return
 				}
 			}
 
-			msg, err := c.conn.ReadMessage()
+			msg, err := conn.ReadMessage()
 			if err != nil {
 				if err == io.EOF {
 					c.log.Debug().Msg("Server closed connection")
 				} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
-					if c.conn != nil {
-						c.conn.UpdateLastSeen()
+					if conn != nil {
+						conn.UpdateLastSeen()
 					}
 					continue
 				} else {
@@ -356,8 +365,8 @@ func (c *client) receiveLoop(ctx context.Context) {
 			}
 
 			var verifiedID string
-			if c.conn != nil {
-				verifiedID = c.conn.GetAuthenticatedID()
+			if conn != nil {
+				verifiedID = conn.GetAuthenticatedID()
 			}
 
 			c.log.Debug().
