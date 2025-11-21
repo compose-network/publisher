@@ -1,5 +1,11 @@
 package mailbox
 
+import (
+	"strings"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+)
+
 const mailboxABI = `[
   {
     "type":"constructor",
@@ -463,3 +469,7 @@ const mailboxABI = `[
     "inputs":[ ]
   }
 ]`
+
+func parseMailboxABI() (abi.ABI, error) {
+	return abi.JSON(strings.NewReader(mailboxABI))
+}

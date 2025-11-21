@@ -1,25 +1,11 @@
 package mailbox
 
 import (
-	"crypto/ecdsa"
 	"math/big"
 
-	"github.com/compose-network/publisher/x/superblock/sequencer"
-	"github.com/compose-network/publisher/x/transport"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
-
-// Config describes the dependencies required to process mailbox interactions.
-type Config struct {
-	ChainID              uint64
-	MailboxAddresses     []common.Address
-	SequencerClients     map[string]transport.Client
-	SequencerCoordinator sequencer.Coordinator
-	CoordinatorKey       *ecdsa.PrivateKey
-	CoordinatorAddr      common.Address
-	MailboxSelector      func(chainID uint64) common.Address
-}
 
 type MailboxCall struct {
 	ChainMessageSender    *big.Int
