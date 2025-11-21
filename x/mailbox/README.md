@@ -4,7 +4,7 @@ Mailbox utilities for sequencing cross-rollup transactions.
 
 Contents
 
-- `mailbox.go`: public interfaces, configuration, and constructor wiring with pluggable sender/inbox/tx builder + logger.
+- `mailbox.go`: public interfaces, configuration, and constructor wiring with pluggable sender/inbox/tx builder + logger (component-tagged).
 - `processor.go`: orchestration entrypoint that uses the injected interfaces for analysis and coordination.
 - `analysis.go`: mailbox call parsing, dependency classification, and coordination summaries.
 - `inbox.go`: consensus-backed CIRC waiter implementation with configurable polling/timeout.

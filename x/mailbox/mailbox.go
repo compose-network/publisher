@@ -118,7 +118,7 @@ func NewProcessor(cfg Config) (Processor, error) {
 	if logger.GetLevel() == zerolog.NoLevel {
 		logger = appLog.New("info", true).Logger
 	}
-	logger = logger.With().Str("module", "mailbox").Logger()
+	logger = logger.With().Str("component", "mailbox").Logger()
 
 	waitCfg := cfg.waitConfigWithDefaults()
 
