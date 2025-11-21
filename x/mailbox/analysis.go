@@ -39,7 +39,7 @@ func (p *processor) analyzeTransaction(
 		p.log.Warn().
 			Err(traceResult.ExecutionResult.Err).
 			Str("tx_hash", txHashHex).
-			Bytes("revert", traceResult.ExecutionResult.Revert()).
+			Hex("revert", traceResult.ExecutionResult.Revert()).
 			Msg("Cross-chain transaction reverted during simulation; continuing analysis")
 	}
 
