@@ -1,6 +1,7 @@
 package superblock
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -300,13 +301,19 @@ func (c *Coordinator) processSlotTick(ctx context.Context) error {
 }
 
 func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint64) error {
-	if currentSlot <= c.stateMachine.GetCurrentSlot() {
-		c.log.Warn().
-			Uint64("current_slot", currentSlot).
-			Uint64("state_machine_slot", c.stateMachine.GetCurrentSlot()).
-			Msg("State machine has ahead slot; skipping start")
+	stateMachineSlot := c.stateMachine.GetCurrentSlot()
+
+	if stateMachineSlot >= currentSlot {
+		if stateMachineSlot > currentSlot {
+			c.log.Warn().
+				Uint64("current_slot", currentSlot).
+				Uint64("state_machine_slot", stateMachineSlot).
+				Msg("State machine has ahead slot; skipping start")
+		}
 		return nil
 	}
+
+	c.cleanupPreviousSlotConsensusState()
 
 	activeRollups, err := c.registryService.GetActiveRollups(ctx)
 	if err != nil {
@@ -360,6 +367,35 @@ func (c *Coordinator) handleStartingState(ctx context.Context, currentSlot uint6
 	return nil
 }
 
+// cleanupPreviousSlotConsensusState removes outdated consensus state
+// associated with the previous slot from the coordinator.
+func (c *Coordinator) cleanupPreviousSlotConsensusState() {
+	instances := c.stateMachine.GetSCPInstances()
+	if len(instances) == 0 {
+		return
+	}
+
+	c.log.Info().
+		Int("count", len(instances)).
+		Uint64("slot", c.stateMachine.GetCurrentSlot()).
+		Msg("Cleaning up consensus state from previous slot")
+
+	for _, inst := range instances {
+		if inst == nil || inst.Request == nil {
+			continue
+		}
+		xtID, err := inst.Request.XtID()
+		if err != nil {
+			c.log.Warn().
+				Err(err).
+				Hex("xt_id", inst.XtID).
+				Msg("Failed to compute XtID for cleanup")
+			continue
+		}
+		c.consensusCoord.RemoveState(xtID)
+	}
+}
+
 func (c *Coordinator) handleFreeState(ctx context.Context, currentSlot uint64) error {
 	if c.slot.IsSealTime() {
 		c.log.Info().Uint64("current_slot", currentSlot).
@@ -377,7 +413,7 @@ func (c *Coordinator) handleFreeState(ctx context.Context, currentSlot uint64) e
 
 	if queuedRequest.ExpiresAt.Before(time.Now()) {
 		c.xtQueue.Dequeue(ctx)
-		c.log.Info().Str("xt_id", fmt.Sprintf("%x", queuedRequest.XtID)).Msg("Expired XT request removed")
+		c.log.Info().Hex("xt_id", queuedRequest.XtID).Msg("Expired XT request removed")
 		return nil
 	}
 
@@ -457,7 +493,7 @@ func (c *Coordinator) startSCP(ctx context.Context, queuedRequest *queue.QueuedX
 	c.sendStartSCMessages(ctx, scpInstance)
 
 	c.log.Info().
-		Str("xt_id", fmt.Sprintf("%x", scpInstance.XtID)).
+		Hex("xt_id", scpInstance.XtID).
 		Uint64("sequence", sequenceNumber).
 		Int("participating_chains", len(participatingChains)).
 		Msg("Started SCP instance")
@@ -665,13 +701,13 @@ func (c *Coordinator) onStateSealing(from, to slot.State, slot uint64) {
 func (c *Coordinator) handleConsensusStart(ctx context.Context, from string, xtReq *pb.XTRequest) error {
 	c.log.Info().
 		Str("from", from).
-		Str("xt_id", fmt.Sprintf("%x", c.calculateXtID(xtReq))).
+		Hex("xt_id", c.calculateXtID(xtReq)).
 		Msg("Consensus start callback")
 	return nil
 }
 
 func (c *Coordinator) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vote bool) error {
-	c.log.Info().Str("xt_id", xtID.Hex()).Bool("vote", vote).Msg("Broadcasting vote to sequencers")
+	c.log.Info().Hex("xt_id", xtID.Hash).Bool("vote", vote).Msg("Broadcasting vote to sequencers")
 
 	voteMsg := &pb.Message{
 		SenderId: "publisher",
@@ -688,7 +724,7 @@ func (c *Coordinator) handleConsensusVote(ctx context.Context, xtID *pb.XtID, vo
 }
 
 func (c *Coordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {
-	c.log.Info().Str("xt_id", xtID.Hex()).Bool("decision", decision).Msg("Broadcasting decision to sequencers")
+	c.log.Info().Hex("xt_id", xtID.Hash).Bool("decision", decision).Msg("Broadcasting decision to sequencers")
 
 	decidedMsg := &pb.Message{
 		SenderId: "publisher",
@@ -729,7 +765,7 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 			if err := c.transport.Broadcast(ctx, decidedMsg, ""); err != nil {
 				c.log.Error().
 					Err(err).
-					Str("xt_id", fmt.Sprintf("%x", inst.XtID)).
+					Hex("xt_id", inst.XtID).
 					Msg("Failed to broadcast forced abort decision")
 				errs = append(errs, fmt.Errorf("broadcast forced abort %x: %w", inst.XtID, err))
 			}
@@ -738,9 +774,14 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 			if err := c.stateMachine.ProcessSCPDecisionWithReason(inst.XtID, false, "forced_abort_at_seal"); err != nil {
 				c.log.Error().
 					Err(err).
-					Str("xt_id", fmt.Sprintf("%x", inst.XtID)).
+					Hex("xt_id", inst.XtID).
 					Msg("Failed to process forced abort decision")
 				errs = append(errs, fmt.Errorf("update state forced abort %x: %w", inst.XtID, err))
+			}
+
+			err := c.requeueRequest(ctx, inst.XtID)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		}
 	}
@@ -844,22 +885,19 @@ func (c *Coordinator) sendStartSlotMessages(
 }
 
 func (c *Coordinator) sendStartSCMessages(ctx context.Context, instance *slot.SCPInstance) {
-	xtIDStr := fmt.Sprintf("%x", instance.XtID)
-
-	// Check if transaction already exists in consensus layer
 	xtID, err := instance.Request.XtID()
 	if err != nil {
-		c.log.Error().Err(err).Str("xt_id", xtIDStr).Msg("Failed to compute XT ID for SCP start")
+		c.log.Error().Err(err).Hex("xt_id", instance.XtID).Msg("Failed to compute XT ID for SCP start")
 		return
 	}
 
 	if _, exists := c.consensusCoord.GetState(xtID); exists {
-		c.log.Warn().Str("xt_id", xtIDStr).Msg("SCP transaction already exists, skipping duplicate start")
+		c.log.Warn().Hex("xt_id", instance.XtID).Msg("SCP transaction already exists, skipping duplicate start")
 		return
 	}
 
 	if err := c.consensusCoord.StartTransaction(ctx, "superblock-coordinator", instance.Request); err != nil {
-		c.log.Error().Err(err).Str("xt_id", xtIDStr).Msg("Failed to start SCP transaction")
+		c.log.Error().Err(err).Hex("xt_id", instance.XtID).Msg("Failed to start SCP transaction")
 	}
 }
 
@@ -955,6 +993,29 @@ func (c *Coordinator) requeueAttemptedRequests(ctx context.Context) error {
 	// Clear current map to avoid double requeue
 	c.currentExecution.AttemptedRequests = make(map[string]*queue.QueuedXTRequest)
 	return c.xtQueue.RequeueForSlot(ctx, reqs)
+}
+
+func (c *Coordinator) requeueRequest(ctx context.Context, xtID []byte) error {
+	if c.currentExecution == nil || len(c.currentExecution.AttemptedRequests) == 0 {
+		return nil
+	}
+
+	var retryReq *queue.QueuedXTRequest
+	for _, r := range c.currentExecution.AttemptedRequests {
+		if bytes.Equal(r.XtID, xtID) {
+			retryReq = r
+			break
+		}
+	}
+
+	if retryReq == nil {
+		c.log.Warn().Hex("xt_id", xtID).Msg("Unable to find queued request")
+		return nil
+	}
+
+	c.log.Info().Hex("xt_id", xtID).Msg("Requeueing XT request")
+
+	return c.xtQueue.RequeueForSlot(ctx, []*queue.QueuedXTRequest{retryReq})
 }
 
 func (c *Coordinator) handleSlotTimeout(ctx context.Context, slotNumber uint64) error {
