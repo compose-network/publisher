@@ -457,10 +457,13 @@ func (c *Coordinator) startSCP(ctx context.Context, queuedRequest *queue.QueuedX
 
 	participatingChains := c.extractParticipatingChains(queuedRequest.Request)
 
+	attemptNumber := queuedRequest.Attempts + 1 // attempts is 0-based in queue, use 1-based for logs/visibility
+
 	scpInstance := &slot.SCPInstance{
 		XtID:                queuedRequest.XtID,
 		Slot:                c.stateMachine.GetCurrentSlot(),
 		SequenceNumber:      sequenceNumber,
+		Attempt:             attemptNumber,
 		Request:             queuedRequest.Request,
 		ParticipatingChains: participatingChains,
 		Votes:               make(map[string]bool),
@@ -495,6 +498,7 @@ func (c *Coordinator) startSCP(ctx context.Context, queuedRequest *queue.QueuedX
 	c.log.Info().
 		Hex("xt_id", scpInstance.XtID).
 		Uint64("sequence", sequenceNumber).
+		Int("attempt", attemptNumber).
 		Int("participating_chains", len(participatingChains)).
 		Msg("Started SCP instance")
 
@@ -755,11 +759,28 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 	var errs []error
 	for _, inst := range instances {
 		if inst.Decision == nil {
+			xtID := &pb.XtID{Hash: inst.XtID}
+			votesRecorded := 0
+			votesRequired := len(inst.ParticipatingChains)
+			if st, ok := c.consensusCoord.GetState(xtID); ok {
+				votesRecorded = st.GetVoteCount()
+				votesRequired = st.GetParticipantCount()
+			}
+
+			// Only requeue if no progress was made in the slot. Partial votes indicate
+			// the instance was already underway; abort those without retry to avoid
+			// duplicating near-commit attempts.
+			shouldRequeue := votesRecorded == 0
+			reason := "forced_abort_at_seal"
+			if !shouldRequeue {
+				reason = "forced_abort_at_seal_partial_votes"
+			}
+
 			// Broadcast Decided(false)
 			decidedMsg := &pb.Message{
 				SenderId: "publisher",
 				Payload: &pb.Message_Decided{
-					Decided: &pb.Decided{XtId: &pb.XtID{Hash: inst.XtID}, Decision: false},
+					Decided: &pb.Decided{XtId: xtID, Decision: false},
 				},
 			}
 			if err := c.transport.Broadcast(ctx, decidedMsg, ""); err != nil {
@@ -771,7 +792,7 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 			}
 
 			// Update state machine
-			if err := c.stateMachine.ProcessSCPDecisionWithReason(inst.XtID, false, "forced_abort_at_seal"); err != nil {
+			if err := c.stateMachine.ProcessSCPDecisionWithReason(inst.XtID, false, reason); err != nil {
 				c.log.Error().
 					Err(err).
 					Hex("xt_id", inst.XtID).
@@ -779,9 +800,21 @@ func (c *Coordinator) forceAbortUndecided(ctx context.Context) error {
 				errs = append(errs, fmt.Errorf("update state forced abort %x: %w", inst.XtID, err))
 			}
 
-			err := c.requeueRequest(ctx, inst.XtID)
-			if err != nil {
-				errs = append(errs, err)
+			// Clean consensus state so requeues start fresh
+			c.consensusCoord.RemoveState(xtID)
+
+			if shouldRequeue {
+				err := c.requeueRequest(ctx, inst.XtID)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			} else {
+				c.log.Info().
+					Hex("xt_id", inst.XtID).
+					Int("votes_recorded", votesRecorded).
+					Int("votes_required", votesRequired).
+					Str("reason", reason).
+					Msg("Forced abort at seal without requeue (partial progress)")
 			}
 		}
 	}

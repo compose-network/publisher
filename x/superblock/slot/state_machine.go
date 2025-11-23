@@ -70,6 +70,7 @@ type SCPInstance struct {
 	XtID                []byte
 	Slot                uint64
 	SequenceNumber      uint64
+	Attempt             int
 	Request             *pb.XTRequest
 	ParticipatingChains [][]byte
 	Votes               map[string]bool
@@ -207,6 +208,7 @@ func (sm *StateMachine) StartSCP(instance *SCPInstance) error {
 		Str("from", oldState.String()).
 		Str("to", sm.currentState.String()).
 		Uint64("slot", sm.currentSlot).
+		Int("attempt", instance.Attempt).
 		Str("xt_id", fmt.Sprintf("%x", instance.XtID)).
 		Msg("Started SCP instance, state locked")
 
@@ -288,6 +290,7 @@ func (sm *StateMachine) RequestSeal(includedXTs [][]byte) error {
 			sm.log.Info().
 				Str("xt_id", xtIDStr).
 				Uint64("slot", sm.currentSlot).
+				Int("attempt", inst.Attempt).
 				Msg("XT included at seal")
 			continue
 		}
@@ -302,6 +305,7 @@ func (sm *StateMachine) RequestSeal(includedXTs [][]byte) error {
 			sm.log.Warn().
 				Str("xt_id", xtIDStr).
 				Uint64("slot", sm.currentSlot).
+				Int("attempt", inst.Attempt).
 				Str("reason", reason).
 				Msg("XT excluded at seal (no decision)")
 			continue
@@ -315,6 +319,7 @@ func (sm *StateMachine) RequestSeal(includedXTs [][]byte) error {
 			sm.log.Info().
 				Str("xt_id", xtIDStr).
 				Uint64("slot", sm.currentSlot).
+				Int("attempt", inst.Attempt).
 				Str("reason", reason).
 				Msg("XT excluded at seal")
 			continue
@@ -324,6 +329,7 @@ func (sm *StateMachine) RequestSeal(includedXTs [][]byte) error {
 		sm.log.Warn().
 			Str("xt_id", xtIDStr).
 			Uint64("slot", sm.currentSlot).
+			Int("attempt", inst.Attempt).
 			Str("reason", "decision_commit_but_missing_from_included_set").
 			Msg("XT expected to be included but missing")
 	}

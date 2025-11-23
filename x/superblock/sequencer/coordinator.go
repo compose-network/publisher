@@ -325,6 +325,14 @@ func (sc *SequencerCoordinator) handleStartSC(
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
+	sc.log.Info().
+		Uint64("slot", startSC.Slot).
+		Uint64("sequence", startSC.XtSequenceNumber).
+		Str("state", sc.stateMachine.GetCurrentState().String()).
+		Int("pending", len(sc.pendingStartSCs)).
+		Int("active", sc.scpIntegration.GetActiveCount()).
+		Msg("StartSC received")
+
 	if startSC.Slot != sc.currentSlot {
 		sc.log.Warn().
 			Uint64("msg_slot", startSC.Slot).
@@ -395,9 +403,16 @@ func (sc *SequencerCoordinator) handleStartSC(
 	// Extract our transactions
 	myTxs := sc.extractMyTransactions(startSC.XtRequest)
 
-	var voteResult = true
+	voteResult := true
 
-	if sc.callbacks.SimulateAndVote != nil && len(myTxs) > 0 {
+	if len(myTxs) == 0 {
+		sc.log.Warn().
+			Str("xt_id", xtID.Hex()).
+			Uint64("sequence", startSC.XtSequenceNumber).
+			Uint64("slot", startSC.Slot).
+			Msg("No local transactions for StartSC; voting abort to avoid timeout")
+		voteResult = false
+	} else if sc.callbacks.SimulateAndVote != nil {
 		success, err := sc.callbacks.SimulateAndVote(ctx, startSC.XtRequest, xtID)
 		if err != nil {
 			sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Simulation failed")
@@ -405,7 +420,7 @@ func (sc *SequencerCoordinator) handleStartSC(
 		} else {
 			voteResult = success
 		}
-	} else if len(myTxs) > 0 {
+	} else {
 		// TODO: handle this case
 		sc.log.Warn().
 			Str("xt_id", xtID.Hex()).
@@ -537,6 +552,18 @@ func (sc *SequencerCoordinator) handleRequestSeal(ctx context.Context, from stri
 			Int("dropped_count", len(sc.pendingStartSCs)).
 			Uint64("slot", requestSeal.Slot).
 			Msg("Clearing queued StartSC messages at RequestSeal (too late for this slot)")
+		// Proactively vote abort for queued StartSCs so the leader won't time out waiting
+		// for this chain.
+		for _, pending := range sc.pendingStartSCs {
+			xtID := &pb.XtID{Hash: pending.start.XtId}
+			vote := &pb.Vote{SenderChainId: sc.chainID, XtId: xtID, Vote: false}
+			msg := &pb.Message{SenderId: fmt.Sprintf("seq-%x", sc.chainID), Payload: &pb.Message_Vote{Vote: vote}}
+			if err := sc.transport.Send(ctx, msg); err != nil {
+				sc.log.Warn().Err(err).Str("xt_id", xtID.Hex()).Msg("Failed to send abort vote for queued StartSC")
+			} else {
+				sc.log.Info().Str("xt_id", xtID.Hex()).Msg("Sent abort vote for queued StartSC at seal")
+			}
+		}
 		sc.pendingStartSCs = nil
 	}
 
