@@ -323,6 +323,8 @@ func (sc *SequencerCoordinator) handleStartSC(
 	from string,
 	startSC *pb.StartSC) error {
 	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
 	sc.log.Info().
 		Uint64("slot", startSC.Slot).
 		Uint64("sequence", startSC.XtSequenceNumber).
@@ -336,7 +338,6 @@ func (sc *SequencerCoordinator) handleStartSC(
 			Uint64("msg_slot", startSC.Slot).
 			Uint64("current_slot", sc.currentSlot).
 			Msg("StartSC for wrong slot")
-		sc.mu.Unlock()
 		return nil
 	}
 
@@ -346,7 +347,6 @@ func (sc *SequencerCoordinator) handleStartSC(
 			from  string
 			start *pb.StartSC
 		}{from: from, start: startSC})
-		sc.mu.Unlock()
 		sc.log.Warn().
 			Str("state", sc.stateMachine.GetCurrentState().String()).
 			Int("queued", len(sc.pendingStartSCs)).
@@ -360,7 +360,6 @@ func (sc *SequencerCoordinator) handleStartSC(
 			from  string
 			start *pb.StartSC
 		}{from: from, start: startSC})
-		sc.mu.Unlock()
 		sc.log.Warn().
 			Uint64("sequence", startSC.XtSequenceNumber).
 			Int("queued", len(sc.pendingStartSCs)).
@@ -373,7 +372,6 @@ func (sc *SequencerCoordinator) handleStartSC(
 		requiredSeq = lastSeq + 1
 	}
 	if startSC.XtSequenceNumber != requiredSeq {
-		sc.mu.Unlock()
 		sc.log.Warn().
 			Uint64("got_seq", startSC.XtSequenceNumber).
 			Uint64("required_seq", requiredSeq).
@@ -383,39 +381,88 @@ func (sc *SequencerCoordinator) handleStartSC(
 
 	xtID := &pb.XtID{Hash: startSC.XtId}
 
+	sc.log.Info().
+		Str("xt_id", xtID.Hex()).
+		Uint64("sequence", startSC.XtSequenceNumber).
+		Msg("Starting SCP for cross-chain transaction")
+
 	// Transition to Building-Locked
 	if err := sc.stateMachine.TransitionTo(
 		StateBuildingLocked,
 		startSC.Slot,
 		fmt.Sprintf("StartSC seq=%d", startSC.XtSequenceNumber),
 	); err != nil {
-		sc.mu.Unlock()
 		return err
 	}
 
 	// Handle SCP integration
 	if err := sc.scpIntegration.HandleStartSC(ctx, startSC); err != nil {
-		sc.mu.Unlock()
 		return err
 	}
 
-	// Extract our transactions and snapshot callback before releasing the lock so the handler
-	// returns quickly to the TCP worker. Simulation can block on CIRC; it must not hold the
-	// coordinator mutex and stall other SBCP messages (RequestSeal, subsequent StartSCs).
+	// Extract our transactions
 	myTxs := sc.extractMyTransactions(startSC.XtRequest)
-	simulate := sc.callbacks.SimulateAndVote
+
+	voteResult := true
+
+	if len(myTxs) == 0 {
+		sc.log.Warn().
+			Str("xt_id", xtID.Hex()).
+			Uint64("sequence", startSC.XtSequenceNumber).
+			Uint64("slot", startSC.Slot).
+			Msg("No local transactions for StartSC; voting abort to avoid timeout")
+		voteResult = false
+	} else if sc.callbacks.SimulateAndVote != nil {
+		success, err := sc.callbacks.SimulateAndVote(ctx, startSC.XtRequest, xtID)
+		if err != nil {
+			sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Simulation failed")
+			voteResult = false
+		} else {
+			voteResult = success
+		}
+	} else {
+		// TODO: handle this case
+		sc.log.Warn().
+			Str("xt_id", xtID.Hex()).
+			Msg("No simulation callback configured, voting true blindly")
+	}
+
+	// Send vote based on a simulation result
+	vote := &pb.Vote{
+		SenderChainId: sc.chainID,
+		XtId:          xtID,
+		Vote:          voteResult,
+	}
+
+	msg := &pb.Message{
+		SenderId: fmt.Sprintf("seq-%x", sc.chainID),
+		Payload:  &pb.Message_Vote{Vote: vote},
+	}
+
+	if err := sc.transport.Send(ctx, msg); err != nil {
+		sc.log.Error().Err(err).Msg("Failed to send vote to SP")
+		return err
+	}
 
 	sc.log.Info().
 		Str("xt_id", xtID.Hex()).
-		Uint64("sequence", startSC.XtSequenceNumber).
-		Msg("Starting SCP for cross-chain transaction")
-
-	sc.mu.Unlock()
-
-	// Run simulation + vote without holding the coordinator lock to avoid head-of-line blocking.
-	go sc.runSimulationAndVote(ctx, startSC, xtID, myTxs, simulate)
+		Bool("vote", voteResult).
+		Msg("Sent vote to SP based on simulation")
 
 	return nil
+}
+
+// Helper to extract our transactions
+func (sc *SequencerCoordinator) extractMyTransactions(xtReq *pb.XTRequest) [][]byte {
+	myTxs := make([][]byte, 0)
+
+	for _, txReq := range xtReq.Transactions {
+		if bytes.Equal(txReq.ChainId, sc.chainID) {
+			myTxs = append(myTxs, txReq.Transaction...)
+		}
+	}
+
+	return myTxs
 }
 
 //nolint:unparam,gocyclo // in progress
@@ -860,73 +907,4 @@ func WrapCoordinator(
 	log zerolog.Logger,
 ) (Coordinator, error) {
 	return NewSequencerCoordinator(baseConsensus, config, transport, log), nil
-}
-
-// runSimulationAndVote executes the simulation callback and sends the vote without holding locks.
-// Keeping this async avoids blocking RequestSeal/Decided handling on long CIRC waits.
-func (sc *SequencerCoordinator) runSimulationAndVote(
-	ctx context.Context,
-	startSC *pb.StartSC,
-	xtID *pb.XtID,
-	myTxs [][]byte,
-	simulate func(context.Context, *pb.XTRequest, *pb.XtID) (bool, error),
-) {
-	voteResult := true
-
-	switch {
-	case len(myTxs) == 0:
-		sc.log.Warn().
-			Str("xt_id", xtID.Hex()).
-			Uint64("sequence", startSC.XtSequenceNumber).
-			Uint64("slot", startSC.Slot).
-			Msg("No local transactions for StartSC; voting abort to avoid timeout")
-		voteResult = false
-	case simulate != nil:
-		success, err := simulate(ctx, startSC.XtRequest, xtID)
-		if err != nil {
-			sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Simulation failed")
-			voteResult = false
-		} else {
-			voteResult = success
-		}
-	default:
-		sc.log.Warn().
-			Str("xt_id", xtID.Hex()).
-			Msg("No simulation callback configured, voting true blindly")
-	}
-
-	vote := &pb.Vote{
-		SenderChainId: sc.chainID,
-		XtId:          xtID,
-		Vote:          voteResult,
-	}
-
-	msg := &pb.Message{
-		SenderId: fmt.Sprintf("seq-%x", sc.chainID),
-		Payload:  &pb.Message_Vote{Vote: vote},
-	}
-
-	if err := sc.transport.Send(ctx, msg); err != nil {
-		sc.log.Error().Err(err).Msg("Failed to send vote to SP")
-		return
-	}
-
-	sc.log.Info().
-		Str("xt_id", xtID.Hex()).
-		Bool("vote", voteResult).
-		Msg("Sent vote to SP based on simulation")
-}
-
-// extractMyTransactions filters and returns transactions from the XTRequest
-// that match the SequencerCoordinator's chain ID.
-func (sc *SequencerCoordinator) extractMyTransactions(xtReq *pb.XTRequest) [][]byte {
-	myTxs := make([][]byte, 0)
-
-	for _, txReq := range xtReq.Transactions {
-		if bytes.Equal(txReq.ChainId, sc.chainID) {
-			myTxs = append(myTxs, txReq.Transaction...)
-		}
-	}
-
-	return myTxs
 }
