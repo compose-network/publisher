@@ -111,31 +111,3 @@ mgr.MarkCommitted(ctx, 2, 100, hashes)
 // Mark delivered after finalization
 mgr.MarkDelivered(ctx, hashes)
 ```
-
-## Testing
-
-Run tests:
-```bash
-go test ./x/mempool/
-```
-
-With coverage:
-```bash
-go test -cover ./x/mempool/
-```
-
-Current coverage: **91.6%**
-
-## Design Principles
-
-1. **Pure protocol logic**: No dependencies on execution layer (geth, etc.)
-2. **Testable**: All components fully testable with mocks
-3. **Type safety**: Uses string hashes and hex-encoded xtIDs (no execution-specific types)
-4. **Thread-safe**: Tracker uses mutex for concurrent access
-5. **Minimal**: Generic cross-chain transaction lifecycle management
-
-## Integration
-
-This module is designed to be used by `x/superblock/sequencer` to manage the transaction lifecycle. The sequencer coordinator uses the mempool manager instead of maintaining its own transaction tracking logic.
-
-See the SDK modular architecture document for integration details.
