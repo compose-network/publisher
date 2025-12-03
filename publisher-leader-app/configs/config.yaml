@@ -29,6 +29,7 @@ log:
   output: stdout
 
 consensus:
+  instance_timeout: "3s"
   timeout: "3s"
   role: "leader"
 
