@@ -1,0 +1,21 @@
+name: Go workflow
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - stage
+
+jobs:
+    docker-build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              run: |
+                git clone --depth=1 --branch="${GITHUB_REF#refs/heads/}" "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" .
+                git checkout "$GITHUB_SHA"
+
+            - name: Install Go
+              uses: compose-network/github-actions/actions/install-go@v0.8.0
+              with:
+                go-version: '1.24.5'
