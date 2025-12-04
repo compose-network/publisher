@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 const unknownString = "Unknown"
@@ -10,11 +10,11 @@ const unknownString = "Unknown"
 type MessageType int
 
 const (
-	MsgUnknown     MessageType = iota
-	MsgXTRequest               // Cross-chain transaction request
-	MsgVote                    // Sequencer vote
-	MsgDecided                 // SP decision
-	MsgCIRCMessage             // Inter-rollup communication
+	MsgUnknown        MessageType = iota
+	MsgXTRequest                  // Cross-chain transaction request
+	MsgVote                       // Sequencer vote
+	MsgDecided                    // SP decision
+	MsgMailboxMessage             // Inter-rollup communication
 )
 
 // String returns a human-readable message type name
@@ -28,7 +28,7 @@ func (t MessageType) String() string {
 		return "Vote"
 	case MsgDecided:
 		return "Decided"
-	case MsgCIRCMessage:
+	case MsgMailboxMessage:
 		return "CIRCMessage"
 	}
 	// Fallback for unrecognized values
@@ -37,7 +37,7 @@ func (t MessageType) String() string {
 
 // IsValid returns true if a message type is valid
 func (t MessageType) IsValid() bool {
-	return t > MsgUnknown && t <= MsgCIRCMessage
+	return t > MsgUnknown && t <= MsgMailboxMessage
 }
 
 // ClassifyMessage returns an SCP message type from a protobuf message
@@ -53,8 +53,8 @@ func ClassifyMessage(msg *pb.Message) MessageType {
 		return MsgVote
 	case *pb.Message_Decided:
 		return MsgDecided
-	case *pb.Message_CircMessage:
-		return MsgCIRCMessage
+	case *pb.Message_MailboxMessage:
+		return MsgMailboxMessage
 	default:
 		return MsgUnknown
 	}

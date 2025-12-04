@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/compose-network/publisher/log"
+	"github.com/compose-network/specs/compose"
 )
 
 type RollupInfo struct {
-	ChainID      []byte
+	ChainID      compose.ChainID
 	Endpoint     string
 	PublicKey    []byte
 	StartingSlot uint64
@@ -20,7 +21,7 @@ type RollupInfo struct {
 
 type Event struct {
 	Type      EventType
-	ChainID   []byte
+	ChainID   compose.ChainID
 	Endpoint  string
 	PublicKey []byte
 	Timestamp time.Time
@@ -36,7 +37,7 @@ const (
 
 type service struct {
 	mu           sync.RWMutex
-	rollups      map[string]*RollupInfo
+	rollups      map[compose.ChainID]*RollupInfo
 	logger       *log.Logger
 	l1Client     L1Client
 	contractAddr string
@@ -64,7 +65,7 @@ type L1Block struct {
 
 type ContractEvent struct {
 	Type        string
-	ChainID     []byte
+	ChainID     uint64
 	Endpoint    string
 	PublicKey   []byte
 	BlockNumber uint64
@@ -73,7 +74,7 @@ type ContractEvent struct {
 
 func NewService(logger *log.Logger, l1Client L1Client, contractAddr string) Service {
 	return &service{
-		rollups:         make(map[string]*RollupInfo),
+		rollups:         make(map[compose.ChainID]*RollupInfo),
 		logger:          logger,
 		l1Client:        l1Client,
 		contractAddr:    contractAddr,
@@ -106,11 +107,11 @@ func (s *service) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (s *service) GetActiveRollups(ctx context.Context) ([][]byte, error) {
+func (s *service) GetActiveRollups(ctx context.Context) ([]compose.ChainID, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var activeChainIDs [][]byte
+	var activeChainIDs []compose.ChainID
 	for _, rollup := range s.rollups {
 		if rollup.IsActive {
 			activeChainIDs = append(activeChainIDs, rollup.ChainID)
@@ -120,11 +121,11 @@ func (s *service) GetActiveRollups(ctx context.Context) ([][]byte, error) {
 	return activeChainIDs, nil
 }
 
-func (s *service) GetRollupEndpoint(ctx context.Context, chainID []byte) (string, error) {
+func (s *service) GetRollupEndpoint(ctx context.Context, chainID compose.ChainID) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rollup, exists := s.rollups[string(chainID)]
+	rollup, exists := s.rollups[chainID]
 	if !exists || !rollup.IsActive {
 		return "", fmt.Errorf("rollup not found or inactive: %x", chainID)
 	}
@@ -132,11 +133,11 @@ func (s *service) GetRollupEndpoint(ctx context.Context, chainID []byte) (string
 	return rollup.Endpoint, nil
 }
 
-func (s *service) GetRollupPublicKey(ctx context.Context, chainID []byte) ([]byte, error) {
+func (s *service) GetRollupPublicKey(ctx context.Context, chainID compose.ChainID) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rollup, exists := s.rollups[string(chainID)]
+	rollup, exists := s.rollups[chainID]
 	if !exists || !rollup.IsActive {
 		return nil, fmt.Errorf("rollup not found or inactive: %x", chainID)
 	}
@@ -144,11 +145,11 @@ func (s *service) GetRollupPublicKey(ctx context.Context, chainID []byte) ([]byt
 	return rollup.PublicKey, nil
 }
 
-func (s *service) IsRollupActive(_ context.Context, chainID []byte) (bool, error) {
+func (s *service) IsRollupActive(_ context.Context, chainID compose.ChainID) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rollup, exists := s.rollups[string(chainID)]
+	rollup, exists := s.rollups[chainID]
 	return exists && rollup.IsActive, nil
 }
 
@@ -156,17 +157,17 @@ func (s *service) WatchRegistry(ctx context.Context) (<-chan Event, error) {
 	return s.eventCh, nil
 }
 
-func (s *service) GetRollupInfo(chainID []byte) (*RollupInfo, error) {
+func (s *service) GetRollupInfo(chainID compose.ChainID) (*RollupInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rollup, exists := s.rollups[string(chainID)]
+	rollup, exists := s.rollups[chainID]
 	if !exists {
 		return nil, fmt.Errorf("rollup not found: %x", chainID)
 	}
 
 	return &RollupInfo{
-		ChainID:      make([]byte, len(rollup.ChainID)),
+		ChainID:      rollup.ChainID,
 		Endpoint:     rollup.Endpoint,
 		PublicKey:    make([]byte, len(rollup.PublicKey)),
 		StartingSlot: rollup.StartingSlot,
@@ -175,21 +176,20 @@ func (s *service) GetRollupInfo(chainID []byte) (*RollupInfo, error) {
 	}, nil
 }
 
-func (s *service) GetAllRollups() map[string]*RollupInfo {
+func (s *service) GetAllRollups() map[compose.ChainID]*RollupInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make(map[string]*RollupInfo)
+	result := make(map[compose.ChainID]*RollupInfo)
 	for k, v := range s.rollups {
 		result[k] = &RollupInfo{
-			ChainID:      make([]byte, len(v.ChainID)),
+			ChainID:      v.ChainID,
 			Endpoint:     v.Endpoint,
 			PublicKey:    make([]byte, len(v.PublicKey)),
 			StartingSlot: v.StartingSlot,
 			IsActive:     v.IsActive,
 			UpdatedAt:    v.UpdatedAt,
 		}
-		copy(result[k].ChainID, v.ChainID)
 		copy(result[k].PublicKey, v.PublicKey)
 	}
 	return result
@@ -252,15 +252,15 @@ func (s *service) processContractEvent(contractEvent ContractEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	chainIDStr := string(contractEvent.ChainID)
+	chainID := compose.ChainID(contractEvent.ChainID)
 	now := time.Now()
 
 	var eventType EventType
 
 	switch contractEvent.Type {
 	case "RollupRegistered":
-		s.rollups[chainIDStr] = &RollupInfo{
-			ChainID:      contractEvent.ChainID,
+		s.rollups[chainID] = &RollupInfo{
+			ChainID:      chainID,
 			Endpoint:     contractEvent.Endpoint,
 			PublicKey:    contractEvent.PublicKey,
 			StartingSlot: 1,
@@ -275,7 +275,7 @@ func (s *service) processContractEvent(contractEvent ContractEvent) {
 			Msg("Rollup registered")
 
 	case "RollupUpdated":
-		if rollup, exists := s.rollups[chainIDStr]; exists {
+		if rollup, exists := s.rollups[chainID]; exists {
 			rollup.Endpoint = contractEvent.Endpoint
 			rollup.PublicKey = contractEvent.PublicKey
 			rollup.UpdatedAt = now
@@ -288,7 +288,7 @@ func (s *service) processContractEvent(contractEvent ContractEvent) {
 		}
 
 	case "RollupDeactivated":
-		if rollup, exists := s.rollups[chainIDStr]; exists {
+		if rollup, exists := s.rollups[chainID]; exists {
 			rollup.IsActive = false
 			rollup.UpdatedAt = now
 			eventType = EventTypeRollupRemoved
@@ -300,7 +300,7 @@ func (s *service) processContractEvent(contractEvent ContractEvent) {
 	select {
 	case s.eventCh <- Event{
 		Type:      eventType,
-		ChainID:   contractEvent.ChainID,
+		ChainID:   compose.ChainID(contractEvent.ChainID),
 		Endpoint:  contractEvent.Endpoint,
 		PublicKey: contractEvent.PublicKey,
 		Timestamp: now,

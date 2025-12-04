@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
 
@@ -60,16 +60,12 @@ func (h *handler) Handle(ctx context.Context, from string, msg *pb.Message) erro
 // validateMessage validates the message based on its type
 func (h *handler) validateMessage(msgType MessageType, msg *pb.Message) error {
 	switch msgType {
-	case MsgStartSlot:
-		return h.validator.ValidateStartSlot(msg.GetStartSlot())
-	case MsgRequestSeal:
-		return h.validator.ValidateRequestSeal(msg.GetRequestSeal())
-	case MsgL2Block:
-		return h.validator.ValidateL2Block(msg.GetL2Block())
-	case MsgStartSC:
-		return h.validator.ValidateStartSC(msg.GetStartSc())
-	case MsgRollBackAndStartSlot:
-		return h.validator.ValidateRollBackAndStartSlot(msg.GetRollBackAndStartSlot())
+	case MsgStartPeriod:
+		return h.validator.ValidateStartPeriod(msg.GetStartPeriod())
+	case MsgStartInstance:
+		return h.validator.ValidateStartInstance(msg.GetStartInstance())
+	case MsgRollback:
+		return h.validator.ValidateRollback(msg.GetRollback())
 	default:
 		return fmt.Errorf("no validator for message type %s", msgType)
 	}
@@ -78,16 +74,12 @@ func (h *handler) validateMessage(msgType MessageType, msg *pb.Message) error {
 // handleMessage routes the message to the appropriate handler
 func (h *handler) handleMessage(ctx context.Context, from string, msgType MessageType, msg *pb.Message) error {
 	switch msgType {
-	case MsgStartSlot:
-		return h.messageHandler.HandleStartSlot(ctx, from, msg.GetStartSlot())
-	case MsgRequestSeal:
-		return h.messageHandler.HandleRequestSeal(ctx, from, msg.GetRequestSeal())
-	case MsgL2Block:
-		return h.messageHandler.HandleL2Block(ctx, from, msg.GetL2Block())
-	case MsgStartSC:
-		return h.messageHandler.HandleStartSC(ctx, from, msg.GetStartSc())
-	case MsgRollBackAndStartSlot:
-		return h.messageHandler.HandleRollBackAndStartSlot(ctx, from, msg.GetRollBackAndStartSlot())
+	case MsgStartPeriod:
+		return h.messageHandler.HandleStartPeriod(ctx, from, msg.GetStartPeriod())
+	case MsgStartInstance:
+		return h.messageHandler.HandleStartInstance(ctx, from, msg.GetStartInstance())
+	case MsgRollback:
+		return h.messageHandler.HandleRollback(ctx, from, msg.GetRollback())
 	default:
 		return fmt.Errorf("no handler for message type %s", msgType)
 	}

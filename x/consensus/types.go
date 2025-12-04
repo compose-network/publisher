@@ -4,7 +4,8 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Role represents the coordinator role
@@ -61,26 +62,26 @@ func (s DecisionState) String() string {
 // TwoPCState holds state for a single cross-chain transaction
 type TwoPCState struct {
 	mu                  sync.RWMutex
-	XTID                *pb.XtID
+	InstanceID          []byte
 	Decision            DecisionState
-	ParticipatingChains map[string]struct{}
+	ParticipatingChains map[compose.ChainID]struct{}
 	Votes               map[string]bool
 	Timer               *time.Timer
 	StartTime           time.Time
 	XTRequest           *pb.XTRequest
-	CIRCMessages        map[string][]*pb.CIRCMessage
+	MailboxMessages     map[compose.ChainID][]*pb.MailboxMessage
 }
 
 // NewTwoPCState creates a new 2PC state
-func NewTwoPCState(xtID *pb.XtID, req *pb.XTRequest, chains map[string]struct{}) *TwoPCState {
+func NewTwoPCState(instanceID []byte, req *pb.XTRequest, chains map[compose.ChainID]struct{}) *TwoPCState {
 	return &TwoPCState{
-		XTID:                xtID,
+		InstanceID:          instanceID,
 		Decision:            StateUndecided,
 		ParticipatingChains: chains,
 		Votes:               make(map[string]bool),
 		StartTime:           time.Now(),
 		XTRequest:           req,
-		CIRCMessages:        make(map[string][]*pb.CIRCMessage),
+		MailboxMessages:     make(map[compose.ChainID][]*pb.MailboxMessage),
 	}
 }
 

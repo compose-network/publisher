@@ -13,32 +13,37 @@ import (
 
 	apisrv "github.com/compose-network/publisher/server/api"
 	apimw "github.com/compose-network/publisher/server/api/middleware"
-	publishermanager "github.com/compose-network/publisher/x/publisher-manager"
+	"github.com/compose-network/publisher/x/manager"
 	"github.com/compose-network/publisher/x/superblock"
 	"github.com/compose-network/publisher/x/superblock/proofs/collector"
 	proofshttp "github.com/compose-network/publisher/x/superblock/proofs/http"
 	"github.com/compose-network/publisher/x/superblock/queue"
-	"github.com/compose-network/publisher/x/superblock/slot"
 	"github.com/compose-network/publisher/x/transport"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
+	"github.com/compose-network/publisher/cmd/config"
 	"github.com/compose-network/publisher/metrics"
-	"github.com/compose-network/publisher/publisher-leader-app/config"
 	"github.com/compose-network/publisher/x/auth"
 	"github.com/compose-network/publisher/x/consensus"
-	//"github.com/compose-network/publisher/x/publisher"
+
 	sreg "github.com/compose-network/publisher/x/superblock/registry"
 	"github.com/compose-network/publisher/x/transport/tcp"
 	pb "github.com/compose-network/specs/compose/proto"
 )
 
+type publisherManager interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	HandleMessage(ctx context.Context, from string, msg *pb.Message) error
+	QueueStats(ctx context.Context) (int, error)
+}
+
 // App represents the shared publisher application
 type App struct {
-	cfg *config.Config
-	//publisher publisher.Publisher
-	pmgr      publishermanager.PublisherManager
+	cfg       *config.Config
+	pmgr      publisherManager
 	log       zerolog.Logger
 	tcpServer transport.Server
 
@@ -68,7 +73,7 @@ func NewApp(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, 
 }
 
 // initialize sets up the application components such as consensus, transport, authentication, metrics, and publisher.
-func (a *App) initialize(ctx context.Context) error {
+func (a *App) setupL1Config() error {
 	// Hydrate a.cfg.L1 before wiring the other components
 	// Transition period: prefer explicit --l1.chain-id / config, but default loudly to 560048 if missing
 	if a.cfg.L1.ChainID == 0 {
@@ -114,37 +119,33 @@ func (a *App) initialize(ctx context.Context) error {
 		}
 	}
 
-	consensusConfig := consensus.Config{
-		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
-		IsLeader: true,
-		Timeout:  a.cfg.Consensus.InstanceTimeout,
-		Role:     consensus.Leader,
-	}
-	coordinator := consensus.New(a.log, consensusConfig)
-	a.coordinatorShutdownFn = coordinator.Stop
+	return nil
+}
 
-	transportConfig := transport.Config{}
-	transportConfig.ListenAddr = a.cfg.Server.ListenAddr
-	transportConfig.MaxConnections = a.cfg.Server.MaxConnections
-	transportConfig.ReadTimeout = a.cfg.Server.ReadTimeout
-	transportConfig.WriteTimeout = a.cfg.Server.WriteTimeout
-	transportConfig.MaxMessageSize = a.cfg.Server.MaxMessageSize
+func (a *App) setupTransport() (transport.Server, error) {
+	transportConfig := transport.Config{
+		ListenAddr:     a.cfg.Server.ListenAddr,
+		MaxConnections: a.cfg.Server.MaxConnections,
+		ReadTimeout:    a.cfg.Server.ReadTimeout,
+		WriteTimeout:   a.cfg.Server.WriteTimeout,
+		MaxMessageSize: a.cfg.Server.MaxMessageSize,
+	}
 
 	tcpServer := tcp.NewServer(transportConfig, a.log)
 
 	if a.cfg.Auth.Enabled {
 		authManager, err := auth.NewManagerFromHex(a.cfg.Auth.PrivateKey)
 		if err != nil {
-			return fmt.Errorf("failed to initialize auth manager: %w", err)
+			return nil, fmt.Errorf("failed to initialize auth manager: %w", err)
 		}
 
 		for _, seq := range a.cfg.Auth.TrustedSequencers {
 			pubKeyBytes, err := hex.DecodeString(seq.PublicKey)
 			if err != nil {
-				return fmt.Errorf("invalid public key for %s: %w", seq.ID, err)
+				return nil, fmt.Errorf("invalid public key for %s: %w", seq.ID, err)
 			}
 			if err := authManager.AddTrustedKey(seq.ID, pubKeyBytes); err != nil {
-				return fmt.Errorf("failed to add trusted key for %s: %w", seq.ID, err)
+				return nil, fmt.Errorf("failed to add trusted key for %s: %w", seq.ID, err)
 			}
 			a.log.Info().Str("id", seq.ID).Msg("Added trusted sequencer")
 		}
@@ -156,78 +157,10 @@ func (a *App) initialize(ctx context.Context) error {
 			Msg("Authentication enabled for shared publisher")
 	}
 
-	coordinatorConfig := superblock.DefaultConfig()
-	coordinatorConfig.Slot = slot.Config{
-		Duration:    6 * time.Second,
-		SealCutover: 2.0 / 3.0,
-		GenesisTime: time.Unix(1760599941, 0), // Custom genesis time
-	}
-	coordinatorConfig.Queue = queue.Config{
-		MaxSize:           1000,
-		RequestExpiration: 30 * time.Second,
-	}
-	coordinatorConfig.L1 = a.cfg.L1
-	coordinatorConfig.Proofs = a.cfg.Proofs
+	return tcpServer, nil
+}
 
-	collectorSvc := collector.New(ctx, a.log)
-
-	//var proverClient proofs.ProverClient
-	//if a.cfg.Proofs.Enabled && strings.TrimSpace(a.cfg.Proofs.Prover.BaseURL) != "" {
-	//	pc, err := proofclient.NewHTTPClient(a.cfg.Proofs.Prover.BaseURL, nil, a.log)
-	//	if err != nil {
-	//		return fmt.Errorf("failed to create prover client: %w", err)
-	//	}
-	//	proverClient = pc
-	//}
-
-	//pub, err := publisher.New(
-	//	a.log,
-	//	publisher.WithTransport(tcpServer),
-	//	publisher.WithConsensus(coordinator),
-	//	publisher.WithTimeout(a.cfg.Consensus.InstanceTimeout),
-	//	publisher.WithMetrics(a.cfg.Metrics.Enabled),
-	//)
-	//if err != nil {
-	//	return fmt.Errorf("failed to create publisher: %w", err)
-	//}
-	//
-	//sbPub, err := sbadapter.WrapPublisher(
-	//	pub,
-	//	coordinatorConfig,
-	//	a.log,
-	//	coordinator,
-	//	tcpServer,
-	//	collectorSvc,
-	//	proverClient,
-	//	regSvc,
-	//)
-	//if err != nil {
-	//	return fmt.Errorf("failed to create superblock publisher: %w", err)
-	//}
-	//a.publisher = sbPub
-
-	publisherMgr, err := publishermanager.New(
-		publishermanager.Config{
-			Context:         ctx,
-			Logger:          a.log,
-			Broadcaster:     tcpServer,
-			InstanceTimeout: a.cfg.Consensus.InstanceTimeout,
-			EpochsPerPeriod: a.cfg.Consensus.EpochPerPediods,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create publisher manager: %w", err)
-	}
-	if publisherMgr == nil {
-		return fmt.Errorf("failed to create publisher manager: nil instance returned")
-	}
-	a.pmgr = publisherMgr
-	a.tcpServer = tcpServer
-	a.tcpServer.SetHandler(func(ctx context.Context, from string, msg *pb.Message) error {
-		return a.pmgr.HandleMessage(ctx, from, msg)
-	})
-
-	// API server (shared HTTP surface)
+func (a *App) setupAPIServer(collectorSvc collector.Service) *apisrv.Server {
 	apiCfg := apisrv.Config{
 		ListenAddr:        a.cfg.API.ListenAddr,
 		ReadHeaderTimeout: a.cfg.API.ReadHeaderTimeout,
@@ -256,7 +189,51 @@ func (a *App) initialize(ctx context.Context) error {
 	proofHandler := proofshttp.NewHandler(collectorSvc, a.log)
 	proofHandler.RegisterMux(s.Router)
 
-	a.apiServer = s
+	return s
+}
+
+func (a *App) initialize(ctx context.Context) error {
+	if err := a.setupL1Config(); err != nil {
+		return err
+
+	}
+
+	consensusConfig := consensus.Config{
+		NodeID:   fmt.Sprintf("publisher-%d", time.Now().UnixNano()),
+		IsLeader: true,
+		Timeout:  a.cfg.Consensus.InstanceTimeout,
+		Role:     consensus.Leader,
+	}
+	coordinator := consensus.New(a.log, consensusConfig)
+	a.coordinatorShutdownFn = coordinator.Stop
+
+	tcpServer, err := a.setupTransport()
+	if err != nil {
+		return err
+	}
+
+	coordinatorConfig := superblock.DefaultConfig()
+	coordinatorConfig.Queue = queue.Config{
+		MaxSize:           1000,
+		RequestExpiration: 30 * time.Second,
+	}
+	coordinatorConfig.L1 = a.cfg.L1
+	coordinatorConfig.Proofs = a.cfg.Proofs
+
+	collectorSvc := collector.New(ctx, a.log)
+
+	publisherMgr := manager.New()
+
+	if publisherMgr == nil {
+		return fmt.Errorf("failed to create publisher manager: nil instance returned")
+	}
+	a.pmgr = publisherMgr
+	a.tcpServer = tcpServer
+	a.tcpServer.SetHandler(func(ctx context.Context, from string, msg *pb.Message) error {
+		return a.pmgr.HandleMessage(ctx, from, msg)
+	})
+
+	a.apiServer = a.setupAPIServer(collectorSvc)
 
 	return nil
 }
@@ -266,11 +243,6 @@ func (a *App) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
 
-	//if a.publisher != nil {
-	//	if err := a.publisher.Start(runCtx); err != nil {
-	//		return fmt.Errorf("failed to start publisher: %w", err)
-	//	}
-	//}
 	if a.tcpServer != nil {
 		if err := a.tcpServer.Start(runCtx); err != nil {
 			return fmt.Errorf("failed to start TCP server: %w", err)
@@ -331,14 +303,6 @@ func (a *App) shutdown() error {
 		}
 	}
 
-	// Shutdown publisher
-	//if a.publisher != nil {
-	//	if err := a.publisher.Stop(shutdownCtx); err != nil {
-	//		a.log.Error().Err(err).Msg("Publisher shutdown error")
-	//		return err
-	//	}
-	//}
-
 	var shutdownErr error
 	if err := a.pmgr.Stop(shutdownCtx); err != nil {
 		a.log.Error().Err(err).Msg("Publisher manager shutdown error")
@@ -372,70 +336,16 @@ func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleReady(w http.ResponseWriter, r *http.Request) {
-	return
-
-	//stats := a.publisher.GetStats()
-	//connections := stats["active_connections"].(int)
-	//
-	//status := "ready"
-	//code := http.StatusOK
-	//
-	//if connections == 0 {
-	//	status = "no_connections"
-	//	code = http.StatusServiceUnavailable
-	//}
-	//
-	//w.Header().Set("Content-Type", "application/json")
-	//w.WriteHeader(code)
-	//fmt.Fprintf(w, `{"status":"%s","connections":%d}`, status, connections)
 }
 
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
-	return
-	//
-	//stats := a.publisher.GetStats()
-	//stats["app_version"] = Version
-	//stats["app_build_time"] = BuildTime
-	//stats["app_git_commit"] = GitCommit
-	//
-	//w.Header().Set("Content-Type", "application/json")
-	//json.NewEncoder(w).Encode(stats)
 }
 
 // GetStats returns application statistics.
 func (a *App) GetStats() map[string]interface{} {
 	return nil
-	//stats := a.publisher.GetStats()
-	//stats["app_version"] = Version
-	//stats["app_build_time"] = BuildTime
-	//stats["app_git_commit"] = GitCommit
-	//return stats
 }
 
 // metricsReporter periodically reports application statistics.
 func (a *App) metricsReporter(ctx context.Context) {
-	//ticker := time.NewTicker(30 * time.Second)
-	//defer ticker.Stop()
-	//
-	//for {
-	//	select {
-	//	case <-ctx.Done():
-	//		return
-	//	case <-ticker.C:
-	//		if a.publisher == nil {
-	//			continue
-	//		}
-	//		stats := a.GetStats()
-	//
-	//		a.log.Info().
-	//			Str("mode", "leader").
-	//			Int("active_connections", stats["active_connections"].(int)).
-	//			Uint64("messages_processed", stats["messages_processed"].(uint64)).
-	//			Uint64("broadcasts_sent", stats["broadcasts_sent"].(uint64)).
-	//			Int("chains_count", stats["chains_count"].(int)).
-	//			Int("active_2pc_transactions", stats["active_2pc_transactions"].(int)).
-	//			Float64("uptime_seconds", stats["uptime_seconds"].(float64)).
-	//			Msg("Shared Publisher statistics")
-	//	}
-	//}
 }

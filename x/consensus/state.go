@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // StateManager manages transaction states with thread-safety and performance optimizations
@@ -35,36 +36,36 @@ func NewStateManager() *StateManager {
 }
 
 // AddState adds a new transaction state
-func (sm *StateManager) AddState(xtID *pb.XtID, req *pb.XTRequest, chains map[string]struct{}) (*TwoPCState, error) {
-	xtIDStr := xtID.Hex()
+func (sm *StateManager) AddState(
+	instanceID []byte, req *pb.XTRequest, chains map[compose.ChainID]struct{},
+) (*TwoPCState, error) {
+	instanceIDStr := string(instanceID)
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if _, exists := sm.states[xtIDStr]; exists {
-		return nil, fmt.Errorf("transaction %s already exists", xtIDStr)
+	if _, exists := sm.states[instanceIDStr]; exists {
+		return nil, fmt.Errorf("transaction %s already exists", instanceIDStr)
 	}
 
-	state := NewTwoPCState(xtID, req, chains)
-	sm.states[xtIDStr] = state
+	state := NewTwoPCState(instanceID, req, chains)
+	sm.states[instanceIDStr] = state
 
 	return state, nil
 }
 
 // GetState retrieves a transaction state
-func (sm *StateManager) GetState(xtID *pb.XtID) (*TwoPCState, bool) {
-	xtIDStr := xtID.Hex()
-
+func (sm *StateManager) GetState(instanceID []byte) (*TwoPCState, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
-	state, exists := sm.states[xtIDStr]
+	state, exists := sm.states[string(instanceID)]
 	return state, exists
 }
 
 // RemoveState removes a transaction state
-func (sm *StateManager) RemoveState(xtID *pb.XtID) {
-	xtIDStr := xtID.Hex()
+func (sm *StateManager) RemoveState(instanceID []byte) {
+	xtIDStr := string(instanceID)
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -78,13 +79,13 @@ func (sm *StateManager) RemoveState(xtID *pb.XtID) {
 }
 
 // GetAllActiveIDs returns all active transaction IDs
-func (sm *StateManager) GetAllActiveIDs() []*pb.XtID {
+func (sm *StateManager) GetAllActiveIDs() [][]byte {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
-	ids := make([]*pb.XtID, 0, len(sm.states))
+	ids := make([][]byte, 0, len(sm.states))
 	for _, state := range sm.states {
-		ids = append(ids, state.XTID)
+		ids = append(ids, state.InstanceID)
 	}
 	return ids
 }

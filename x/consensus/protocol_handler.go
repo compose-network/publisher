@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
 
@@ -53,17 +54,17 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 
 	case MsgVote:
 		vote := msg.GetVote()
-		chainID := ChainKeyBytes(vote.SenderChainId)
-		_, err := h.coordinator.RecordVote(vote.XtId, chainID, vote.Vote)
+		chainID := compose.ChainID(vote.ChainId)
+		_, err := h.coordinator.RecordVote(vote.InstanceId, chainID, vote.Vote)
 		return err
 
 	case MsgDecided:
 		decided := msg.GetDecided()
-		return h.coordinator.RecordDecision(decided.XtId, decided.Decision)
+		return h.coordinator.RecordDecision(decided.InstanceId, decided.Decision)
 
-	case MsgCIRCMessage:
-		circMsg := msg.GetCircMessage()
-		return h.coordinator.RecordCIRCMessage(circMsg)
+	case MsgMailboxMessage:
+		circMsg := msg.GetMailboxMessage()
+		return h.coordinator.RecordMailboxMessage(circMsg)
 
 	case MsgUnknown:
 		return fmt.Errorf("unhandled SCP message type %s from %s", msgType.String(), from)

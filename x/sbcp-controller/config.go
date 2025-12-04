@@ -23,26 +23,39 @@ type Config struct {
 
 func DefaultConfig(
 	logger zerolog.Logger,
-	messenger sbcp.Messenger,
+	prover sbcp.PublisherProver,
+	messenger sbcp.PublisherMessenger,
+	l1 sbcp.L1,
 	periodID compose.PeriodID,
+	previousTargetSuperblockNumber compose.SuperblockNumber,
 	lastFinalizedSuperblockNumber compose.SuperblockNumber,
-	lastFinalizedSuperblockHash compose.SuperBlockHash,
+	lastFinalizedSuperblockHash compose.SuperblockHash,
 	proofWindow uint64,
-) Config {
+	chains map[compose.ChainID]struct{},
+) (Config, error) {
+	publisher, err := sbcp.NewPublisher(
+		prover,
+		messenger,
+		l1,
+		periodID,
+		previousTargetSuperblockNumber,
+		lastFinalizedSuperblockNumber,
+		lastFinalizedSuperblockHash,
+		proofWindow,
+		logger.With().Str("component", "sbcp").Logger(),
+		chains,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
-		Logger: logger.With().Str("component", "sbcp-controller").Logger(),
-		Publisher: sbcp.NewPublisher(
-			messenger,
-			periodID,
-			lastFinalizedSuperblockNumber,
-			lastFinalizedSuperblockHash,
-			proofWindow,
-			logger.With().Str("component", "sbcp").Logger(),
-		),
+		Logger:          logger.With().Str("component", "sbcp-controller").Logger(),
+		Publisher:       publisher,
 		Queue:           queue.NewMemoryXTRequestQueue(queue.DefaultConfig()),
 		InstanceStarter: nil,
 		Now:             time.Now,
-	}
+	}, nil
 }
 
 func (c *Config) apply() error {

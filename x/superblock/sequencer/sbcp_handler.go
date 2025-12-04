@@ -2,10 +2,9 @@ package sequencer
 
 import (
 	"context"
-	"fmt"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/superblock/protocol"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
 
@@ -23,63 +22,33 @@ func NewSBCPHandler(coordinator *SequencerCoordinator, log zerolog.Logger) proto
 	}
 }
 
-// HandleStartSlot processes StartSlot messages
-func (h *sbcpHandler) HandleStartSlot(ctx context.Context, from string, startSlot *pb.StartSlot) error {
+// HandleStartPeriod processes StartPeriod messages
+func (h *sbcpHandler) HandleStartPeriod(ctx context.Context, from string, startPeriod *pb.StartPeriod) error {
 	h.log.Info().
 		Str("from", from).
-		Uint64("slot", startSlot.Slot).
-		Uint64("superblock_number", startSlot.NextSuperblockNumber).
-		Int("l2_requests", len(startSlot.L2BlocksRequest)).
-		Msg("Processing StartSlot message")
-
-	// Delegate to coordinator's existing logic
-	return h.coordinator.handleStartSlot(startSlot)
-}
-
-// HandleRequestSeal processes RequestSeal messages
-func (h *sbcpHandler) HandleRequestSeal(ctx context.Context, from string, requestSeal *pb.RequestSeal) error {
-	h.log.Info().
-		Str("from", from).
-		Uint64("slot", requestSeal.Slot).
-		Int("included_xts", len(requestSeal.IncludedXts)).
-		Msg("Processing RequestSeal message")
-
-	// Delegate to coordinator's existing logic
-	return h.coordinator.handleRequestSeal(ctx, from, requestSeal)
-}
-
-// HandleL2Block processes L2Block messages (typically not received by sequencers)
-func (h *sbcpHandler) HandleL2Block(ctx context.Context, from string, l2Block *pb.L2Block) error {
-	h.log.Warn().
-		Str("from", from).
-		Uint64("slot", l2Block.Slot).
-		Uint64("block_number", l2Block.BlockNumber).
-		Msg("Received unexpected L2Block message - sequencers typically don't receive these")
-
-	// Sequencers don't usually receive L2Block messages, but we'll log it
-	return fmt.Errorf("sequencer received unexpected L2Block from %s", from)
-}
-
-// HandleStartSC processes StartSC messages (cross-chain transaction initiation)
-func (h *sbcpHandler) HandleStartSC(ctx context.Context, from string, startSC *pb.StartSC) error {
-	h.log.Info().
-		Str("from", from).
-		Uint64("slot", startSC.Slot).
-		Uint64("sequence", startSC.XtSequenceNumber).
+		Uint64("period_id", startPeriod.GetPeriodId()).
+		Uint64("superblock_nr", startPeriod.GetSuperblockNumber()).
 		Msg("Processing StartSC message")
 
-	// Delegate to coordinator's existing logic
-	return h.coordinator.handleStartSC(ctx, from, startSC)
+	return h.coordinator.handleStartPeriod(ctx, from, startPeriod)
 }
 
-// HandleRollBackAndStartSlot processes rollback messages
-func (h *sbcpHandler) HandleRollBackAndStartSlot(ctx context.Context, from string, rb *pb.RollBackAndStartSlot) error {
+// HandleStartInstance processes StartInstance messages (cross-chain transaction initiation)
+func (h *sbcpHandler) HandleStartInstance(ctx context.Context, from string, startInstance *pb.StartInstance) error {
 	h.log.Info().
 		Str("from", from).
-		Uint64("current_slot", rb.CurrentSlot).
-		Uint64("superblock_number", rb.NextSuperblockNumber).
-		Int("l2_requests", len(rb.L2BlocksRequest)).
-		Msg("Processing RollBackAndStartSlot message")
+		Uint64("sequence_number", startInstance.SequenceNumber).
+		Msg("Processing StartSC message")
 
-	return h.coordinator.handleRollBackAndStartSlot(from, rb)
+	return h.coordinator.handleStartInstance(ctx, from, startInstance)
+}
+
+// HandleRollback processes rollback messages
+func (h *sbcpHandler) HandleRollback(ctx context.Context, from string, rb *pb.Rollback) error {
+	h.log.Info().
+		Str("from", from).
+		Uint64("last_finalized_superblock_number", rb.LastFinalizedSuperblockNumber).
+		Msg("Processing Rollback message")
+
+	return h.coordinator.handleRollback(ctx, from, rb)
 }

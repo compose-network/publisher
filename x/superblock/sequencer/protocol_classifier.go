@@ -1,9 +1,9 @@
 package sequencer
 
 import (
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/superblock/protocol"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // ProtocolType represents the high-level protocol classification

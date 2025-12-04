@@ -207,7 +207,7 @@ func run(ctx context.Context, cfg config) error {
 	clientCfg.ServerAddr = cfg.ServerAddr
 	clientCfg.ClientID = cfg.ClientID
 
-	var client transport.Client = tcp.NewClient(clientCfg, logger)
+	client := tcp.NewClient(clientCfg, logger)
 	if cfg.PrivateKey != "" {
 		authManager, err := auth.NewManagerFromHex(cfg.PrivateKey)
 		if err != nil {
@@ -220,6 +220,42 @@ func run(ctx context.Context, cfg config) error {
 		logger = logger.With().Str("address", authManager.Address()).Logger()
 	}
 
+	store := setClientHandlers(client, logger)
+
+	err := connectClient(ctx, client, clientCfg, logger)
+	if err != nil {
+		return err
+	}
+
+	for idx, action := range cfg.Actions {
+		logger := logger.With().Int("step", idx+1).Str("action", action.Type).Logger()
+		switch action.Type {
+		case "submit-xt", "submit_xt", "submit-xt-request":
+			if err := executeSubmitXT(ctx, client, action, logger); err != nil {
+				return fmt.Errorf("action %d (%s): %w", idx+1, action.Type, err)
+			}
+		case "send-vote", "vote":
+			if err := executeSendVote(ctx, client, store, action, logger); err != nil {
+				return fmt.Errorf("action %d (%s): %w", idx+1, action.Type, err)
+			}
+		case "wait", "sleep":
+			if err := executeWait(action, logger); err != nil {
+				return fmt.Errorf("action %d (%s): %w", idx+1, action.Type, err)
+			}
+		default:
+			return fmt.Errorf("action %d: unsupported type %q", idx+1, action.Type)
+		}
+	}
+
+	if cfg.WaitWindow.Duration > 0 {
+		logger.Info().Dur("wait", cfg.WaitWindow.Duration).Msg("waiting for responses")
+		time.Sleep(cfg.WaitWindow.Duration)
+	}
+
+	return nil
+}
+
+func setClientHandlers(client transport.Client, logger zerolog.Logger) *instanceStore {
 	store := newInstanceStore()
 
 	client.SetHandler(func(ctx context.Context, msg *pb.Message) ([]common.Hash, error) {
@@ -251,7 +287,14 @@ func run(ctx context.Context, cfg config) error {
 		}
 		return nil, nil
 	})
+	return store
+}
 
+func connectClient(
+	ctx context.Context,
+	client transport.Client,
+	clientCfg tcp.ClientConfig,
+	logger zerolog.Logger) error {
 	connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
@@ -261,32 +304,6 @@ func run(ctx context.Context, cfg config) error {
 	defer client.Disconnect(context.Background())
 
 	logger.Info().Str("client_id", client.GetID()).Msg("connected to Shared Publisher")
-
-	for idx, action := range cfg.Actions {
-		logger := logger.With().Int("step", idx+1).Str("action", action.Type).Logger()
-		switch action.Type {
-		case "submit-xt", "submit_xt", "submit-xt-request":
-			if err := executeSubmitXT(ctx, client, action, logger); err != nil {
-				return fmt.Errorf("action %d (%s): %w", idx+1, action.Type, err)
-			}
-		case "send-vote", "vote":
-			if err := executeSendVote(ctx, client, store, action, logger); err != nil {
-				return fmt.Errorf("action %d (%s): %w", idx+1, action.Type, err)
-			}
-		case "wait", "sleep":
-			if err := executeWait(action, logger); err != nil {
-				return fmt.Errorf("action %d (%s): %w", idx+1, action.Type, err)
-			}
-		default:
-			return fmt.Errorf("action %d: unsupported type %q", idx+1, action.Type)
-		}
-	}
-
-	if cfg.WaitWindow.Duration > 0 {
-		logger.Info().Dur("wait", cfg.WaitWindow.Duration).Msg("waiting for responses")
-		time.Sleep(cfg.WaitWindow.Duration)
-	}
-
 	return nil
 }
 
@@ -387,7 +404,10 @@ func buildTransactions(chain xtChain) ([][]byte, error) {
 	return txs, nil
 }
 
-func executeSendVote(ctx context.Context, client transport.Client, store *instanceStore, action actionSpec, logger zerolog.Logger) error {
+func executeSendVote(
+	ctx context.Context, client transport.Client, store *instanceStore,
+	action actionSpec, logger zerolog.Logger,
+) error {
 	if action.ChainID == "" {
 		return errors.New("send-vote requires chain_id")
 	}

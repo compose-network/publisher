@@ -2,6 +2,7 @@ package messenger
 
 import (
 	"context"
+
 	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/compose-network/specs/compose/sbcp"
 	"github.com/compose-network/specs/compose/scp"
@@ -10,7 +11,7 @@ import (
 // Messenger includes the functions to send messages required by the publisher spec
 type Messenger interface {
 	scp.PublisherNetwork
-	sbcp.Messenger
+	sbcp.PublisherMessenger //TODO: Publisher or Sequencer Messenger?
 }
 
 // Broadcaster is used by the messenger to broadcast proto messages

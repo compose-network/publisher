@@ -3,11 +3,11 @@ package registry
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"path"
 	"time"
 
 	compreg "github.com/compose-network/registry/registry"
+	"github.com/compose-network/specs/compose"
 	"github.com/rs/zerolog"
 )
 
@@ -15,7 +15,7 @@ import (
 // It loads chains for the selected network (by L1 chain ID) from the registry
 // (embedded or directory-based) and serves them via the Service interface.
 type composeService struct {
-	rollups      map[string]*RollupInfo
+	rollups      map[compose.ChainID]*RollupInfo
 	log          zerolog.Logger
 	l1PublicRPC  string
 	publisherDGF string
@@ -50,15 +50,13 @@ func NewComposeService(registryPath string, l1ChainID uint64, log zerolog.Logger
 		return nil, fmt.Errorf("list chains: %w", err)
 	}
 
-	rollups := make(map[string]*RollupInfo)
+	rollups := make(map[compose.ChainID]*RollupInfo)
 	now := time.Now()
 	for _, ch := range chains {
 		cfg, err := ch.LoadConfig()
 		if err != nil {
 			return nil, fmt.Errorf("load config for %s: %w", path.Join(net.Slug(), ch.Slug()), err)
 		}
-		// Encode chain id as big-endian bytes to match existing usage
-		id := new(big.Int).SetUint64(cfg.ChainID).Bytes()
 
 		// Build endpoint from [sequencer] host:port
 		endpoint := cfg.Sequencer.Host
@@ -67,15 +65,15 @@ func NewComposeService(registryPath string, l1ChainID uint64, log zerolog.Logger
 		}
 
 		ri := &RollupInfo{
-			ChainID:      make([]byte, len(id)),
+			ChainID:      compose.ChainID(cfg.ChainID),
 			Endpoint:     endpoint,
 			PublicKey:    nil,
 			StartingSlot: 1,
 			IsActive:     true,
 			UpdatedAt:    now,
 		}
-		copy(ri.ChainID, id)
-		rollups[string(ri.ChainID)] = ri
+		ri.ChainID = compose.ChainID(cfg.ChainID)
+		rollups[ri.ChainID] = ri
 	}
 
 	return &composeService{
@@ -90,26 +88,26 @@ func (c *composeService) Start(ctx context.Context) error { return nil }
 func (c *composeService) Stop(ctx context.Context) error  { return nil }
 
 // Service methods
-func (c *composeService) GetActiveRollups(ctx context.Context) ([][]byte, error) {
+func (c *composeService) GetActiveRollups(ctx context.Context) ([]compose.ChainID, error) {
 	return c.active(), nil
 }
 
-func (c *composeService) GetRollupEndpoint(ctx context.Context, chainID []byte) (string, error) {
-	if ri, ok := c.rollups[string(chainID)]; ok && ri.IsActive {
+func (c *composeService) GetRollupEndpoint(ctx context.Context, chainID compose.ChainID) (string, error) {
+	if ri, ok := c.rollups[chainID]; ok && ri.IsActive {
 		return ri.Endpoint, nil
 	}
 	return "", fmt.Errorf("rollup not found or inactive")
 }
 
-func (c *composeService) GetRollupPublicKey(ctx context.Context, chainID []byte) ([]byte, error) {
-	if ri, ok := c.rollups[string(chainID)]; ok && ri.IsActive {
+func (c *composeService) GetRollupPublicKey(ctx context.Context, chainID compose.ChainID) ([]byte, error) {
+	if ri, ok := c.rollups[chainID]; ok && ri.IsActive {
 		return ri.PublicKey, nil
 	}
 	return nil, fmt.Errorf("rollup not found or inactive")
 }
 
-func (c *composeService) IsRollupActive(ctx context.Context, chainID []byte) (bool, error) {
-	if ri, ok := c.rollups[string(chainID)]; ok {
+func (c *composeService) IsRollupActive(ctx context.Context, chainID compose.ChainID) (bool, error) {
+	if ri, ok := c.rollups[chainID]; ok {
 		return ri.IsActive, nil
 	}
 	return false, nil
@@ -121,10 +119,10 @@ func (c *composeService) WatchRegistry(ctx context.Context) (<-chan Event, error
 	return ch, nil
 }
 
-func (c *composeService) GetRollupInfo(chainID []byte) (*RollupInfo, error) {
-	if ri, ok := c.rollups[string(chainID)]; ok {
+func (c *composeService) GetRollupInfo(chainID compose.ChainID) (*RollupInfo, error) {
+	if ri, ok := c.rollups[chainID]; ok {
 		out := *ri
-		out.ChainID = append([]byte(nil), ri.ChainID...)
+		out.ChainID = ri.ChainID
 		if ri.PublicKey != nil {
 			out.PublicKey = append([]byte(nil), ri.PublicKey...)
 		}
@@ -133,11 +131,11 @@ func (c *composeService) GetRollupInfo(chainID []byte) (*RollupInfo, error) {
 	return nil, fmt.Errorf("rollup not found")
 }
 
-func (c *composeService) GetAllRollups() map[string]*RollupInfo {
-	out := make(map[string]*RollupInfo, len(c.rollups))
+func (c *composeService) GetAllRollups() map[compose.ChainID]*RollupInfo {
+	out := make(map[compose.ChainID]*RollupInfo, len(c.rollups))
 	for k, v := range c.rollups {
 		cp := *v
-		cp.ChainID = append([]byte(nil), v.ChainID...)
+		cp.ChainID = v.ChainID
 		if v.PublicKey != nil {
 			cp.PublicKey = append([]byte(nil), v.PublicKey...)
 		}
@@ -149,13 +147,11 @@ func (c *composeService) GetAllRollups() map[string]*RollupInfo {
 func (c *composeService) SetPollingInterval(_ time.Duration) {}
 
 // helpers
-func (c *composeService) active() [][]byte {
-	res := make([][]byte, 0, len(c.rollups))
+func (c *composeService) active() []compose.ChainID {
+	res := make([]compose.ChainID, 0, len(c.rollups))
 	for _, v := range c.rollups {
 		if v.IsActive {
-			b := make([]byte, len(v.ChainID))
-			copy(b, v.ChainID)
-			res = append(res, b)
+			res = append(res, v.ChainID)
 		}
 	}
 	return res

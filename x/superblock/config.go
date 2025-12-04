@@ -5,14 +5,12 @@ import (
 
 	"github.com/compose-network/publisher/x/superblock/l1"
 	"github.com/compose-network/publisher/x/superblock/queue"
-	"github.com/compose-network/publisher/x/superblock/slot"
 	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/compose-network/publisher/x/superblock/wal"
 )
 
 // Config aggregates configuration for all SBCP components
 type Config struct {
-	Slot   slot.Config  `mapstructure:"slot"   yaml:"slot"`
 	Queue  queue.Config `mapstructure:"queue"  yaml:"queue"`
 	Store  store.Config `mapstructure:"store"  yaml:"store"`
 	WAL    wal.Config   `mapstructure:"wal"    yaml:"wal"`
@@ -27,7 +25,6 @@ type Config struct {
 // DefaultConfig returns sensible defaults for production deployment
 func DefaultConfig() Config {
 	return Config{
-		Slot:   slot.DefaultConfig(),
 		Queue:  queue.DefaultConfig(),
 		Store:  store.DefaultConfig(),
 		WAL:    wal.DefaultConfig(),

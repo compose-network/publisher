@@ -12,7 +12,12 @@ func instanceIDString(id []byte) string {
 }
 
 func cloneInstance(instance compose.Instance) compose.Instance {
-	cloned := compose.Instance{ID: instance.ID, PeriodID: instance.PeriodID, SequenceNumber: instance.SequenceNumber, XTRequest: cloneXTRequest(instance.XTRequest)}
+	cloned := compose.Instance{
+		ID:             instance.ID,
+		PeriodID:       instance.PeriodID,
+		SequenceNumber: instance.SequenceNumber,
+		XTRequest:      cloneXTRequest(instance.XTRequest),
+	}
 	return cloned
 }
 

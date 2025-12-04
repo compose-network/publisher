@@ -13,7 +13,7 @@ Utility to quickly wire a sequencer with:
 import (
 "context"
 "github.com/rs/zerolog"
-pb "github.com/compose-network/publisher/proto/rollup/v1"
+pb "github.com/compose-network/specs/compose/proto"
 "github.com/compose-network/publisher/x/superblock/sequencer/bootstrap"
 )
 ```
