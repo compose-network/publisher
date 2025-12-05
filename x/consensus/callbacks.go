@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 
@@ -69,7 +70,7 @@ func (cm *CallbackManager) InvokeStart(ctx context.Context, from string, xtReq *
 }
 
 // InvokeVote calls the vote callback with timeout and error handling
-func (cm *CallbackManager) InvokeVote(instanceID []byte, vote bool, duration time.Duration) {
+func (cm *CallbackManager) InvokeVote(instanceID compose.InstanceID, vote bool, duration time.Duration) {
 	if cm.voteFn == nil {
 		return
 	}
@@ -80,7 +81,7 @@ func (cm *CallbackManager) InvokeVote(instanceID []byte, vote bool, duration tim
 }
 
 // InvokeDecision calls the decision callback with timeout and error handling
-func (cm *CallbackManager) InvokeDecision(instanceID []byte, decision bool, duration time.Duration) {
+func (cm *CallbackManager) InvokeDecision(instanceID compose.InstanceID, decision bool, duration time.Duration) {
 	if cm.decisionFn == nil {
 		return
 	}
@@ -91,7 +92,7 @@ func (cm *CallbackManager) InvokeDecision(instanceID []byte, decision bool, dura
 }
 
 // InvokeBlock calls the block callback with timeout and error handling
-func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, instanceIDs [][]byte) {
+func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, instanceIDs []compose.InstanceID) {
 	if cm.blockFn == nil {
 		return
 	}
@@ -108,7 +109,7 @@ func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, 
 }
 
 // invokeCallback is a helper to invoke callbacks with error handling and timeout
-func (cm *CallbackManager) invokeCallback(callbackType string, xtID []byte, fn func(context.Context) error) {
+func (cm *CallbackManager) invokeCallback(callbackType string, xtID compose.InstanceID, fn func(context.Context) error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cm.timeout)
 		defer cancel()
@@ -116,7 +117,7 @@ func (cm *CallbackManager) invokeCallback(callbackType string, xtID []byte, fn f
 		if err := fn(ctx); err != nil {
 			cm.log.Error().
 				Err(err).
-				Str("instance_id", string(xtID)).
+				Str("instance_id", xtID.String()).
 				Str("type", callbackType).
 				Msg("Callback failed")
 		}

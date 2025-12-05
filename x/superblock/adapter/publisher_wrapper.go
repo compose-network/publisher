@@ -17,6 +17,7 @@ import (
 	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/compose-network/publisher/x/superblock/wal"
 	"github.com/compose-network/publisher/x/transport"
+	"github.com/compose-network/specs/compose"
 	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
@@ -31,7 +32,7 @@ type SuperblockPublisher struct {
 	log         zerolog.Logger
 
 	mu             sync.RWMutex
-	slotManagedXTs map[string]bool
+	slotManagedXTs map[compose.InstanceID]bool
 
 	superblockStore store.SuperblockStore
 	xtQueue         queue.XTRequestQueue
@@ -84,7 +85,7 @@ func WrapPublisher(
 		publisher:       pub,
 		coordinator:     nil,
 		log:             log.With().Str("component", "sb-wrapper").Logger(),
-		slotManagedXTs:  make(map[string]bool),
+		slotManagedXTs:  make(map[compose.InstanceID]bool),
 		superblockStore: superblockStore,
 		xtQueue:         xtQueue,
 		l1Publisher:     l1Pub,
@@ -145,14 +146,14 @@ func (sp *SuperblockPublisher) SubmitXTRequest(ctx context.Context, from string,
 }
 
 // Consensus callbacks - route to SBCP coordinator
-func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, instanceID []byte, vote bool) error {
-	sp.log.Info().Str("instance_id", string(instanceID)).Bool("vote", vote).Msg("SP broadcasting vote")
+func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, instanceID compose.InstanceID, vote bool) error {
+	sp.log.Info().Str("instance_id", instanceID.String()).Bool("vote", vote).Msg("SP broadcasting vote")
 	voteMsg := &pb.Message{
 		SenderId: "publisher",
 		Payload: &pb.Message_Vote{
 			Vote: &pb.Vote{
 				ChainId:    0, //TODO: set proper chain id
-				InstanceId: instanceID,
+				InstanceId: instanceID[:],
 				Vote:       vote,
 			},
 		},
@@ -161,13 +162,13 @@ func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, instance
 	return sp.coordinator.Transport().Broadcast(ctx, voteMsg, "")
 }
 
-func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, instanceID []byte, decision bool) error {
-	sp.log.Info().Str("instance_id", string(instanceID)).Bool("decision", decision).Msg("SP broadcasting decision")
+func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, instanceID compose.InstanceID, decision bool) error {
+	sp.log.Info().Str("instance_id", instanceID.String()).Bool("decision", decision).Msg("SP broadcasting decision")
 	decidedMsg := &pb.Message{
 		SenderId: "publisher",
 		Payload: &pb.Message_Decided{
 			Decided: &pb.Decided{
-				InstanceId: instanceID,
+				InstanceId: instanceID[:],
 				Decision:   decision,
 			},
 		},
@@ -179,11 +180,11 @@ func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, inst
 	//TODO: V2 migration - implement state machine?
 	// // Update SBCP slot state machine
 	// if err := sp.coordinator.StateMachine().ProcessSCPDecision(instanceID, decision); err != nil {
-	// 	sp.log.Error().Err(err).Str("xt_id", string(instanceID)).Msg("Failed to update SCP state")
+	// 	sp.log.Error().Err(err).Str("xt_id", instanceID.String()).Msg("Failed to update SCP state")
 	// }
 
 	sp.mu.Lock()
-	delete(sp.slotManagedXTs, string(instanceID))
+	delete(sp.slotManagedXTs, instanceID)
 	sp.mu.Unlock()
 	return nil
 }

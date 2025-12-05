@@ -54,13 +54,17 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 
 	case MsgVote:
 		vote := msg.GetVote()
+		var instanceID compose.InstanceID
+		copy(instanceID[:], vote.InstanceId)
 		chainID := compose.ChainID(vote.ChainId)
-		_, err := h.coordinator.RecordVote(vote.InstanceId, chainID, vote.Vote)
+		_, err := h.coordinator.RecordVote(instanceID, chainID, vote.Vote)
 		return err
 
 	case MsgDecided:
 		decided := msg.GetDecided()
-		return h.coordinator.RecordDecision(decided.InstanceId, decided.Decision)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], decided.InstanceId)
+		return h.coordinator.RecordDecision(instanceID, decided.Decision)
 
 	case MsgMailboxMessage:
 		circMsg := msg.GetMailboxMessage()

@@ -62,7 +62,7 @@ func (s DecisionState) String() string {
 // TwoPCState holds state for a single cross-chain transaction
 type TwoPCState struct {
 	mu                  sync.RWMutex
-	InstanceID          []byte
+	InstanceID          compose.InstanceID
 	Decision            DecisionState
 	ParticipatingChains map[compose.ChainID]struct{}
 	Votes               map[compose.ChainID]bool
@@ -73,7 +73,7 @@ type TwoPCState struct {
 }
 
 // NewTwoPCState creates a new 2PC state
-func NewTwoPCState(instanceID []byte, req *pb.XTRequest, chains map[compose.ChainID]struct{}) *TwoPCState {
+func NewTwoPCState(instanceID compose.InstanceID, req *pb.XTRequest, chains map[compose.ChainID]struct{}) *TwoPCState {
 	return &TwoPCState{
 		InstanceID:          instanceID,
 		Decision:            StateUndecided,

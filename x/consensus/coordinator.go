@@ -24,7 +24,7 @@ type coordinator struct {
 
 	// Track committed xTs already sent with a block to avoid duplicates
 	sentMu  sync.Mutex
-	sentMap map[string]bool
+	sentMap map[compose.InstanceID]bool
 
 	// Lifecycle management
 	started      atomic.Bool
@@ -54,7 +54,7 @@ func NewWithMetrics(log zerolog.Logger, config Config, metrics MetricsRecorder) 
 		callbackMgr:  NewCallbackManager(30*time.Second, logger),
 		metrics:      metrics,
 		log:          logger,
-		sentMap:      make(map[string]bool),
+		sentMap:      make(map[compose.InstanceID]bool),
 	}
 }
 
@@ -62,7 +62,7 @@ func NewWithMetrics(log zerolog.Logger, config Config, metrics MetricsRecorder) 
 // Used by execution-integrated path (geth types.Block).
 func (c *coordinator) OnBlockCommitted(ctx context.Context, block *types.Block) error {
 	active := c.stateManager.GetAllActiveIDs()
-	instanceIDs := make([][]byte, 0)
+	instanceIDs := make([]compose.InstanceID, 0)
 
 	for _, id := range active {
 		state, ok := c.stateManager.GetState(id)
@@ -73,7 +73,7 @@ func (c *coordinator) OnBlockCommitted(ctx context.Context, block *types.Block) 
 			continue
 		}
 		c.sentMu.Lock()
-		already := c.sentMap[string(id)]
+		already := c.sentMap[id]
 		c.sentMu.Unlock()
 		if already {
 			continue
@@ -91,7 +91,7 @@ func (c *coordinator) OnBlockCommitted(ctx context.Context, block *types.Block) 
 	// Mark as sent
 	c.sentMu.Lock()
 	for _, id := range instanceIDs {
-		c.sentMap[string(id)] = true
+		c.sentMap[id] = true
 	}
 	c.sentMu.Unlock()
 
@@ -105,7 +105,7 @@ func (c *coordinator) OnBlockCommitted(ctx context.Context, block *types.Block) 
 
 func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error {
 	// TODO: fetch instance ID from request
-	var instanceID []byte
+	var instanceID compose.InstanceID
 
 	chainIDs := make(map[compose.ChainID]struct{})
 	for _, txRequest := range xtReq.TransactionRequests {
@@ -132,7 +132,7 @@ func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *
 	c.metrics.RecordTransactionStarted(len(chainIDs))
 
 	c.log.Info().
-		Str("instance_id", string(instanceID)).
+		Str("instance_id", instanceID.String()).
 		Int("participating_chains", len(chainIDs)).
 		Dur("timeout", c.config.Timeout).
 		Msg("Started 2PC transaction")
@@ -144,7 +144,7 @@ func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *
 }
 
 // handleTimeout handles transaction timeout
-func (c *coordinator) handleTimeout(instanceID []byte) {
+func (c *coordinator) handleTimeout(instanceID compose.InstanceID) {
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
 		return
@@ -152,7 +152,7 @@ func (c *coordinator) handleTimeout(instanceID []byte) {
 
 	if state.GetDecision() == StateUndecided {
 		c.log.Warn().
-			Str("instance_id", string(instanceID)).
+			Str("instance_id", instanceID.String()).
 			Dur("timeout", c.config.Timeout).
 			Msg("Transaction timed out")
 
@@ -161,7 +161,7 @@ func (c *coordinator) handleTimeout(instanceID []byte) {
 	}
 }
 
-func (c *coordinator) RecordVote(instanceID []byte, chainID compose.ChainID, vote bool) (DecisionState, error) {
+func (c *coordinator) RecordVote(instanceID compose.InstanceID, chainID compose.ChainID, vote bool) (DecisionState, error) {
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
 		return StateUndecided, fmt.Errorf("transaction %s not found", instanceID)
@@ -188,7 +188,7 @@ func (c *coordinator) RecordVote(instanceID []byte, chainID compose.ChainID, vot
 	c.metrics.RecordVote(chainID, vote, voteLatency)
 
 	c.log.Info().
-		Str("instance_id", string(instanceID)).
+		Str("instance_id", instanceID.String()).
 		Uint64("chain", uint64(chainID)).
 		Bool("vote", vote).
 		Int("votes_recorded", state.GetVoteCount()).
@@ -214,7 +214,7 @@ func (c *coordinator) RecordVote(instanceID []byte, chainID compose.ChainID, vot
 }
 
 // handleAbort handles an abort decision
-func (c *coordinator) handleAbort(instanceID []byte, state *TwoPCState) DecisionState {
+func (c *coordinator) handleAbort(instanceID compose.InstanceID, state *TwoPCState) DecisionState {
 	state.SetDecision(StateAbort)
 
 	if state.Timer != nil {
@@ -239,7 +239,7 @@ func (c *coordinator) handleAbort(instanceID []byte, state *TwoPCState) Decision
 }
 
 // handleCommit handles a commit decision
-func (c *coordinator) handleCommit(instanceID []byte, state *TwoPCState) DecisionState {
+func (c *coordinator) handleCommit(instanceID compose.InstanceID, state *TwoPCState) DecisionState {
 	state.SetDecision(StateCommit)
 
 	if state.Timer != nil {
@@ -260,7 +260,7 @@ func (c *coordinator) handleCommit(instanceID []byte, state *TwoPCState) Decisio
 }
 
 // RecordDecision processes a decision (for followers)
-func (c *coordinator) RecordDecision(instanceID []byte, decision bool) error {
+func (c *coordinator) RecordDecision(instanceID compose.InstanceID, decision bool) error {
 	if c.config.Role != Follower {
 		return fmt.Errorf("only followers can record decisions, current role: %s", c.config.Role)
 	}
@@ -268,7 +268,7 @@ func (c *coordinator) RecordDecision(instanceID []byte, decision bool) error {
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
 		c.log.Debug().
-			Str("instance_id", string(instanceID)).
+			Str("instance_id", instanceID.String()).
 			Bool("decision", decision).
 			Msg("Received decision for unknown transaction")
 		return nil
@@ -276,7 +276,7 @@ func (c *coordinator) RecordDecision(instanceID []byte, decision bool) error {
 
 	if state.GetDecision() != StateUndecided {
 		c.log.Debug().
-			Str("instance_id", string(instanceID)).
+			Str("instance_id", instanceID.String()).
 			Bool("decision", decision).
 			Msg("Received decision for already decided transaction")
 		return nil
@@ -298,7 +298,7 @@ func (c *coordinator) RecordDecision(instanceID []byte, decision bool) error {
 	c.metrics.RecordTransactionCompleted(state.GetDecision().String(), duration)
 
 	c.log.Info().
-		Str("instance_id", string(instanceID)).
+		Str("instance_id", instanceID.String()).
 		Bool("decision", decision).
 		Dur("duration", duration).
 		Msg("Recorded decision")
@@ -317,31 +317,32 @@ func (c *coordinator) RecordDecision(instanceID []byte, decision bool) error {
 }
 
 // GetTransactionState returns the current state of a transaction
-func (c *coordinator) GetTransactionState(instanceID []byte) (DecisionState, error) {
+func (c *coordinator) GetTransactionState(instanceID compose.InstanceID) (DecisionState, error) {
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
-		return StateUndecided, fmt.Errorf("transaction %s not found", instanceID)
+		return StateUndecided, fmt.Errorf("transaction %s not found", instanceID.String())
 	}
 
 	return state.GetDecision(), nil
 }
 
 // GetActiveTransactions returns all active transaction IDs
-func (c *coordinator) GetActiveTransactions() [][]byte {
+func (c *coordinator) GetActiveTransactions() []compose.InstanceID {
 	return c.stateManager.GetAllActiveIDs()
 }
 
 // GetState retrieves a transaction state
-func (c *coordinator) GetState(instanceID []byte) (*TwoPCState, bool) {
+func (c *coordinator) GetState(instanceID compose.InstanceID) (*TwoPCState, bool) {
 	return c.stateManager.GetState(instanceID)
 }
 
 // RecordMailboxMessage records a Mailbox message for a transaction
 func (c *coordinator) RecordMailboxMessage(mailboxMsg *pb.MailboxMessage) error {
-	instanceID := mailboxMsg.InstanceId
+	var instanceID compose.InstanceID
+	copy(instanceID[:], mailboxMsg.InstanceId)
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
-		return fmt.Errorf("transaction %s not found", instanceID)
+		return fmt.Errorf("transaction %s not found", instanceID.String())
 	}
 
 	state.mu.Lock()
@@ -361,7 +362,7 @@ func (c *coordinator) RecordMailboxMessage(mailboxMsg *pb.MailboxMessage) error 
 	state.MailboxMessages[sourceChainID] = messages
 
 	c.log.Info().
-		Str("instance_id", string(instanceID)).
+		Str("instance_id", instanceID.String()).
 		Uint64("chain_id", mailboxMsg.SourceChain).
 		Msg("Recorded Mailbox message")
 
@@ -370,23 +371,23 @@ func (c *coordinator) RecordMailboxMessage(mailboxMsg *pb.MailboxMessage) error 
 
 // ConsumeMailboxMessage consumes a Mailbox message from the queue
 func (c *coordinator) ConsumeMailboxMessage(
-	instanceID []byte, sourceChainID compose.ChainID,
+	instanceID compose.InstanceID, sourceChainID compose.ChainID,
 ) (*pb.MailboxMessage, error) {
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
-		return nil, fmt.Errorf("transaction %s not found", instanceID)
+		return nil, fmt.Errorf("transaction %s not found", instanceID.String())
 	}
 
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
 	if _, isParticipant := state.ParticipatingChains[sourceChainID]; !isParticipant {
-		return nil, fmt.Errorf("chain %d not participating in transaction %s", sourceChainID, instanceID)
+		return nil, fmt.Errorf("chain %d not participating in transaction %s", sourceChainID, instanceID.String())
 	}
 
 	messages, ok := state.MailboxMessages[sourceChainID]
 	if !ok || len(messages) == 0 {
-		return nil, fmt.Errorf("no messages available for chain %d in transaction %s", sourceChainID, instanceID)
+		return nil, fmt.Errorf("no messages available for chain %d in transaction %s", sourceChainID, instanceID.String())
 	}
 
 	// Pop first message

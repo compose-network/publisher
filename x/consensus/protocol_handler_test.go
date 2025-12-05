@@ -25,12 +25,12 @@ func (m *mockCoordinator) StartTransaction(ctx context.Context, from string, xtR
 	return args.Error(0)
 }
 
-func (m *mockCoordinator) RecordVote(instanceID []byte, chainID compose.ChainID, vote bool) (DecisionState, error) {
+func (m *mockCoordinator) RecordVote(instanceID compose.InstanceID, chainID compose.ChainID, vote bool) (DecisionState, error) {
 	args := m.Called(instanceID, chainID, vote)
 	return args.Get(0).(DecisionState), args.Error(1)
 }
 
-func (m *mockCoordinator) RecordDecision(instanceID []byte, decision bool) error {
+func (m *mockCoordinator) RecordDecision(instanceID compose.InstanceID, decision bool) error {
 	args := m.Called(instanceID, decision)
 	return args.Error(0)
 }
@@ -41,23 +41,23 @@ func (m *mockCoordinator) RecordMailboxMessage(mailboxMessage *pb.MailboxMessage
 }
 
 // Implement remaining Coordinator interface methods
-func (m *mockCoordinator) GetTransactionState(instanceID []byte) (DecisionState, error) {
+func (m *mockCoordinator) GetTransactionState(instanceID compose.InstanceID) (DecisionState, error) {
 	args := m.Called(instanceID)
 	return args.Get(0).(DecisionState), args.Error(1)
 }
 
-func (m *mockCoordinator) GetActiveTransactions() [][]byte {
+func (m *mockCoordinator) GetActiveTransactions() []compose.InstanceID {
 	args := m.Called()
-	return args.Get(0).([][]byte)
+	return args.Get(0).([]compose.InstanceID)
 }
 
-func (m *mockCoordinator) GetState(instanceID []byte) (*TwoPCState, bool) {
+func (m *mockCoordinator) GetState(instanceID compose.InstanceID) (*TwoPCState, bool) {
 	args := m.Called(instanceID)
 	return args.Get(0).(*TwoPCState), args.Bool(1)
 }
 
 func (m *mockCoordinator) ConsumeMailboxMessage(
-	instanceID []byte, sourceChainID compose.ChainID) (*pb.MailboxMessage, error) {
+	instanceID compose.InstanceID, sourceChainID compose.ChainID) (*pb.MailboxMessage, error) {
 	args := m.Called(instanceID, sourceChainID)
 	return args.Get(0).(*pb.MailboxMessage), args.Error(1)
 }
@@ -141,7 +141,9 @@ func TestProtocolHandler_Handle(t *testing.T) {
 		vote := &pb.Vote{ChainId: 1, Vote: true, InstanceId: []byte{'i', 'd'}}
 		msg := &pb.Message{Payload: &pb.Message_Vote{Vote: vote}}
 
-		coord.On("RecordVote", []byte{'i', 'd'}, compose.ChainID(1), true).Return(StateUndecided, nil)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], []byte{'i', 'd'})
+		coord.On("RecordVote", instanceID, compose.ChainID(1), true).Return(StateUndecided, nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)
@@ -150,10 +152,12 @@ func TestProtocolHandler_Handle(t *testing.T) {
 	t.Run("Decided", func(t *testing.T) {
 		coord := new(mockCoordinator)
 		handler := NewProtocolHandler(coord, zerolog.Nop())
-		decided := &pb.Decided{Decision: true}
+		decided := &pb.Decided{Decision: true, InstanceId: []byte{'i', 'd'}}
 		msg := &pb.Message{Payload: &pb.Message_Decided{Decided: decided}}
 
-		coord.On("RecordDecision", decided.InstanceId, true).Return(nil)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], []byte{'i', 'd'})
+		coord.On("RecordDecision", instanceID, true).Return(nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)

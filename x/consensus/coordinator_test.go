@@ -57,39 +57,33 @@ func (m *mockCallbacks) Start(ctx context.Context, from string, xtReq *pb.XTRequ
 	return nil
 }
 
-func (m *mockCallbacks) Vote(ctx context.Context, instanceID []byte, vote bool) error {
+func (m *mockCallbacks) Vote(ctx context.Context, instanceID compose.InstanceID, vote bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.votes == nil {
 		m.votes = make(map[compose.InstanceID]bool)
 	}
-	m.votes[compose.InstanceID(instanceID)] = vote
+	m.votes[instanceID] = vote
 	m.wg.Done()
 	return m.voteErr
 }
 
-func (m *mockCallbacks) Decision(ctx context.Context, instanceID []byte, decision bool) error {
+func (m *mockCallbacks) Decision(ctx context.Context, instanceID compose.InstanceID, decision bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.decisions == nil {
 		m.decisions = make(map[compose.InstanceID]bool)
 	}
-	m.decisions[compose.InstanceID(instanceID)] = decision
+	m.decisions[instanceID] = decision
 	m.wg.Done()
 	return m.decisionErr
 }
 
-func (m *mockCallbacks) Block(ctx context.Context, block *types.Block, instanceIDs [][]byte) error {
+func (m *mockCallbacks) Block(ctx context.Context, block *types.Block, instanceIDs []compose.InstanceID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.blocks = append(m.blocks, block)
-
-	composeInstanceIDs := make([]compose.InstanceID, 0, len(instanceIDs))
-	for _, id := range instanceIDs {
-		composeInstanceIDs = append(composeInstanceIDs, compose.InstanceID(id))
-	}
-
-	m.blockXtIDs = append(m.blockXtIDs, composeInstanceIDs)
+	m.blockXtIDs = append(m.blockXtIDs, instanceIDs)
 	m.wg.Done()
 	return nil
 }
@@ -109,7 +103,7 @@ func (m *mockCallbacks) getVote(xtID compose.InstanceID) (bool, bool) {
 }
 
 // Helper to create a sample XTRequest
-func newTestXTRequest(chains []uint64) (*pb.XTRequest, []byte) {
+func newTestXTRequest(chains []uint64) (*pb.XTRequest, compose.InstanceID) {
 	req := &pb.XTRequest{
 		TransactionRequests: make([]*pb.TransactionRequest, len(chains)),
 	}
@@ -120,7 +114,8 @@ func newTestXTRequest(chains []uint64) (*pb.XTRequest, []byte) {
 		}
 	}
 
-	return req, []byte{} //TODO: set correct instance ID
+	// Return zero-valued instanceID until coordinator supports extracting from request
+	return req, compose.InstanceID{}
 }
 
 func TestNewCoordinator(t *testing.T) {
@@ -432,7 +427,7 @@ func TestCIRCMessageHandling(t *testing.T) {
 
 	circMsg := &pb.MailboxMessage{
 		SourceChain: 1,
-		InstanceId:  instanceID,
+		InstanceId:  instanceID[:],
 		Data:        [][]byte{[]byte("mailbox data")},
 	}
 
@@ -450,7 +445,7 @@ func TestCIRCMessageHandling(t *testing.T) {
 	t.Run("record for non-participant", func(t *testing.T) {
 		badMsg := &pb.MailboxMessage{
 			SourceChain: 3,
-			InstanceId:  instanceID,
+			InstanceId:  instanceID[:],
 		}
 		err := coord.RecordMailboxMessage(badMsg)
 		require.Error(t, err)

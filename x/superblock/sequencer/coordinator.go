@@ -253,12 +253,15 @@ func (sc *SequencerCoordinator) handleStartInstance(
 	// Extract our transactions
 	myTxs := sc.extractMyTransactions(startInstance.XtRequest)
 
+	var instanceID compose.InstanceID
+	copy(instanceID[:], startInstance.InstanceId)
+
 	var voteResult = true
 
 	if sc.callbacks.SimulateAndVote != nil && len(myTxs) > 0 {
-		success, err := sc.callbacks.SimulateAndVote(ctx, startInstance.XtRequest, startInstance.InstanceId)
+		success, err := sc.callbacks.SimulateAndVote(ctx, startInstance.XtRequest, instanceID)
 		if err != nil {
-			sc.log.Error().Err(err).Str("instance_id", string(startInstance.InstanceId)).Msg("Simulation failed")
+			sc.log.Error().Err(err).Str("instance_id", instanceID.String()).Msg("Simulation failed")
 			voteResult = false
 		} else {
 			voteResult = success
@@ -266,7 +269,7 @@ func (sc *SequencerCoordinator) handleStartInstance(
 	} else if len(myTxs) > 0 {
 		// TODO: handle this case
 		sc.log.Warn().
-			Str("instance_id", string(startInstance.InstanceId)).
+			Str("instance_id", instanceID.String()).
 			Msg("No simulation callback configured, voting true blindly")
 	}
 
@@ -431,12 +434,12 @@ func (sc *SequencerCoordinator) OnBlockBuildingStart(ctx context.Context, slot u
 //
 // After processing the decision, if the coordinator has returned to Building-Free state and there
 // are queued cross-chain transactions waiting, the next one is automatically started.
-func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, instanceID []byte, decision bool) error {
+func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, instanceID compose.InstanceID, decision bool) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
 	sc.log.Info().
-		Str("instance_id", string(instanceID)).
+		Str("instance_id", instanceID.String()).
 		Bool("decision", decision).
 		Msg("Processing consensus decision at coordinator")
 
@@ -445,7 +448,7 @@ func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, ins
 		// If context not found, it means RequestSeal already handled this decision
 		sc.log.Debug().
 			Err(err).
-			Str("instance_id", string(instanceID)).
+			Str("instance_id", instanceID.String()).
 			Msg("SCP context already processed (likely by RequestSeal)")
 		return nil
 	}
@@ -454,7 +457,7 @@ func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, ins
 	// This ensures the transaction cannot be committed in blocks built before RequestSeal arrives.
 	if !decision && sc.callbacks.CleanupAbortedTransaction != nil {
 		if err := sc.callbacks.CleanupAbortedTransaction(ctx, instanceID); err != nil {
-			sc.log.Warn().Err(err).Str("instance_id", string(instanceID)).Msg("Cleanup callback failed for aborted transaction")
+			sc.log.Warn().Err(err).Str("instance_id", instanceID.String()).Msg("Cleanup callback failed for aborted transaction")
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/transport"
+	"github.com/compose-network/specs/compose"
 	pb "github.com/compose-network/specs/compose/proto"
 )
 
@@ -20,12 +21,12 @@ type CoordinatorCallbacks struct {
 	// and returns whether the local transactions are ready to commit (vote=true)
 	// or not (vote=false). This callback is used by the coordinator during
 	// StartSC handling and is implemented by the host SDK (e.g., geth backend).
-	SimulateAndVote func(ctx context.Context, xtReq *pb.XTRequest, instanceID []byte) (bool, error)
+	SimulateAndVote func(ctx context.Context, xtReq *pb.XTRequest, instanceID compose.InstanceID) (bool, error)
 	// CleanupAbortedTransaction is called when an SCP instance decides to abort,
 	// allowing the execution layer to immediately remove staged transactions from
 	// its pending pool. This ensures atomic exclude behavior when blocks are built
 	// before RequestSeal arrives.
-	CleanupAbortedTransaction func(ctx context.Context, instanceID []byte) error
+	CleanupAbortedTransaction func(ctx context.Context, instanceID compose.InstanceID) error
 }
 
 // BlockLifecycleManager handles block building lifecycle events
@@ -97,7 +98,7 @@ type MessageRouterInterface interface {
 // SCPIntegrationInterface for SCP coordination
 type SCPIntegrationInterface interface {
 	HandleStartInstance(ctx context.Context, startSC *pb.StartInstance) error
-	HandleDecision(instanceID []byte, decision bool) error
+	HandleDecision(instanceID compose.InstanceID, decision bool) error
 	GetActiveContexts() map[string]*SCPContext
 	ResetForSlot(slot uint64)
 	GetIncludedXTsHex() []string

@@ -12,7 +12,7 @@ import (
 )
 
 type SCPContext struct {
-	InstanceID     []byte
+	InstanceID     compose.InstanceID
 	Request        *pb.XTRequest
 	SequenceNumber uint64
 	MyTransactions [][]byte
@@ -26,10 +26,10 @@ type SCPIntegration struct {
 	stateMachine *StateMachine
 	log          zerolog.Logger
 
-	activeContexts map[string]*SCPContext // xtID -> context
+	activeContexts map[compose.InstanceID]*SCPContext // instanceID -> context
 
 	// per-slot tracked state
-	includedXTs map[string][]byte // hex xtID -> raw xtID bytes for this slot (decided=true)
+	includedXTs map[compose.InstanceID]struct{} // instanceIDs for this slot (decided=true)
 	// last decided sequence number for monotonic StartSC enforcement
 	lastDecidedSeq    uint64
 	hasLastDecidedSeq bool
@@ -49,15 +49,15 @@ func NewSCPIntegration(
 		consensus:      consensus,
 		stateMachine:   stateMachine,
 		log:            log.With().Str("component", "scp_integration").Logger(),
-		activeContexts: make(map[string]*SCPContext),
-		includedXTs:    make(map[string][]byte),
+		activeContexts: make(map[compose.InstanceID]*SCPContext),
+		includedXTs:    make(map[compose.InstanceID]struct{}),
 		blockBuilder:   builder,
 	}
 }
 
 func (si *SCPIntegration) HandleStartSC(ctx context.Context, startInstance *pb.StartInstance) error {
-	instanceID := startInstance.InstanceId
-	instanceIDStr := string(instanceID)
+	var instanceID compose.InstanceID
+	copy(instanceID[:], startInstance.InstanceId)
 
 	si.mu.Lock()
 	defer si.mu.Unlock()
@@ -69,11 +69,11 @@ func (si *SCPIntegration) HandleStartSC(ctx context.Context, startInstance *pb.S
 		// CIRC Record/Consume will clearly error if state is missing.
 		si.log.Error().
 			Err(err).
-			Str("instance_id", instanceIDStr).
+			Str("instance_id", instanceID.String()).
 			Msg("Failed to start local 2PC state for StartSC")
 	} else {
 		si.log.Debug().
-			Str("instance_id", instanceIDStr).
+			Str("instance_id", instanceID.String()).
 			Msg("Initialized local 2PC state for StartSC")
 	}
 
@@ -85,10 +85,10 @@ func (si *SCPIntegration) HandleStartSC(ctx context.Context, startInstance *pb.S
 		MyTransactions: si.extractMyTransactions(startInstance.XtRequest),
 	}
 
-	si.activeContexts[instanceIDStr] = scpCtx
+	si.activeContexts[instanceID] = scpCtx
 
 	si.log.Info().
-		Str("xt_id", instanceIDStr).
+		Str("xt_id", instanceID.String()).
 		Uint64("sequence", startInstance.SequenceNumber).
 		Int("my_txs", len(scpCtx.MyTransactions)).
 		Msg("Started SCP context")
@@ -96,42 +96,40 @@ func (si *SCPIntegration) HandleStartSC(ctx context.Context, startInstance *pb.S
 	return nil
 }
 
-func (si *SCPIntegration) HandleDecision(instanceID []byte, decision bool) error {
+func (si *SCPIntegration) HandleDecision(instanceID compose.InstanceID, decision bool) error {
 	si.mu.Lock()
 	defer si.mu.Unlock()
 
-	instanceIDStr := string(instanceID)
-
-	scpCtx, exists := si.activeContexts[instanceIDStr]
+	scpCtx, exists := si.activeContexts[instanceID]
 	if !exists {
-		return fmt.Errorf("no SCP context found for xt_id %s", instanceIDStr)
+		return fmt.Errorf("no SCP context found for xt_id %s", instanceID.String())
 	}
 
 	scpCtx.Decision = &decision
 
 	si.log.Info().
-		Str("xt_id", instanceIDStr).
+		Str("xt_id", instanceID.String()).
 		Bool("decision", decision).
 		Msg("SCP decision received")
 
 	// Update block builder with decision for our chain's txs
 	if si.blockBuilder != nil {
 		if decision {
-			_ = si.blockBuilder.AddSCPTransactions(instanceIDStr, scpCtx.MyTransactions, true)
+			_ = si.blockBuilder.AddSCPTransactions(instanceID.String(), scpCtx.MyTransactions, true)
 		} else {
-			_ = si.blockBuilder.AddSCPTransactions(instanceIDStr, nil, false)
+			_ = si.blockBuilder.AddSCPTransactions(instanceID.String(), nil, false)
 		}
 	}
 
 	// Track included XTs for superset check
 	if decision {
-		si.includedXTs[instanceIDStr] = scpCtx.InstanceID
+		si.includedXTs[instanceID] = struct{}{}
 	} else {
-		delete(si.includedXTs, instanceIDStr)
+		delete(si.includedXTs, instanceID)
 	}
 
 	// Clean up context after decision
-	delete(si.activeContexts, instanceIDStr)
+	delete(si.activeContexts, instanceID)
 
 	// If we were the last SCP instance, transition back to Free
 	if len(si.activeContexts) == 0 && si.stateMachine.GetCurrentState() == StateBuildingLocked {
@@ -162,7 +160,7 @@ func (si *SCPIntegration) GetActiveContexts() map[string]*SCPContext {
 
 	result := make(map[string]*SCPContext)
 	for k, v := range si.activeContexts {
-		result[k] = v
+		result[k.String()] = v
 	}
 
 	return result
@@ -173,8 +171,8 @@ func (si *SCPIntegration) ResetForSlot(slot uint64) {
 	si.mu.Lock()
 	defer si.mu.Unlock()
 	si.currentSlot = slot
-	si.activeContexts = make(map[string]*SCPContext)
-	si.includedXTs = make(map[string][]byte)
+	si.activeContexts = make(map[compose.InstanceID]*SCPContext)
+	si.includedXTs = make(map[compose.InstanceID]struct{})
 	si.hasLastDecidedSeq = false
 }
 
@@ -183,8 +181,8 @@ func (si *SCPIntegration) GetIncludedXTsHex() []string {
 	si.mu.RLock()
 	defer si.mu.RUnlock()
 	out := make([]string, 0, len(si.includedXTs))
-	for k := range si.includedXTs {
-		out = append(out, k)
+	for instanceID := range si.includedXTs {
+		out = append(out, instanceID.String())
 	}
 	return out
 }

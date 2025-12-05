@@ -14,15 +14,15 @@ import (
 type Coordinator interface {
 	// Transaction lifecycle
 	StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error
-	RecordVote(instanceID []byte, chainID compose.ChainID, vote bool) (DecisionState, error)
-	RecordDecision(instanceID []byte, decision bool) error
-	GetTransactionState(instanceID []byte) (DecisionState, error)
-	GetActiveTransactions() [][]byte
-	GetState(instanceID []byte) (*TwoPCState, bool)
+	RecordVote(instanceID compose.InstanceID, chainID compose.ChainID, vote bool) (DecisionState, error)
+	RecordDecision(instanceID compose.InstanceID, decision bool) error
+	GetTransactionState(instanceID compose.InstanceID) (DecisionState, error)
+	GetActiveTransactions() []compose.InstanceID
+	GetState(instanceID compose.InstanceID) (*TwoPCState, bool)
 
 	// Mailbox message handling
 	RecordMailboxMessage(circMessage *pb.MailboxMessage) error
-	ConsumeMailboxMessage(instanceID []byte, sourceChainID compose.ChainID) (*pb.MailboxMessage, error)
+	ConsumeMailboxMessage(instanceID compose.InstanceID, sourceChainID compose.ChainID) (*pb.MailboxMessage, error)
 
 	// Callbacks
 	SetStartCallback(fn StartFn)
@@ -41,11 +41,11 @@ type Coordinator interface {
 
 // Callback function types
 type StartFn func(ctx context.Context, from string, xtReq *pb.XTRequest) error
-type VoteFn func(ctx context.Context, instanceID []byte, vote bool) error
-type DecisionFn func(ctx context.Context, instanceID []byte, decision bool) error
+type VoteFn func(ctx context.Context, instanceID compose.InstanceID, vote bool) error
+type DecisionFn func(ctx context.Context, instanceID compose.InstanceID, decision bool) error
 
 // BlockFn sends a block plus committed xTs to the SP layer
-type BlockFn func(ctx context.Context, block *types.Block, instanceIDs [][]byte) error
+type BlockFn func(ctx context.Context, block *types.Block, instanceIDs []compose.InstanceID) error
 
 // Config holds coordinator configuration
 type Config struct {

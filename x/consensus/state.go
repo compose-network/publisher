@@ -12,7 +12,7 @@ import (
 // StateManager manages transaction states with thread-safety and performance optimizations
 type StateManager struct {
 	mu     sync.RWMutex
-	states map[string]*TwoPCState
+	states map[compose.InstanceID]*TwoPCState
 
 	// Cleanup management
 	cleanupInterval time.Duration
@@ -23,7 +23,7 @@ type StateManager struct {
 // NewStateManager creates a new state manager
 func NewStateManager() *StateManager {
 	sm := &StateManager{
-		states:          make(map[string]*TwoPCState),
+		states:          make(map[compose.InstanceID]*TwoPCState),
 		cleanupInterval: 5 * time.Minute,
 		stopCleanup:     make(chan struct{}),
 	}
@@ -37,53 +37,49 @@ func NewStateManager() *StateManager {
 
 // AddState adds a new transaction state
 func (sm *StateManager) AddState(
-	instanceID []byte, req *pb.XTRequest, chains map[compose.ChainID]struct{},
+	instanceID compose.InstanceID, req *pb.XTRequest, chains map[compose.ChainID]struct{},
 ) (*TwoPCState, error) {
-	instanceIDStr := string(instanceID)
-
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if _, exists := sm.states[instanceIDStr]; exists {
-		return nil, fmt.Errorf("transaction %s already exists", instanceIDStr)
+	if _, exists := sm.states[instanceID]; exists {
+		return nil, fmt.Errorf("transaction %s already exists", instanceID.String())
 	}
 
 	state := NewTwoPCState(instanceID, req, chains)
-	sm.states[instanceIDStr] = state
+	sm.states[instanceID] = state
 
 	return state, nil
 }
 
 // GetState retrieves a transaction state
-func (sm *StateManager) GetState(instanceID []byte) (*TwoPCState, bool) {
+func (sm *StateManager) GetState(instanceID compose.InstanceID) (*TwoPCState, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
-	state, exists := sm.states[string(instanceID)]
+	state, exists := sm.states[instanceID]
 	return state, exists
 }
 
 // RemoveState removes a transaction state
-func (sm *StateManager) RemoveState(instanceID []byte) {
-	xtIDStr := string(instanceID)
-
+func (sm *StateManager) RemoveState(instanceID compose.InstanceID) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if state, exists := sm.states[xtIDStr]; exists {
+	if state, exists := sm.states[instanceID]; exists {
 		if state.Timer != nil {
 			state.Timer.Stop()
 		}
-		delete(sm.states, xtIDStr)
+		delete(sm.states, instanceID)
 	}
 }
 
 // GetAllActiveIDs returns all active transaction IDs
-func (sm *StateManager) GetAllActiveIDs() [][]byte {
+func (sm *StateManager) GetAllActiveIDs() []compose.InstanceID {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
-	ids := make([][]byte, 0, len(sm.states))
+	ids := make([]compose.InstanceID, 0, len(sm.states))
 	for _, state := range sm.states {
 		ids = append(ids, state.InstanceID)
 	}
@@ -133,20 +129,20 @@ func (sm *StateManager) cleanup() {
 	defer sm.mu.Unlock()
 
 	now := time.Now()
-	toRemove := make([]string, 0)
+	toRemove := make([]compose.InstanceID, 0)
 
-	for xtIDStr, state := range sm.states {
+	for instanceID, state := range sm.states {
 		if state.IsComplete() && now.Sub(state.StartTime) > 10*time.Minute {
-			toRemove = append(toRemove, xtIDStr)
+			toRemove = append(toRemove, instanceID)
 		}
 	}
 
-	for _, xtIDStr := range toRemove {
-		if state := sm.states[xtIDStr]; state != nil {
+	for _, instanceID := range toRemove {
+		if state := sm.states[instanceID]; state != nil {
 			if state.Timer != nil {
 				state.Timer.Stop()
 			}
-			delete(sm.states, xtIDStr)
+			delete(sm.states, instanceID)
 		}
 	}
 }
@@ -163,6 +159,6 @@ func (sm *StateManager) Shutdown() {
 			state.Timer.Stop()
 		}
 	}
-	sm.states = make(map[string]*TwoPCState)
+	sm.states = make(map[compose.InstanceID]*TwoPCState)
 	sm.mu.Unlock()
 }
