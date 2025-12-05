@@ -65,7 +65,7 @@ type TwoPCState struct {
 	InstanceID          []byte
 	Decision            DecisionState
 	ParticipatingChains map[compose.ChainID]struct{}
-	Votes               map[string]bool
+	Votes               map[compose.ChainID]bool
 	Timer               *time.Timer
 	StartTime           time.Time
 	XTRequest           *pb.XTRequest
@@ -78,7 +78,7 @@ func NewTwoPCState(instanceID []byte, req *pb.XTRequest, chains map[compose.Chai
 		InstanceID:          instanceID,
 		Decision:            StateUndecided,
 		ParticipatingChains: chains,
-		Votes:               make(map[string]bool),
+		Votes:               make(map[compose.ChainID]bool),
 		StartTime:           time.Now(),
 		XTRequest:           req,
 		MailboxMessages:     make(map[compose.ChainID][]*pb.MailboxMessage),
@@ -128,7 +128,7 @@ func (t *TwoPCState) GetDecision() DecisionState {
 }
 
 // AddVote atomically adds a vote if not already present
-func (t *TwoPCState) AddVote(chainID string, vote bool) bool {
+func (t *TwoPCState) AddVote(chainID compose.ChainID, vote bool) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -141,11 +141,11 @@ func (t *TwoPCState) AddVote(chainID string, vote bool) bool {
 }
 
 // GetVotes returns a copy of current votes (thread-safe)
-func (t *TwoPCState) GetVotes() map[string]bool {
+func (t *TwoPCState) GetVotes() map[compose.ChainID]bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	votes := make(map[string]bool, len(t.Votes))
+	votes := make(map[compose.ChainID]bool, len(t.Votes))
 	for k, v := range t.Votes {
 		votes[k] = v
 	}

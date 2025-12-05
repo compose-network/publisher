@@ -327,5 +327,99 @@ func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *
 	return nil
 }
 func (c *coordinator) RecordVote(instanceID []byte, chainID compose.ChainID, vote bool) (DecisionState, error) {
-	return 1, nil
+	state, exists := c.stateManager.GetState(instanceID)
+	if !exists {
+		return StateUndecided, fmt.Errorf("transaction %s not found", instanceID)
+	}
+
+	if state.GetDecision() != StateUndecided {
+		return state.GetDecision(), nil
+	}
+
+	state.mu.RLock()
+	_, isParticipant := state.ParticipatingChains[chainID]
+	state.mu.RUnlock()
+
+	if !isParticipant {
+		return StateUndecided, fmt.Errorf("chain %d not participating in transaction %s", chainID, instanceID)
+	}
+
+	// Add vote atomically
+	if !state.AddVote(chainID, vote) {
+		return StateUndecided, fmt.Errorf("chain %d already voted for transaction %s", chainID, instanceID)
+	}
+
+	voteLatency := time.Since(state.StartTime)
+	c.metrics.RecordVote(chainID, vote, voteLatency)
+
+	c.log.Info().
+		Str("instance_id", string(instanceID)).
+		Uint64("chain", uint64(chainID)).
+		Bool("vote", vote).
+		Int("votes_recorded", state.GetVoteCount()).
+		Int("votes_required", state.GetParticipantCount()).
+		Msg("Recorded vote")
+
+	// Handle abort immediately
+	if !vote {
+		return c.handleAbort(instanceID, state), nil
+	}
+
+	// Check for commit (leader only)
+	if c.config.Role == Leader {
+		if state.GetVoteCount() == state.GetParticipantCount() {
+			return c.handleCommit(instanceID, state), nil
+		}
+	} else {
+		// Follower broadcasts vote
+		c.callbackMgr.InvokeVote(instanceID, vote, voteLatency)
+	}
+
+	return StateUndecided, nil
+}
+
+// handleAbort handles an abort decision
+func (c *coordinator) handleAbort(instanceID []byte, state *TwoPCState) DecisionState {
+	state.SetDecision(StateAbort)
+
+	if state.Timer != nil {
+		state.Timer.Stop()
+	}
+
+	duration := time.Since(state.StartTime)
+	c.metrics.RecordTransactionCompleted(StateAbort.String(), duration)
+
+	if c.config.Role == Leader {
+		c.callbackMgr.InvokeDecision(instanceID, false, duration)
+	} else {
+		c.callbackMgr.InvokeVote(instanceID, false, duration)
+	}
+
+	// Schedule cleanup
+	time.AfterFunc(5*time.Minute, func() {
+		c.stateManager.RemoveState(instanceID)
+	})
+
+	return StateAbort
+}
+
+// handleCommit handles a commit decision
+func (c *coordinator) handleCommit(instanceID []byte, state *TwoPCState) DecisionState {
+	state.SetDecision(StateCommit)
+
+	if state.Timer != nil {
+		state.Timer.Stop()
+	}
+
+	duration := time.Since(state.StartTime)
+	c.metrics.RecordTransactionCompleted(StateCommit.String(), duration)
+
+	c.callbackMgr.InvokeDecision(instanceID, true, duration)
+
+	// Schedule cleanup
+	time.AfterFunc(5*time.Minute, func() {
+		c.stateManager.RemoveState(instanceID)
+	})
+
+	return StateCommit
 }

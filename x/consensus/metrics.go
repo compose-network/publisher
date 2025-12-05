@@ -1,9 +1,11 @@
 package consensus
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/compose-network/publisher/metrics"
+	"github.com/compose-network/specs/compose"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -11,7 +13,7 @@ import (
 type MetricsRecorder interface {
 	RecordTransactionStarted(participantCount int)
 	RecordTransactionCompleted(state string, duration time.Duration)
-	RecordVote(chainID string, vote bool, latency time.Duration)
+	RecordVote(chainID compose.ChainID, vote bool, latency time.Duration)
 	RecordTimeout()
 	RecordDecisionBroadcast(decision bool)
 	RecordVoteBroadcast(vote bool)
@@ -128,14 +130,15 @@ func (m *Metrics) RecordTransactionCompleted(state string, duration time.Duratio
 }
 
 // RecordVote records a vote received
-func (m *Metrics) RecordVote(chainID string, vote bool, latency time.Duration) {
+func (m *Metrics) RecordVote(chainID compose.ChainID, vote bool, latency time.Duration) {
 	voteStr := StateAbortStr
 	if vote {
 		voteStr = StateCommitStr
 	}
 
-	m.VotesReceived.WithLabelValues(chainID, voteStr).Inc()
-	m.VoteLatency.WithLabelValues(chainID).Observe(latency.Seconds())
+	chainIDStr := strconv.FormatUint(uint64(chainID), 10)
+	m.VotesReceived.WithLabelValues(chainIDStr, voteStr).Inc()
+	m.VoteLatency.WithLabelValues(chainIDStr).Observe(latency.Seconds())
 }
 
 // RecordTimeout records a timeout
@@ -168,12 +171,12 @@ type NoOpMetrics struct{}
 // Ensure NoOpMetrics implements MetricsRecorder
 var _ MetricsRecorder = (*NoOpMetrics)(nil)
 
-func (n *NoOpMetrics) RecordTransactionStarted(participantCount int)                   {}
-func (n *NoOpMetrics) RecordTransactionCompleted(state string, duration time.Duration) {}
-func (n *NoOpMetrics) RecordVote(chainID string, vote bool, latency time.Duration)     {}
-func (n *NoOpMetrics) RecordTimeout()                                                  {}
-func (n *NoOpMetrics) RecordDecisionBroadcast(decision bool)                           {}
-func (n *NoOpMetrics) RecordVoteBroadcast(vote bool)                                   {}
+func (n *NoOpMetrics) RecordTransactionStarted(participantCount int)                        {}
+func (n *NoOpMetrics) RecordTransactionCompleted(state string, duration time.Duration)      {}
+func (n *NoOpMetrics) RecordVote(chainID compose.ChainID, vote bool, latency time.Duration) {}
+func (n *NoOpMetrics) RecordTimeout()                                                       {}
+func (n *NoOpMetrics) RecordDecisionBroadcast(decision bool)                                {}
+func (n *NoOpMetrics) RecordVoteBroadcast(vote bool)                                        {}
 
 // NewNoOpMetrics creates a new no-op metrics recorder for testing
 func NewNoOpMetrics() MetricsRecorder {
