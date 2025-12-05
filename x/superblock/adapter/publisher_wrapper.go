@@ -146,7 +146,9 @@ func (sp *SuperblockPublisher) SubmitXTRequest(ctx context.Context, from string,
 }
 
 // Consensus callbacks - route to SBCP coordinator
-func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, instanceID compose.InstanceID, vote bool) error {
+func (sp *SuperblockPublisher) handleConsensusVote(
+	ctx context.Context, instanceID compose.InstanceID, vote bool,
+) error {
 	sp.log.Info().Str("instance_id", instanceID.String()).Bool("vote", vote).Msg("SP broadcasting vote")
 	voteMsg := &pb.Message{
 		SenderId: "publisher",
@@ -162,7 +164,9 @@ func (sp *SuperblockPublisher) handleConsensusVote(ctx context.Context, instance
 	return sp.coordinator.Transport().Broadcast(ctx, voteMsg, "")
 }
 
-func (sp *SuperblockPublisher) handleConsensusDecision(ctx context.Context, instanceID compose.InstanceID, decision bool) error {
+func (sp *SuperblockPublisher) handleConsensusDecision(
+	ctx context.Context, instanceID compose.InstanceID, decision bool,
+) error {
 	sp.log.Info().Str("instance_id", instanceID.String()).Bool("decision", decision).Msg("SP broadcasting decision")
 	decidedMsg := &pb.Message{
 		SenderId: "publisher",

@@ -25,7 +25,9 @@ func (m *mockCoordinator) StartTransaction(ctx context.Context, from string, xtR
 	return args.Error(0)
 }
 
-func (m *mockCoordinator) RecordVote(instanceID compose.InstanceID, chainID compose.ChainID, vote bool) (DecisionState, error) {
+func (m *mockCoordinator) RecordVote(
+	instanceID compose.InstanceID, chainID compose.ChainID, vote bool,
+) (DecisionState, error) {
 	args := m.Called(instanceID, chainID, vote)
 	return args.Get(0).(DecisionState), args.Error(1)
 }

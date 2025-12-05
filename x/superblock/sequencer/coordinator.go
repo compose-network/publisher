@@ -434,7 +434,9 @@ func (sc *SequencerCoordinator) OnBlockBuildingStart(ctx context.Context, slot u
 //
 // After processing the decision, if the coordinator has returned to Building-Free state and there
 // are queued cross-chain transactions waiting, the next one is automatically started.
-func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, instanceID compose.InstanceID, decision bool) error {
+func (sc *SequencerCoordinator) handleConsensusDecision(
+	ctx context.Context, instanceID compose.InstanceID, decision bool,
+) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 

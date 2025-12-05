@@ -109,7 +109,9 @@ func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, 
 }
 
 // invokeCallback is a helper to invoke callbacks with error handling and timeout
-func (cm *CallbackManager) invokeCallback(callbackType string, xtID compose.InstanceID, fn func(context.Context) error) {
+func (cm *CallbackManager) invokeCallback(
+	callbackType string, xtID compose.InstanceID, fn func(context.Context) error,
+) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cm.timeout)
 		defer cancel()

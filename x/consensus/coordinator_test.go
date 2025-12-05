@@ -103,6 +103,8 @@ func (m *mockCallbacks) getVote(xtID compose.InstanceID) (bool, bool) {
 }
 
 // Helper to create a sample XTRequest
+//
+//nolint:unparam // Returns zero-valued InstanceID until coordinator supports extracting from request
 func newTestXTRequest(chains []uint64) (*pb.XTRequest, compose.InstanceID) {
 	req := &pb.XTRequest{
 		TransactionRequests: make([]*pb.TransactionRequest, len(chains)),
@@ -260,7 +262,7 @@ func TestTwoPC_Leader_Commit(t *testing.T) {
 
 	// Check callback
 	callbacks.wg.Wait()
-	dec, ok := callbacks.getDecision(compose.InstanceID(xtID))
+	dec, ok := callbacks.getDecision(xtID)
 	require.True(t, ok)
 	assert.True(t, dec)
 }
@@ -295,7 +297,7 @@ func TestTwoPC_Leader_Abort(t *testing.T) {
 
 	// Check callback
 	callbacks.wg.Wait()
-	dec, ok := callbacks.getDecision(compose.InstanceID(instanceID))
+	dec, ok := callbacks.getDecision(instanceID)
 	require.True(t, ok)
 	assert.False(t, dec)
 
@@ -336,7 +338,7 @@ func TestTwoPC_Leader_Timeout(t *testing.T) {
 
 	// Check callback
 	callbacks.wg.Wait()
-	dec, ok := callbacks.getDecision(compose.InstanceID(instanceID))
+	dec, ok := callbacks.getDecision(instanceID)
 	require.True(t, ok)
 	assert.False(t, dec)
 }
@@ -367,7 +369,7 @@ func TestTwoPC_Follower(t *testing.T) {
 
 		// Check vote callback
 		callbacks.wg.Wait()
-		vote, ok := callbacks.getVote(compose.InstanceID(instanceID))
+		vote, ok := callbacks.getVote(instanceID)
 		require.True(t, ok)
 		assert.True(t, vote)
 	})
@@ -382,7 +384,7 @@ func TestTwoPC_Follower(t *testing.T) {
 		assert.Equal(t, StateCommit, finalState)
 
 		callbacks.wg.Wait()
-		dec, ok := callbacks.getDecision(compose.InstanceID(instanceID))
+		dec, ok := callbacks.getDecision(instanceID)
 		require.True(t, ok)
 		assert.True(t, dec)
 	})

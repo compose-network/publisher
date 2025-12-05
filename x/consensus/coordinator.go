@@ -161,7 +161,9 @@ func (c *coordinator) handleTimeout(instanceID compose.InstanceID) {
 	}
 }
 
-func (c *coordinator) RecordVote(instanceID compose.InstanceID, chainID compose.ChainID, vote bool) (DecisionState, error) {
+func (c *coordinator) RecordVote(
+	instanceID compose.InstanceID, chainID compose.ChainID, vote bool,
+) (DecisionState, error) {
 	state, exists := c.stateManager.GetState(instanceID)
 	if !exists {
 		return StateUndecided, fmt.Errorf("transaction %s not found", instanceID)
