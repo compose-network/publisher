@@ -220,9 +220,6 @@ func (a *App) initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to create publisher manager: %w", err)
 	}
 
-	if publisherMgr == nil {
-		return fmt.Errorf("failed to create publisher manager: nil instance returned")
-	}
 	a.pmgr = publisherMgr
 	a.tcpServer = tcpServer
 	a.tcpServer.SetHandler(func(ctx context.Context, from string, msg *pb.Message) error {
