@@ -38,15 +38,15 @@ func newTestCoordinator(t *testing.T, role Role, timeout time.Duration) (*coordi
 
 // Mock callbacks for testing
 type mockCallbacks struct {
-	mu          sync.Mutex
-	wg          sync.WaitGroup
-	starts      []*pb.XTRequest
-	votes       map[compose.InstanceID]bool
-	decisions   map[compose.InstanceID]bool
-	blocks      []*types.Block
-	blockXtIDs  [][]compose.InstanceID
-	voteErr     error
-	decisionErr error
+	mu               sync.Mutex
+	wg               sync.WaitGroup
+	starts           []*pb.XTRequest
+	votes            map[compose.InstanceID]bool
+	decisions        map[compose.InstanceID]bool
+	blocks           []*types.Block
+	blockInstanceIDs [][]compose.InstanceID
+	voteErr          error
+	decisionErr      error
 }
 
 func (m *mockCallbacks) Start(ctx context.Context, from string, xtReq *pb.XTRequest) error {
@@ -83,7 +83,7 @@ func (m *mockCallbacks) Block(ctx context.Context, block *types.Block, instanceI
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.blocks = append(m.blocks, block)
-	m.blockXtIDs = append(m.blockXtIDs, instanceIDs)
+	m.blockInstanceIDs = append(m.blockInstanceIDs, instanceIDs)
 	m.wg.Done()
 	return nil
 }
@@ -105,13 +105,13 @@ func (m *mockCallbacks) getVote(xtID compose.InstanceID) (bool, bool) {
 // Helper to create a sample XTRequest
 //
 //nolint:unparam // Returns zero-valued InstanceID until coordinator supports extracting from request
-func newTestXTRequest(chains []uint64) (*pb.XTRequest, compose.InstanceID) {
+func newTestXTRequest(chains []compose.ChainID) (*pb.XTRequest, compose.InstanceID) {
 	req := &pb.XTRequest{
 		TransactionRequests: make([]*pb.TransactionRequest, len(chains)),
 	}
 	for i, chain := range chains {
 		req.TransactionRequests[i] = &pb.TransactionRequest{
-			ChainId:     chain,
+			ChainId:     uint64(chain),
 			Transaction: [][]byte{[]byte(fmt.Sprintf("tx for %d", chain))},
 		}
 	}
@@ -146,7 +146,7 @@ func TestStartTransaction(t *testing.T) {
 	}()
 
 	t.Run("happy path", func(t *testing.T) {
-		xtReq, xtID := newTestXTRequest([]uint64{1, 2})
+		xtReq, xtID := newTestXTRequest([]compose.ChainID{1, 2})
 		callbacks.wg.Add(1)
 		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestStartTransaction(t *testing.T) {
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		xtReq, _ := newTestXTRequest([]uint64{3})
+		xtReq, _ := newTestXTRequest([]compose.ChainID{3})
 		callbacks.wg.Add(1)
 		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		callbacks.wg.Wait()
@@ -176,7 +176,7 @@ func TestStartTransaction(t *testing.T) {
 	})
 
 	t.Run("no chains", func(t *testing.T) {
-		xtReq, _ := newTestXTRequest([]uint64{})
+		xtReq, _ := newTestXTRequest([]compose.ChainID{})
 		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no participating chains")
@@ -193,7 +193,7 @@ func TestRecordVote(t *testing.T) {
 		}
 	}()
 
-	xtReq, xtID := newTestXTRequest([]uint64{1, 2})
+	xtReq, xtID := newTestXTRequest([]compose.ChainID{1, 2})
 	callbacks.wg.Add(1)
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
 	callbacks.wg.Wait()
@@ -209,7 +209,7 @@ func TestRecordVote(t *testing.T) {
 	})
 
 	t.Run("non-existent transaction", func(t *testing.T) {
-		_, nonExistentID := newTestXTRequest([]uint64{4})
+		_, nonExistentID := newTestXTRequest([]compose.ChainID{4})
 		_, err := coord.RecordVote(nonExistentID, 4, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
@@ -238,7 +238,7 @@ func TestTwoPC_Leader_Commit(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
+	chains := []compose.ChainID{1, 2}
 	xtReq, xtID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
@@ -277,7 +277,7 @@ func TestTwoPC_Leader_Abort(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
+	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
@@ -318,7 +318,7 @@ func TestTwoPC_Leader_Timeout(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
+	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(2) // one for start, one for timeout decision
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
@@ -353,7 +353,7 @@ func TestTwoPC_Follower(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
+	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
@@ -390,7 +390,7 @@ func TestTwoPC_Follower(t *testing.T) {
 	})
 
 	t.Run("record decision for unknown tx", func(t *testing.T) {
-		_, unknownXtID := newTestXTRequest([]uint64{99})
+		_, unknownXtID := newTestXTRequest([]compose.ChainID{99})
 		err := coord.RecordDecision(unknownXtID, true)
 		require.NoError(t, err) // Should not error, just log
 	})
@@ -413,7 +413,7 @@ func TestCIRCMessageHandling(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
+	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
 	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
@@ -482,7 +482,7 @@ func TestOnBlockCommitted(t *testing.T) {
 	}()
 
 	// Committed
-	xtReq1, xtID1 := newTestXTRequest([]uint64{1, 2})
+	xtReq1, xtID1 := newTestXTRequest([]compose.ChainID{1, 2})
 	callbacks.wg.Add(1)
 	err := coord.StartTransaction(t.Context(), "s1", xtReq1)
 	callbacks.wg.Wait()
@@ -495,7 +495,7 @@ func TestOnBlockCommitted(t *testing.T) {
 	require.NoError(t, err) // now committed
 
 	// Aborted
-	xtReq2, xtID2 := newTestXTRequest([]uint64{3})
+	xtReq2, xtID2 := newTestXTRequest([]compose.ChainID{3})
 	callbacks.wg.Add(1)
 	err = coord.StartTransaction(t.Context(), "s2", xtReq2)
 	callbacks.wg.Wait()
@@ -506,7 +506,7 @@ func TestOnBlockCommitted(t *testing.T) {
 	require.NoError(t, err) // now aborted
 
 	// Undecided
-	xtReq3, _ := newTestXTRequest([]uint64{4})
+	xtReq3, _ := newTestXTRequest([]compose.ChainID{4})
 	callbacks.wg.Add(1)
 	err = coord.StartTransaction(t.Context(), "s3", xtReq3)
 	callbacks.wg.Wait()
@@ -522,8 +522,8 @@ func TestOnBlockCommitted(t *testing.T) {
 	require.Len(t, callbacks.blocks, 1)
 	assert.Equal(t, block.Hash(), callbacks.blocks[0].Hash())
 
-	require.Len(t, callbacks.blockXtIDs, 1)
-	committedIDs := callbacks.blockXtIDs[0]
+	require.Len(t, callbacks.blockInstanceIDs, 1)
+	committedIDs := callbacks.blockInstanceIDs[0]
 	require.Len(t, committedIDs, 1)
 	assert.Equal(t, xtID1, committedIDs[0])
 

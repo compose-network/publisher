@@ -21,7 +21,7 @@ type Coordinator interface {
 	GetState(instanceID compose.InstanceID) (*TwoPCState, bool)
 
 	// Mailbox message handling
-	RecordMailboxMessage(circMessage *pb.MailboxMessage) error
+	RecordMailboxMessage(mailboxMessage *pb.MailboxMessage) error
 	ConsumeMailboxMessage(instanceID compose.InstanceID, sourceChainID compose.ChainID) (*pb.MailboxMessage, error)
 
 	// Callbacks
