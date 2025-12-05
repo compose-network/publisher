@@ -11,7 +11,7 @@ import (
 // Messenger includes the functions to send messages required by the publisher spec
 type Messenger interface {
 	scp.PublisherNetwork
-	sbcp.PublisherMessenger //TODO: Publisher or Sequencer Messenger?
+	sbcp.PublisherMessenger
 }
 
 // Broadcaster is used by the messenger to broadcast proto messages
