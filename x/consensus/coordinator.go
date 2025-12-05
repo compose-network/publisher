@@ -96,7 +96,7 @@ func (c *coordinator) OnBlockCommitted(ctx context.Context, block *types.Block) 
 	c.sentMu.Unlock()
 
 	c.log.Info().
-		Int("xt_count", len(instanceIDs)).
+		Int("instanceIDs_count", len(instanceIDs)).
 		Str("block_hash", block.Hash().Hex()).
 		Msg("OnBlockCommitted sent committed xTs")
 

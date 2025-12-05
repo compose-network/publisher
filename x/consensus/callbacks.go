@@ -102,7 +102,7 @@ func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, 
 		if err := cm.blockFn(ctx, block, instanceIDs); err != nil {
 			cm.log.Error().
 				Err(err).
-				Int("xt_count", len(instanceIDs)).
+				Int("instanceIDs_count", len(instanceIDs)).
 				Msg("Block callback failed")
 		}
 	}()
@@ -110,7 +110,7 @@ func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, 
 
 // invokeCallback is a helper to invoke callbacks with error handling and timeout
 func (cm *CallbackManager) invokeCallback(
-	callbackType string, xtID compose.InstanceID, fn func(context.Context) error,
+	callbackType string, instanceID compose.InstanceID, fn func(context.Context) error,
 ) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cm.timeout)
@@ -119,7 +119,7 @@ func (cm *CallbackManager) invokeCallback(
 		if err := fn(ctx); err != nil {
 			cm.log.Error().
 				Err(err).
-				Str("instance_id", xtID.String()).
+				Str("instance_id", instanceID.String()).
 				Str("type", callbackType).
 				Msg("Callback failed")
 		}
