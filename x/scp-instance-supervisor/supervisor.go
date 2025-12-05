@@ -199,10 +199,6 @@ func (s *scpSupervisor) History() []CompletedInstance {
 
 // Stop stops the scpSupervisor, best-effort finalizing active instances.
 func (s *scpSupervisor) Stop(ctx context.Context) error {
-	if ctx == nil {
-		return nil
-	}
-
 	s.mu.RLock()
 	active := make([]*ActiveInstance, 0, len(s.active))
 	for _, entry := range s.active {
