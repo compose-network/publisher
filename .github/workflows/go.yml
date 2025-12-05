@@ -10,7 +10,7 @@ jobs:
     go:
         runs-on: ubuntu-latest
         env:
-            GO_VERSION: 1.24.5
+            GO_VERSION: 1.24
             LINT_VERSION: v2.7.1
         steps:
             - name: Checkout code
