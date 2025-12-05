@@ -13,7 +13,7 @@ import (
 
 	apisrv "github.com/compose-network/publisher/server/api"
 	apimw "github.com/compose-network/publisher/server/api/middleware"
-	"github.com/compose-network/publisher/x/manager"
+	publishermanager "github.com/compose-network/publisher/x/publisher-manager"
 	"github.com/compose-network/publisher/x/superblock"
 	"github.com/compose-network/publisher/x/superblock/proofs/collector"
 	proofshttp "github.com/compose-network/publisher/x/superblock/proofs/http"
@@ -222,7 +222,10 @@ func (a *App) initialize(ctx context.Context) error {
 
 	collectorSvc := collector.New(ctx, a.log)
 
-	publisherMgr := manager.New()
+	publisherMgr, err := publishermanager.New(publishermanager.Config{})
+	if err != nil {
+		return fmt.Errorf("failed to create publisher manager: %w", err)
+	}
 
 	if publisherMgr == nil {
 		return fmt.Errorf("failed to create publisher manager: nil instance returned")

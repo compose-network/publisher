@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/rs/zerolog"
 )
 
@@ -91,7 +92,7 @@ func (r *LocalPeriodRunner) Stop(context.Context) error {
 // Track lastEmitted to ensure all missed periods are emitted up to the latest one.
 func (r *LocalPeriodRunner) run(ctx context.Context) {
 	now := r.now()
-	var lastEmitted uint64
+	var lastEmitted compose.PeriodID
 	hasEmitted := false
 
 	// Compute the next period start time
@@ -153,7 +154,7 @@ func (r *LocalPeriodRunner) run(ctx context.Context) {
 }
 
 // emit triggers the handler with the provided PeriodInfo.
-func (r *LocalPeriodRunner) emit(ctx context.Context, periodID uint64, startedAt time.Time) error {
+func (r *LocalPeriodRunner) emit(ctx context.Context, periodID compose.PeriodID, startedAt time.Time) error {
 	info := PeriodInfo{
 		PeriodID:  periodID,
 		StartedAt: startedAt,
@@ -161,25 +162,26 @@ func (r *LocalPeriodRunner) emit(ctx context.Context, periodID uint64, startedAt
 	}
 
 	if err := r.handler(ctx, info); err != nil {
-		r.log.Error().Err(err).Uint64("period_id", periodID).Msg("period handler returned error")
+		r.log.Error().Err(err).Uint64("period_id", uint64(periodID)).Msg("period handler returned error")
 		return err
 	}
 	return nil
 }
 
 // PeriodForTime returns the period ID and the corresponding period start time for the given timestamp.
-func (r *LocalPeriodRunner) PeriodForTime(t time.Time) (uint64, time.Time) {
+func (r *LocalPeriodRunner) PeriodForTime(t time.Time) (compose.PeriodID, time.Time) {
 	if t.Before(r.genesisTime) {
 		return 0, r.genesisTime
 	}
 
 	elapsed := t.Sub(r.genesisTime)
-	currentPeriod := uint64(elapsed / r.periodDuration)
+	currentPeriod := compose.PeriodID(elapsed / r.periodDuration)
 	start := r.periodStart(currentPeriod)
+
 	return currentPeriod, start
 }
 
 // periodStart returns the start time for the given period ID.
-func (r *LocalPeriodRunner) periodStart(periodID uint64) time.Time {
+func (r *LocalPeriodRunner) periodStart(periodID compose.PeriodID) time.Time {
 	return r.genesisTime.Add(time.Duration(periodID) * r.periodDuration)
 }
