@@ -34,16 +34,16 @@ type SequencerCoordinator struct {
 	minerNotifier MinerNotifier
 	callbacks     CoordinatorCallbacks
 
-	// Current slot context
-	periodID uint64
+	// Current period ID
+	periodID compose.PeriodID
 
 	// Runtime state
 	running bool
 	stopCh  chan struct{}
 
-	// Queue StartSC messages that arrive while an SCP instance is active
+	// Queue StartInstance messages that arrive while an SCP instance is active
 	// TODO: rethink
-	pendingStartSCs []struct {
+	pendingStartInstances []struct {
 		from  string
 		start *pb.StartInstance
 	}
@@ -185,36 +185,36 @@ func (sc *SequencerCoordinator) handleStartInstance(
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
-	if startInstance.PeriodId != sc.periodID {
+	if startInstance.PeriodId != uint64(sc.periodID) {
 		sc.log.Warn().
 			Uint64("period_id", startInstance.PeriodId).
-			Uint64("current_period_id", sc.periodID).
-			Msg("StartSC for wrong slot")
+			Uint64("current_period_id", uint64(sc.periodID)).
+			Msg("StartInstance for wrong period ID")
 		return nil
 	}
 
 	if sc.stateMachine.GetCurrentState() != StateBuildingFree {
 		// Queue for later processing once the current SCP instance completes
-		sc.pendingStartSCs = append(sc.pendingStartSCs, struct {
+		sc.pendingStartInstances = append(sc.pendingStartInstances, struct {
 			from  string
 			start *pb.StartInstance
 		}{from: from, start: startInstance})
 		sc.log.Warn().
 			Str("state", sc.stateMachine.GetCurrentState().String()).
-			Int("queued", len(sc.pendingStartSCs)).
+			Int("queued", len(sc.pendingStartInstances)).
 			Msg("StartSC received while locked; queued for later")
 		return nil
 	}
 
 	// Enforce StartSC ordering: previous instance must be decided and sequence must be monotonic
 	if sc.scpIntegration.GetActiveCount() > 0 {
-		sc.pendingStartSCs = append(sc.pendingStartSCs, struct {
+		sc.pendingStartInstances = append(sc.pendingStartInstances, struct {
 			from  string
 			start *pb.StartInstance
 		}{from: from, start: startInstance})
 		sc.log.Warn().
 			Uint64("sequence", startInstance.SequenceNumber).
-			Int("queued", len(sc.pendingStartSCs)).
+			Int("queued", len(sc.pendingStartInstances)).
 			Msg("StartSC queued: previous instance undecided")
 		return nil
 	}
@@ -227,7 +227,7 @@ func (sc *SequencerCoordinator) handleStartInstance(
 		sc.log.Warn().
 			Uint64("got_seq", startInstance.SequenceNumber).
 			Uint64("required_seq", requiredSeq).
-			Msg("StartSC ignored: non-monotonic sequence")
+			Msg("StartInstance ignored: non-monotonic sequence")
 		return nil
 	}
 
@@ -347,8 +347,8 @@ func (sc *SequencerCoordinator) Consensus() consensus.Coordinator {
 	return sc.consensusCoord
 }
 
-func (sc *SequencerCoordinator) GetCurrentSlot() uint64 {
-	return atomic.LoadUint64(&sc.periodID)
+func (sc *SequencerCoordinator) GetCurrentPeriod() compose.PeriodID {
+	return compose.PeriodID(atomic.LoadUint64((*uint64)(&sc.periodID)))
 }
 
 func (sc *SequencerCoordinator) GetState() State {
@@ -362,7 +362,7 @@ func (sc *SequencerCoordinator) GetStats() map[string]interface{} {
 	stats := map[string]interface{}{
 		"running":       sc.running,
 		"chain_id":      fmt.Sprintf("%x", sc.chainID),
-		"current_slot":  atomic.LoadUint64(&sc.periodID),
+		"current_slot":  atomic.LoadUint64((*uint64)(&sc.periodID)),
 		"current_state": sc.stateMachine.GetCurrentState().String(),
 		"transitions":   len(sc.stateMachine.GetTransitions()),
 	}
@@ -464,12 +464,12 @@ func (sc *SequencerCoordinator) handleConsensusDecision(
 	}
 
 	// If we returned to Building-Free and have queued StartSCs, process the next one
-	if sc.stateMachine.GetCurrentState() == StateBuildingFree && len(sc.pendingStartSCs) > 0 {
-		next := sc.pendingStartSCs[0]
-		sc.pendingStartSCs = sc.pendingStartSCs[1:]
+	if sc.stateMachine.GetCurrentState() == StateBuildingFree && len(sc.pendingStartInstances) > 0 {
+		next := sc.pendingStartInstances[0]
+		sc.pendingStartInstances = sc.pendingStartInstances[1:]
 		sc.log.Info().
-			Int("remaining", len(sc.pendingStartSCs)).
-			Uint64("slot", sc.periodID).
+			Int("remaining", len(sc.pendingStartInstances)).
+			Uint64("period_id", uint64(sc.periodID)).
 			Msg("Starting next queued StartSC after decision")
 		// Drop lock while invoking handler to avoid deadlocks and allow nested transitions
 		sc.mu.Unlock()
@@ -481,13 +481,13 @@ func (sc *SequencerCoordinator) handleConsensusDecision(
 }
 
 // PrepareTransactionsForBlock prepares transactions for block inclusion
-func (sc *SequencerCoordinator) PrepareTransactionsForBlock(ctx context.Context, slot uint64) error {
-	if slot != sc.periodID {
-		return fmt.Errorf("preparing for wrong slot: current=%d, requested=%d", sc.periodID, slot)
+func (sc *SequencerCoordinator) PrepareTransactionsForBlock(ctx context.Context, periodID compose.PeriodID) error {
+	if periodID != sc.periodID {
+		return fmt.Errorf("preparing for wrong period: current=%d, requested=%d", sc.periodID, periodID)
 	}
 
 	sc.log.Debug().
-		Uint64("slot", slot).
+		Uint64("period_id", uint64(periodID)).
 		Msg("Preparing transactions for block")
 
 	// Prepare any coordination transactions through block builder

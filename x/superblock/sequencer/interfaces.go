@@ -36,7 +36,7 @@ type BlockLifecycleManager interface {
 
 // TransactionManager handles transaction preparation and ordering
 type TransactionManager interface {
-	PrepareTransactionsForBlock(ctx context.Context, slot uint64) error
+	PrepareTransactionsForBlock(ctx context.Context, period compose.PeriodID) error
 	GetOrderedTransactionsForBlock(ctx context.Context) ([]*pb.TransactionRequest, error)
 }
 
@@ -57,7 +57,7 @@ type Coordinator interface {
 	HandleMessage(ctx context.Context, from string, msg *pb.Message) error
 
 	// State queries
-	GetCurrentSlot() uint64
+	GetCurrentPeriod() compose.PeriodID
 	GetState() State
 	GetStats() map[string]interface{}
 	GetActiveSCPInstanceCount() int
