@@ -20,8 +20,8 @@ type mockCoordinator struct {
 	mock.Mock
 }
 
-func (m *mockCoordinator) StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error {
-	args := m.Called(ctx, from, xtReq)
+func (m *mockCoordinator) StartTransaction(ctx context.Context, instanceID compose.InstanceID, from string, xtReq *pb.XTRequest) error {
+	args := m.Called(ctx, instanceID, from, xtReq)
 	return args.Error(0)
 }
 
@@ -131,7 +131,8 @@ func TestProtocolHandler_Handle(t *testing.T) {
 		xtReq := &pb.XTRequest{}
 		msg := &pb.Message{Payload: &pb.Message_XtRequest{XtRequest: xtReq}}
 
-		coord.On("StartTransaction", ctx, from, xtReq).Return(nil)
+		var zeroInstanceID compose.InstanceID
+		coord.On("StartTransaction", ctx, zeroInstanceID, from, xtReq).Return(nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)
@@ -192,7 +193,8 @@ func TestProtocolHandler_Handle(t *testing.T) {
 		msg := &pb.Message{Payload: &pb.Message_XtRequest{XtRequest: xtReq}}
 		expectedErr := errors.New("boom")
 
-		coord.On("StartTransaction", ctx, from, xtReq).Return(expectedErr)
+		var zeroInstanceID compose.InstanceID
+		coord.On("StartTransaction", ctx, zeroInstanceID, from, xtReq).Return(expectedErr)
 		err := handler.Handle(ctx, from, msg)
 		require.Error(t, err)
 		assert.Equal(t, expectedErr, err)

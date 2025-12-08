@@ -50,7 +50,10 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 	switch msgType {
 	case MsgXTRequest:
 		xtReq := msg.GetXtRequest()
-		return h.coordinator.StartTransaction(ctx, from, xtReq)
+		// TODO: XTRequest doesn't contain instance ID - this code path may be deprecated
+		// Instance ID should come from StartInstance message in SBCP flow
+		var instanceID compose.InstanceID
+		return h.coordinator.StartTransaction(ctx, instanceID, from, xtReq)
 
 	case MsgVote:
 		vote := msg.GetVote()

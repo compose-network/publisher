@@ -102,9 +102,10 @@ func (m *mockCallbacks) getVote(xtID compose.InstanceID) (bool, bool) {
 	return v, ok
 }
 
-// Helper to create a sample XTRequest
-//
-//nolint:unparam // Returns zero-valued InstanceID until coordinator supports extracting from request
+// testInstanceIDCounter is used to generate unique instance IDs for tests
+var testInstanceIDCounter uint64
+
+// Helper to create a sample XTRequest with unique instance ID
 func newTestXTRequest(chains []compose.ChainID) (*pb.XTRequest, compose.InstanceID) {
 	req := &pb.XTRequest{
 		TransactionRequests: make([]*pb.TransactionRequest, len(chains)),
@@ -116,8 +117,21 @@ func newTestXTRequest(chains []compose.ChainID) (*pb.XTRequest, compose.Instance
 		}
 	}
 
-	// Return zero-valued instanceID until coordinator supports extracting from request
-	return req, compose.InstanceID{}
+	// Generate unique instance ID for tests
+	// Note: coordinator currently uses zero-valued ID; tests use counter for uniqueness
+	testInstanceIDCounter++
+	var instanceID compose.InstanceID
+	// Put counter in first 8 bytes for uniqueness
+	instanceID[0] = byte(testInstanceIDCounter >> 56)
+	instanceID[1] = byte(testInstanceIDCounter >> 48)
+	instanceID[2] = byte(testInstanceIDCounter >> 40)
+	instanceID[3] = byte(testInstanceIDCounter >> 32)
+	instanceID[4] = byte(testInstanceIDCounter >> 24)
+	instanceID[5] = byte(testInstanceIDCounter >> 16)
+	instanceID[6] = byte(testInstanceIDCounter >> 8)
+	instanceID[7] = byte(testInstanceIDCounter)
+
+	return req, instanceID
 }
 
 func TestNewCoordinator(t *testing.T) {
@@ -148,7 +162,7 @@ func TestStartTransaction(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		xtReq, xtID := newTestXTRequest([]compose.ChainID{1, 2})
 		callbacks.wg.Add(1)
-		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		require.NoError(t, err)
 
 		state, exists := coord.GetState(xtID)
@@ -163,21 +177,21 @@ func TestStartTransaction(t *testing.T) {
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		xtReq, _ := newTestXTRequest([]compose.ChainID{3})
+		xtReq, xtID := newTestXTRequest([]compose.ChainID{3})
 		callbacks.wg.Add(1)
-		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		callbacks.wg.Wait()
 		require.NoError(t, err)
 
-		// Try to start again
-		err = coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		// Try to start again with same ID
+		err = coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
 	})
 
 	t.Run("no chains", func(t *testing.T) {
-		xtReq, _ := newTestXTRequest([]compose.ChainID{})
-		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		xtReq, xtID := newTestXTRequest([]compose.ChainID{})
+		err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no participating chains")
 	})
@@ -195,7 +209,7 @@ func TestRecordVote(t *testing.T) {
 
 	xtReq, xtID := newTestXTRequest([]compose.ChainID{1, 2})
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
@@ -241,7 +255,7 @@ func TestTwoPC_Leader_Commit(t *testing.T) {
 	chains := []compose.ChainID{1, 2}
 	xtReq, xtID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
@@ -280,7 +294,7 @@ func TestTwoPC_Leader_Abort(t *testing.T) {
 	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
@@ -321,7 +335,7 @@ func TestTwoPC_Leader_Timeout(t *testing.T) {
 	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(2) // one for start, one for timeout decision
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	// Only one participant votes
@@ -356,7 +370,7 @@ func TestTwoPC_Follower(t *testing.T) {
 	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
@@ -416,7 +430,7 @@ func TestCIRCMessageHandling(t *testing.T) {
 	chains := []compose.ChainID{1, 2}
 	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
@@ -484,7 +498,7 @@ func TestOnBlockCommitted(t *testing.T) {
 	// Committed
 	xtReq1, xtID1 := newTestXTRequest([]compose.ChainID{1, 2})
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "s1", xtReq1)
+	err := coord.StartTransaction(t.Context(), xtID1, "s1", xtReq1)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 	_, err = coord.RecordVote(xtID1, 1, true)
@@ -497,7 +511,7 @@ func TestOnBlockCommitted(t *testing.T) {
 	// Aborted
 	xtReq2, xtID2 := newTestXTRequest([]compose.ChainID{3})
 	callbacks.wg.Add(1)
-	err = coord.StartTransaction(t.Context(), "s2", xtReq2)
+	err = coord.StartTransaction(t.Context(), xtID2, "s2", xtReq2)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 	callbacks.wg.Add(1)
@@ -506,9 +520,9 @@ func TestOnBlockCommitted(t *testing.T) {
 	require.NoError(t, err) // now aborted
 
 	// Undecided
-	xtReq3, _ := newTestXTRequest([]compose.ChainID{4})
+	xtReq3, xtID3 := newTestXTRequest([]compose.ChainID{4})
 	callbacks.wg.Add(1)
-	err = coord.StartTransaction(t.Context(), "s3", xtReq3)
+	err = coord.StartTransaction(t.Context(), xtID3, "s3", xtReq3)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,7 +52,7 @@ func TestLocalPeriodRunnerInitialEmissionFromGenesis(t *testing.T) {
 
 	select {
 	case info := <-events:
-		require.Equal(t, uint64(5), info.PeriodID)
+		require.Equal(t, compose.PeriodID(5), info.PeriodID)
 		require.WithinDuration(t, genesis.Add(5*period), info.StartedAt, time.Millisecond)
 		require.Equal(t, period, info.Duration)
 	case <-time.After(time.Second):
@@ -61,7 +62,7 @@ func TestLocalPeriodRunnerInitialEmissionFromGenesis(t *testing.T) {
 	setNow(genesis.Add(8 * period))
 	time.Sleep(period)
 
-	for _, expectedID := range []uint64{6, 7, 8} {
+	for _, expectedID := range []compose.PeriodID{6, 7, 8} {
 		select {
 		case info := <-events:
 			require.Equal(t, expectedID, info.PeriodID)
@@ -129,7 +130,7 @@ func TestLocalPeriodRunnerWaitsForGenesis(t *testing.T) {
 
 	select {
 	case info := <-events:
-		require.Equal(t, uint64(0), info.PeriodID)
+		require.Equal(t, compose.PeriodID(0), info.PeriodID)
 		require.WithinDuration(t, genesis, info.StartedAt, time.Millisecond)
 	case <-time.After(time.Second):
 		t.Fatalf("timeout waiting for first period at genesis")

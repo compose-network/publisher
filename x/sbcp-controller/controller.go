@@ -155,22 +155,28 @@ func (c *sbcpController) TryProcessQueue(ctx context.Context) error {
 			continue
 		}
 
-		//TODO: should this exit the for loop on success?
-		c.startInstance(ctx, queued, instance)
+		// Start the instance; if requeued due to conflict, stop processing
+		if requeued := c.startInstance(ctx, queued, instance); requeued {
+			return nil
+		}
 	}
 }
 
-func (c *sbcpController) startInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) {
+// startInstance attempts to start an SCP instance.
+// Returns true if the request was requeued (caller should stop processing).
+func (c *sbcpController) startInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) bool {
 	if err := c.starter.StartInstance(ctx, queued, instance); err != nil {
 		// If error indicates that it should be requeued, do so
 		if shouldRequeueOnError(err) {
 			if rErr := c.queue.Requeue(ctx, queued); rErr != nil {
 				c.logger.Error().Err(rErr).Msg("failed to requeue after conflict")
 			}
+			return true // Signal that we should stop processing to avoid immediate retry
 		}
 		// Otherwise, log and continue
 		c.logger.Error().Err(err).Str("instance_id", instance.ID.String()).Msg("failed to start SCP instance")
 	}
+	return false
 }
 
 // NotifyInstanceDecided should be called when an instance has been decided.

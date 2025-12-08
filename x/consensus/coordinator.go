@@ -103,10 +103,7 @@ func (c *coordinator) OnBlockCommitted(ctx context.Context, block *types.Block) 
 	return nil
 }
 
-func (c *coordinator) StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error {
-	// TODO: fetch instance ID from request
-	var instanceID compose.InstanceID
-
+func (c *coordinator) StartTransaction(ctx context.Context, instanceID compose.InstanceID, from string, xtReq *pb.XTRequest) error {
 	chainIDs := make(map[compose.ChainID]struct{})
 	for _, txRequest := range xtReq.TransactionRequests {
 		chainID := txRequest.GetChainId()
