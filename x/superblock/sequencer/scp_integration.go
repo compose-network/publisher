@@ -115,9 +115,9 @@ func (si *SCPIntegration) HandleDecision(instanceID compose.InstanceID, decision
 	// Update block builder with decision for our chain's txs
 	if si.blockBuilder != nil {
 		if decision {
-			_ = si.blockBuilder.AddSCPTransactions(instanceID.String(), scpCtx.MyTransactions, true)
+			_ = si.blockBuilder.AddSCPTransactions(instanceID, scpCtx.MyTransactions, true)
 		} else {
-			_ = si.blockBuilder.AddSCPTransactions(instanceID.String(), nil, false)
+			_ = si.blockBuilder.AddSCPTransactions(instanceID, nil, false)
 		}
 	}
 

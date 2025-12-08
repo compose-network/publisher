@@ -14,7 +14,7 @@ type DraftBlock struct {
 	slot            uint64
 	blockNumber     uint64
 	localTxs        [][]byte
-	scpTxs          map[string][][]byte
+	scpTxs          map[compose.InstanceID][][]byte
 	mailboxMessages []*pb.MailboxMessage
 	timestamp       time.Time
 }
@@ -50,7 +50,7 @@ func (bb *BlockBuilder) AddLocalTransaction(tx []byte) error {
 
 // AddSCPTransactions adds or removes SCP-related transaction(s) for a given xtID
 // If decision is true, provided txs are appended; if false, any existing entries are removed.
-func (bb *BlockBuilder) AddSCPTransactions(xtID string, txs [][]byte, decision bool) error {
+func (bb *BlockBuilder) AddSCPTransactions(instanceID compose.InstanceID, txs [][]byte, decision bool) error {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
@@ -60,12 +60,12 @@ func (bb *BlockBuilder) AddSCPTransactions(xtID string, txs [][]byte, decision b
 
 	if decision {
 		if len(txs) > 0 {
-			bb.draft.scpTxs[xtID] = append(bb.draft.scpTxs[xtID], txs...)
+			bb.draft.scpTxs[instanceID] = append(bb.draft.scpTxs[instanceID], txs...)
 		}
-		bb.log.Info().Str("xt_id", xtID).Int("txs", len(txs)).Msg("Added SCP transactions (commit)")
+		bb.log.Info().Str("instance_id", instanceID.String()).Int("txs", len(txs)).Msg("Added SCP transactions (commit)")
 	} else {
-		delete(bb.draft.scpTxs, xtID)
-		bb.log.Info().Str("xt_id", xtID).Msg("Removed SCP transaction (abort)")
+		delete(bb.draft.scpTxs, instanceID)
+		bb.log.Info().Str("instance_id", instanceID.String()).Msg("Removed SCP transaction (abort)")
 	}
 
 	return nil
@@ -83,7 +83,7 @@ func (bb *BlockBuilder) AddMailboxMessage(msg *pb.MailboxMessage) error {
 	bb.log.Debug().
 		Str("instance_id", string(msg.InstanceId)).
 		Str("label", msg.Label).
-		Msg("Added CIRC message to draft")
+		Msg("Added Mailbox message to draft")
 
 	return nil
 }
