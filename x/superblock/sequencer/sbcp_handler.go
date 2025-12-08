@@ -28,7 +28,7 @@ func (h *sbcpHandler) HandleStartPeriod(ctx context.Context, from string, startP
 		Str("from", from).
 		Uint64("period_id", startPeriod.GetPeriodId()).
 		Uint64("superblock_nr", startPeriod.GetSuperblockNumber()).
-		Msg("Processing StartSC message")
+		Msg("Processing StartPeriod message")
 
 	return h.coordinator.handleStartPeriod(ctx, from, startPeriod)
 }
@@ -37,7 +37,9 @@ func (h *sbcpHandler) HandleStartPeriod(ctx context.Context, from string, startP
 func (h *sbcpHandler) HandleStartInstance(ctx context.Context, from string, startInstance *pb.StartInstance) error {
 	h.log.Info().
 		Str("from", from).
-		Uint64("sequence_number", startInstance.SequenceNumber).
+		Uint64("sequence_number", startInstance.GetSequenceNumber()).
+		Uint64("period_id", startInstance.GetPeriodId()).
+		Bytes("instance_id", startInstance.GetInstanceId()).
 		Msg("Processing StartSC message")
 
 	return h.coordinator.handleStartInstance(ctx, from, startInstance)
@@ -47,7 +49,9 @@ func (h *sbcpHandler) HandleStartInstance(ctx context.Context, from string, star
 func (h *sbcpHandler) HandleRollback(ctx context.Context, from string, rb *pb.Rollback) error {
 	h.log.Info().
 		Str("from", from).
-		Uint64("last_finalized_superblock_number", rb.LastFinalizedSuperblockNumber).
+		Uint64("last_finalized_superblock_number", rb.GetLastFinalizedSuperblockNumber()).
+		Bytes("last_finalized_superblock_hash", rb.GetLastFinalizedSuperblockHash()).
+		Uint64("period_id", rb.GetPeriodId()).
 		Msg("Processing Rollback message")
 
 	return h.coordinator.handleRollback(ctx, from, rb)
