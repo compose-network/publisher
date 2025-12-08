@@ -20,7 +20,9 @@ type mockCoordinator struct {
 	mock.Mock
 }
 
-func (m *mockCoordinator) StartTransaction(ctx context.Context, instanceID compose.InstanceID, from string, xtReq *pb.XTRequest) error {
+func (m *mockCoordinator) StartTransaction(
+	ctx context.Context, instanceID compose.InstanceID, from string, xtReq *pb.XTRequest,
+) error {
 	args := m.Called(ctx, instanceID, from, xtReq)
 	return args.Error(0)
 }

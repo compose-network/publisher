@@ -164,7 +164,9 @@ func (c *sbcpController) TryProcessQueue(ctx context.Context) error {
 
 // startInstance attempts to start an SCP instance.
 // Returns true if the request was requeued (caller should stop processing).
-func (c *sbcpController) startInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) bool {
+func (c *sbcpController) startInstance(
+	ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance,
+) bool {
 	if err := c.starter.StartInstance(ctx, queued, instance); err != nil {
 		// If error indicates that it should be requeued, do so
 		if shouldRequeueOnError(err) {
