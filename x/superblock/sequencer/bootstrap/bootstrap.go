@@ -145,7 +145,7 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 	}
 
 	coord.SetCallbacks(sequencer.CoordinatorCallbacks{
-		SendMailboxMessage: rt.SendCIRC,
+		SendMailboxMessage: rt.SendMailboxMessage,
 	})
 
 	return rt, nil
@@ -225,12 +225,12 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	return nil
 }
 
-// SendCIRC sends a CIRC message to the peer indicated by DestinationChain.
-func (r *Runtime) SendCIRC(ctx context.Context, mailboxMsg *pb.MailboxMessage) error {
+// SendMailboxMessage sends a Mailbox message to the peer indicated by DestinationChain.
+func (r *Runtime) SendMailboxMessage(ctx context.Context, mailboxMsg *pb.MailboxMessage) error {
 	r.log.Info().
 		Uint64("dest_key", mailboxMsg.DestinationChain).
 		Str("instance_id", string(mailboxMsg.InstanceId)).
-		Msg("Sending CIRC message to peer")
+		Msg("Sending Mailbox message to peer")
 
 	peer, ok := r.Peers[compose.ChainID(mailboxMsg.DestinationChain)]
 	if !ok || peer == nil {
@@ -250,14 +250,15 @@ func (r *Runtime) SendCIRC(ctx context.Context, mailboxMsg *pb.MailboxMessage) e
 			Err(err).
 			Uint64("dest_key", mailboxMsg.DestinationChain).
 			Str("instance_id", string(mailboxMsg.InstanceId)).
-			Msg("Failed to send CIRC message to peer")
+			Msg("Failed to send Mailbox message to peer")
 		return err
 	}
 
 	r.log.Info().
 		Uint64("dest_key", mailboxMsg.DestinationChain).
 		Str("instance_id", string(mailboxMsg.InstanceId)).
-		Msg("CIRC message sent successfully")
+		Msg("Mailbox message sent successfully")
+
 	return nil
 }
 
