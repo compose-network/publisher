@@ -11,6 +11,7 @@ import (
 
 // MinerNotifier defines the interface for notifying miner about sequencer events
 type MinerNotifier interface {
+	NotifyPeriodStart(startSlot *pb.StartPeriod) error
 	NotifyStateChange(from, to State, slot uint64) error
 }
 

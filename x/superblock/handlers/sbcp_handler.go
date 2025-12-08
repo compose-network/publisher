@@ -47,7 +47,7 @@ func (h *SBCPHandler) Handle(ctx context.Context, from string, msg *pb.Message) 
 			Str("from", from).
 			Str("source", fmt.Sprintf("%x", payload.MailboxMessage.SourceChain)).
 			Str("dest", fmt.Sprintf("%x", payload.MailboxMessage.DestinationChain)).
-			Str("instanceID_id", string(payload.MailboxMessage.InstanceId)).
+			Str("instance_id", string(payload.MailboxMessage.InstanceId)).
 			Msg("MailboxMessage message observed")
 
 		return h.consensusCoord.RecordMailboxMessage(payload.MailboxMessage)
