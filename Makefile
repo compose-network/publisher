@@ -1,4 +1,4 @@
-.PHONY: all build clean test coverage lint proto run docker help
+.PHONY: all build clean test coverage lint run docker help
 
 # Variables
 BINARY_NAME=publisher
@@ -15,7 +15,7 @@ all: clean lint test build
 
 build: ## Build the application binary
 	@echo "Building..."
-	go build $(LDFLAGS) -o bin/$(BINARY_NAME) publisher-leader-app/main.go publisher-leader-app/app.go publisher-leader-app/version.go
+	go build $(LDFLAGS) -o bin/$(BINARY_NAME) cmd/main.go cmd/app.go cmd/version.go
 
 clean: ## Clean up build artifacts
 	@echo "Cleaning..."
@@ -31,29 +31,16 @@ lint: ## Run linters
 	@echo "Running linters..."
 	golangci-lint run --timeout=5m
 
-proto: ## Generate protobuf files
-	@echo "Generating protobuf files..."
-	cd proto && buf generate
-	@echo "Protobuf files generated at proto/rollup/v1/"
-
-proto-clean: ## Clean generated protobuf files
-	@echo "Cleaning generated protobuf files..."
-	find proto -name "*.pb.go" -delete
-
-proto-lint: ## Lint protobuf files
-	@echo "Linting protobuf files..."
-	cd proto && make proto-lint
-
 run: build ## Run the application
 	@echo "Running publisher..."
-	./bin/$(BINARY_NAME) --config publisher-leader-app/configs/config.yaml
+	./bin/$(BINARY_NAME) --config cmd/configs/config.yaml
 
 smoke: build ## Run smoke test against local API
 	@bash scripts/smoke.sh
 
 run-dev: build ## Run in development mode
 	@echo "Running in development mode..."
-	./bin/$(BINARY_NAME) --config publisher-leader-app/configs/config.yaml --log-pretty --log-level debug
+	./bin/$(BINARY_NAME) --config cmd/configs/config.yaml --log-pretty --log-level debug
 
 docker: ## Build the Docker image
 	@echo "Building Docker image..."
