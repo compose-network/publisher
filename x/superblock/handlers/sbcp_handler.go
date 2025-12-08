@@ -27,7 +27,9 @@ func NewSBCPHandler(
 
 func (h *SBCPHandler) CanHandle(msg *pb.Message) bool {
 	switch msg.Payload.(type) {
-	case *pb.Message_StartPeriod,
+	case
+		*pb.Message_StartPeriod,
+		*pb.Message_StartInstance,
 		*pb.Message_MailboxMessage:
 		return true
 	default:
