@@ -19,15 +19,13 @@ import (
 	"github.com/compose-network/publisher/x/transport"
 	"github.com/compose-network/specs/compose"
 	pb "github.com/compose-network/specs/compose/proto"
+	"github.com/compose-network/specs/compose/sbcp"
 	"github.com/rs/zerolog"
 )
 
-type publisher interface {
-}
-
 // SuperblockPublisher wraps the base publisher with SBCP capabilities
 type SuperblockPublisher struct {
-	publisher   publisher
+	publisher   sbcp.Publisher
 	coordinator sequencer.Coordinator
 	log         zerolog.Logger
 
@@ -42,12 +40,12 @@ type SuperblockPublisher struct {
 
 	// allowlist of accepted chain-ids
 	// when empty or nil, filtering is disabled
-	allowedChains map[uint64]struct{}
+	allowedChains map[compose.ChainID]struct{}
 }
 
 // WrapPublisher creates a new SuperblockPublisher by wrapping an existing publisher
 func WrapPublisher(
-	pub publisher,
+	pub sbcp.Publisher,
 	config superblock.Config,
 	log zerolog.Logger,
 	consensusCoord consensus.Coordinator,
@@ -99,9 +97,9 @@ func WrapPublisher(
 		if ids, err := regSvc.GetActiveRollups(context.Background()); err != nil {
 			log.Warn().Err(err).Msg("Failed to load active rollups for allowlist; chain-id filtering disabled")
 		} else if len(ids) > 0 {
-			m := make(map[uint64]struct{}, len(ids))
+			m := make(map[compose.ChainID]struct{}, len(ids))
 			for _, id := range ids {
-				m[uint64(id)] = struct{}{}
+				m[id] = struct{}{}
 			}
 			wrapper.allowedChains = m
 			log.Info().Int("chains", len(m)).Msg("Chain-id allowlist enabled")

@@ -4,7 +4,7 @@ go 1.24.5
 
 require (
 	github.com/compose-network/registry v0.0.0-20251019130932-f9a7f7dd297b
-	github.com/compose-network/specs/compose v0.0.0-20251127083014-94716a565b30
+	github.com/compose-network/specs/compose v0.0.0-20251208083436-8257583f1097
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.1
