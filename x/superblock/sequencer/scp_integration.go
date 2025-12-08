@@ -13,6 +13,7 @@ import (
 
 type SCPContext struct {
 	InstanceID     compose.InstanceID
+	PeriodID       compose.PeriodID
 	Request        *pb.XTRequest
 	SequenceNumber uint64
 	MyTransactions [][]byte
@@ -80,6 +81,7 @@ func (si *SCPIntegration) HandleStartInstance(ctx context.Context, startInstance
 	// Create SCP context
 	scpCtx := &SCPContext{
 		InstanceID:     instanceID,
+		PeriodID:       compose.PeriodID(startInstance.PeriodId),
 		Request:        startInstance.XtRequest,
 		SequenceNumber: startInstance.SequenceNumber,
 		MyTransactions: si.extractMyTransactions(startInstance.XtRequest),
