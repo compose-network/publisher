@@ -246,7 +246,7 @@ func (sc *SequencerCoordinator) handleStartInstance(
 	}
 
 	// Handle SCP integration
-	if err := sc.scpIntegration.HandleStartSC(ctx, startInstance); err != nil {
+	if err := sc.scpIntegration.HandleStartInstance(ctx, startInstance); err != nil {
 		return err
 	}
 

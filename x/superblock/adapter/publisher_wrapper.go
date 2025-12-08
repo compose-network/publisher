@@ -49,6 +49,7 @@ func WrapPublisher(
 	config superblock.Config,
 	log zerolog.Logger,
 	consensusCoord consensus.Coordinator,
+	sequencerCoordinator sequencer.Coordinator,
 	transport transport.Server,
 	collector collector.Service,
 	prover proofs.ProverClient,
@@ -81,7 +82,7 @@ func WrapPublisher(
 
 	wrapper := &SuperblockPublisher{
 		publisher:       pub,
-		coordinator:     nil,
+		coordinator:     sequencerCoordinator,
 		log:             log.With().Str("component", "sb-wrapper").Logger(),
 		slotManagedXTs:  make(map[compose.InstanceID]bool),
 		superblockStore: superblockStore,
