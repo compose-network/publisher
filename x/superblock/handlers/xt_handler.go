@@ -3,22 +3,18 @@ package handlers
 import (
 	"context"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
-	"github.com/compose-network/publisher/x/superblock"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 type XTHandler struct {
-	coordinator *superblock.Coordinator
-	queueFn     func(context.Context, string, *pb.XTRequest) error
+	queueFn func(context.Context, string, *pb.XTRequest) error
 }
 
 func NewXTHandler(
-	coordinator *superblock.Coordinator,
 	queueFn func(context.Context, string, *pb.XTRequest) error,
 ) *XTHandler {
 	return &XTHandler{
-		coordinator: coordinator,
-		queueFn:     queueFn,
+		queueFn: queueFn,
 	}
 }
 

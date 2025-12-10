@@ -15,7 +15,10 @@ func clonePBXTRequest(req *pb.XTRequest) *pb.XTRequest {
 		for i, raw := range tr.Transaction {
 			txCopy[i] = append([]byte(nil), raw...)
 		}
-		clone.TransactionRequests = append(clone.TransactionRequests, &pb.TransactionRequest{ChainId: tr.ChainId, Transaction: txCopy})
+		clone.TransactionRequests = append(
+			clone.TransactionRequests,
+			&pb.TransactionRequest{ChainId: tr.ChainId, Transaction: txCopy},
+		)
 	}
 	return clone
 }
@@ -30,7 +33,13 @@ func protoXTRequestToCompose(req *pb.XTRequest) *compose.XTRequest {
 		for _, raw := range tr.Transaction {
 			txns = append(txns, append([]byte(nil), raw...))
 		}
-		composeReq.Transactions = append(composeReq.Transactions, compose.TransactionRequest{ChainID: compose.ChainID(tr.ChainId), Transactions: txns})
+		composeReq.Transactions = append(
+			composeReq.Transactions,
+			compose.TransactionRequest{
+				ChainID:      compose.ChainID(tr.ChainId),
+				Transactions: txns,
+			},
+		)
 	}
 	return composeReq
 }

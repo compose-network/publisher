@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -20,9 +20,9 @@ func TestProtobufCodec_EncodeDecode_Roundtrip(t *testing.T) {
 	msgIn := &pb.Message{
 		SenderId: "test-sender",
 		Payload: &pb.Message_Vote{Vote: &pb.Vote{
-			SenderChainId: []byte("chain-A"),
-			XtId:          &pb.XtID{Hash: bytes.Repeat([]byte{'h'}, 32)},
-			Vote:          true,
+			InstanceId: bytes.Repeat([]byte{'h'}, 32),
+			ChainId:    10,
+			Vote:       true,
 		}},
 	}
 
@@ -43,10 +43,12 @@ func TestProtobufCodec_EncodeStream_DecodeStream(t *testing.T) {
 
 	msgIn := &pb.Message{
 		SenderId: "streamer",
-		Payload: &pb.Message_Block{Block: &pb.Block{
-			ChainId:   []byte("X"),
-			BlockData: bytes.Repeat([]byte{0xab}, 256),
-		}},
+		Payload: &pb.Message_Decided{
+			Decided: &pb.Decided{
+				InstanceId: []byte{'a'},
+				Decision:   true,
+			},
+		},
 	}
 
 	require.NoError(t, c.EncodeStream(buf, msgIn))
@@ -62,10 +64,16 @@ func TestProtobufCodec_MaxSizeExceeded_OnEncode(t *testing.T) {
 	c := NewProtobufCodec(16)
 
 	msg := &pb.Message{
-		Payload: &pb.Message_Block{Block: &pb.Block{
-			ChainId:   []byte("Y"),
-			BlockData: bytes.Repeat([]byte{0xcd}, 100),
-		}},
+		Payload: &pb.Message_XtRequest{
+			XtRequest: &pb.XTRequest{
+				TransactionRequests: []*pb.TransactionRequest{
+					{
+						ChainId:     10,
+						Transaction: [][]byte{bytes.Repeat([]byte{0xcd}, 100)},
+					},
+				},
+			},
+		},
 	}
 
 	_, err := c.Encode(msg)

@@ -3,14 +3,12 @@ package sequencer
 import (
 	"time"
 
-	"github.com/compose-network/publisher/x/superblock/slot"
+	"github.com/compose-network/specs/compose"
 )
 
 // Config holds sequencer coordinator configuration
 type Config struct {
-	ChainID []byte      `json:"chain_id"`
-	Slot    slot.Config `json:"slot"`
-
+	ChainID compose.ChainID `json:"chain_id"`
 	// Sequencer-specific settings
 	BlockTimeout         time.Duration `json:"block_timeout"`
 	MaxLocalTxs          int           `json:"max_local_txs"`
@@ -19,11 +17,9 @@ type Config struct {
 }
 
 // DefaultConfig returns sensible defaults for sequencer
-func DefaultConfig(chainID []byte) Config {
+func DefaultConfig(chainID compose.ChainID) Config {
 	return Config{
-		ChainID: chainID,
-		Slot:    slot.DefaultConfig(),
-
+		ChainID:              chainID,
 		BlockTimeout:         30 * time.Second,
 		MaxLocalTxs:          1000,
 		SCPTimeout:           10 * time.Second,

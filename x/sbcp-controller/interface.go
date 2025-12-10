@@ -19,7 +19,7 @@ type SBCPController interface {
 	TryProcessQueue(ctx context.Context) error
 	OnNewPeriod(ctx context.Context) error
 	NotifyInstanceDecided(ctx context.Context, instance compose.Instance) error
-	AdvanceSettledState(superblockNumber compose.SuperblockNumber, superblockHash compose.SuperBlockHash) error
+	AdvanceSettledState(superblockNumber compose.SuperblockNumber, superblockHash compose.SuperblockHash) error
 	ProofTimeout(ctx context.Context)
 	SetInstanceStarter(starter InstanceStarter)
 	Stop(ctx context.Context) error

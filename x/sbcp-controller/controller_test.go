@@ -49,7 +49,7 @@ func TestOnNewPeriodProcessesQueue(t *testing.T) {
 	require.Zero(t, starter.calls())
 
 	pub.allowStart = true
-	require.NoError(t, ctrl.OnNewPeriod(nil))
+	require.NoError(t, ctrl.OnNewPeriod(t.Context()))
 
 	require.Equal(t, 2, pub.startInstanceAttempts())
 	require.Equal(t, 1, starter.calls())
@@ -141,7 +141,7 @@ func TestAdvanceSettledStateAndProofTimeout(t *testing.T) {
 	ctrl, err := New(cfg)
 	require.NoError(t, err)
 
-	require.NoError(t, ctrl.AdvanceSettledState(42, compose.SuperBlockHash{0xAA}))
+	require.NoError(t, ctrl.AdvanceSettledState(42, compose.SuperblockHash{0xAA}))
 	require.Equal(t, 1, pub.advanceCalls)
 
 	pub.allowStart = true
@@ -172,6 +172,7 @@ type stubPublisher struct {
 	startPeriodCount   int
 	decideCount        int
 	proofTimeoutCalls  int
+	receiveProofCalls  int
 	advanceCalls       int
 	startInstanceQueue []startInstanceResult
 	startInstanceCount int
@@ -190,12 +191,6 @@ func (s *stubPublisher) startInstanceAttempts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.startInstanceCount
-}
-
-func (s *stubPublisher) startPeriodCalls() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.startPeriodCount
 }
 
 func (s *stubPublisher) decideInstanceCalls() int {
@@ -237,7 +232,9 @@ func (s *stubPublisher) DecideInstance(instance compose.Instance) error {
 	return nil
 }
 
-func (s *stubPublisher) AdvanceSettledState(superblockNumber compose.SuperblockNumber, superblockHash compose.SuperBlockHash) error {
+func (s *stubPublisher) AdvanceSettledState(
+	superblockNumber compose.SuperblockNumber, superblockHash compose.SuperblockHash,
+) error {
 	s.mu.Lock()
 	s.advanceCalls++
 	s.mu.Unlock()
@@ -247,6 +244,15 @@ func (s *stubPublisher) AdvanceSettledState(superblockNumber compose.SuperblockN
 func (s *stubPublisher) ProofTimeout() {
 	s.mu.Lock()
 	s.proofTimeoutCalls++
+	s.mu.Unlock()
+}
+
+func (s *stubPublisher) ReceiveProof(
+	periodID compose.PeriodID, superblockNumber compose.SuperblockNumber,
+	proof []byte, chainID compose.ChainID,
+) {
+	s.mu.Lock()
+	s.receiveProofCalls++
 	s.mu.Unlock()
 }
 
@@ -265,7 +271,9 @@ func (s *stubInstanceStarter) setNextErrors(errs []error) {
 	s.count = 0
 }
 
-func (s *stubInstanceStarter) StartInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) error {
+func (s *stubInstanceStarter) StartInstance(
+	ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.count++
@@ -290,7 +298,15 @@ func (s *stubInstanceStarter) calls() int {
 func newTestXTRequest(chainIDs ...uint64) *pb.XTRequest {
 	req := &pb.XTRequest{TransactionRequests: make([]*pb.TransactionRequest, 0, len(chainIDs))}
 	for _, id := range chainIDs {
-		req.TransactionRequests = append(req.TransactionRequests, &pb.TransactionRequest{ChainId: id, Transaction: [][]byte{[]byte{byte(id)}}})
+		req.TransactionRequests = append(
+			req.TransactionRequests,
+			&pb.TransactionRequest{
+				ChainId: id,
+				Transaction: [][]byte{
+					{byte(id)},
+				},
+			},
+		)
 	}
 	return req
 }

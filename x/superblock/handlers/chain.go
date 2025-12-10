@@ -4,28 +4,28 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
-// MessageHandler can process messages
-type MessageHandler interface {
+// messageHandler can process messages
+type messageHandler interface {
 	CanHandle(msg *pb.Message) bool
 	Handle(ctx context.Context, from string, msg *pb.Message) error
 }
 
 // HandlerChain processes messages through multiple handlers
 type HandlerChain struct {
-	handlers []MessageHandler
+	handlers []messageHandler
 	fallback func(context.Context, string, *pb.Message) error
 }
 
 func NewHandlerChain() *HandlerChain {
 	return &HandlerChain{
-		handlers: make([]MessageHandler, 0),
+		handlers: make([]messageHandler, 0),
 	}
 }
 
-func (c *HandlerChain) AddHandler(h MessageHandler) {
+func (c *HandlerChain) AddHandler(h messageHandler) {
 	c.handlers = append(c.handlers, h)
 }
 

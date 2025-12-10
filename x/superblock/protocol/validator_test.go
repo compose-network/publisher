@@ -6,155 +6,51 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
-func TestBasicValidator_ValidateStartSlot(t *testing.T) {
-	t.Parallel()
-
-	validator := NewBasicValidator()
-
-	tests := []struct {
-		name      string
-		startSlot *pb.StartSlot
-		wantErr   bool
-		errMsg    string
-	}{
-		{
-			name: "valid StartSlot passes validation",
-			startSlot: &pb.StartSlot{
-				Slot:                 1,
-				NextSuperblockNumber: 1,
-				LastSuperblockHash:   []byte("genesis_hash"),
-				L2BlocksRequest: []*pb.L2BlockRequest{
-					{
-						ChainId:     []byte("chain1"),
-						BlockNumber: 1,
-						ParentHash:  []byte("parent_hash"),
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name:      "nil StartSlot returns error",
-			startSlot: nil,
-			wantErr:   true,
-			errMsg:    "StartSlot message is nil",
-		},
-		{
-			name: "zero slot number returns error",
-			startSlot: &pb.StartSlot{
-				Slot:                 0,
-				NextSuperblockNumber: 1,
-				L2BlocksRequest:      []*pb.L2BlockRequest{},
-			},
-			wantErr: true,
-			errMsg:  "invalid slot number: 0",
-		},
-		{
-			name: "zero superblock number returns error",
-			startSlot: &pb.StartSlot{
-				Slot:                 1,
-				NextSuperblockNumber: 0,
-				L2BlocksRequest:      []*pb.L2BlockRequest{},
-			},
-			wantErr: true,
-			errMsg:  "invalid superblock number: 0",
-		},
-		{
-			name: "empty L2 block requests returns error",
-			startSlot: &pb.StartSlot{
-				Slot:                 1,
-				NextSuperblockNumber: 1,
-				L2BlocksRequest:      []*pb.L2BlockRequest{},
-			},
-			wantErr: true,
-			errMsg:  "no L2 block requests in StartSlot",
-		},
-		{
-			name: "invalid L2 block request returns error",
-			startSlot: &pb.StartSlot{
-				Slot:                 1,
-				NextSuperblockNumber: 1,
-				L2BlocksRequest: []*pb.L2BlockRequest{
-					{
-						ChainId:     []byte(""),
-						BlockNumber: 1,
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  "invalid L2 block request at index 0",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := validator.ValidateStartSlot(tt.startSlot)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestBasicValidator_ValidateRequestSeal(t *testing.T) {
+func TestBasicValidator_ValidateStartPeriod(t *testing.T) {
 	t.Parallel()
 
 	validator := NewBasicValidator()
 
 	tests := []struct {
 		name        string
-		requestSeal *pb.RequestSeal
+		startPeriod *pb.StartPeriod
 		wantErr     bool
 		errMsg      string
 	}{
 		{
-			name: "valid RequestSeal with included XTs passes validation",
-			requestSeal: &pb.RequestSeal{
-				Slot:        1,
-				IncludedXts: [][]byte{[]byte("xt1"), []byte("xt2")},
+			name: "valid StartPeriod passes validation",
+			startPeriod: &pb.StartPeriod{
+				PeriodId:         1,
+				SuperblockNumber: 1,
 			},
 			wantErr: false,
 		},
 		{
-			name: "valid RequestSeal with no XTs passes validation",
-			requestSeal: &pb.RequestSeal{
-				Slot:        1,
-				IncludedXts: [][]byte{},
-			},
-			wantErr: false,
-		},
-		{
-			name:        "nil RequestSeal returns error",
-			requestSeal: nil,
+			name:        "nil StartPeriod returns error",
+			startPeriod: nil,
 			wantErr:     true,
-			errMsg:      "RequestSeal message is nil",
+			errMsg:      "StartSC message is nil",
 		},
 		{
-			name: "zero slot number returns error",
-			requestSeal: &pb.RequestSeal{
-				Slot:        0,
-				IncludedXts: [][]byte{},
+			name: "zero period ID returns error",
+			startPeriod: &pb.StartPeriod{
+				PeriodId:         0,
+				SuperblockNumber: 1,
 			},
 			wantErr: true,
-			errMsg:  "invalid slot number: 0",
+			errMsg:  "invalid period ID: 0",
 		},
 		{
-			name: "empty XT ID returns error",
-			requestSeal: &pb.RequestSeal{
-				Slot:        1,
-				IncludedXts: [][]byte{[]byte("xt1"), []byte("")},
+			name: "zero superblock number returns error",
+			startPeriod: &pb.StartPeriod{
+				PeriodId:         1,
+				SuperblockNumber: 0,
 			},
 			wantErr: true,
-			errMsg:  "empty XT ID at index 1",
+			errMsg:  "invalid superblock number: 0",
 		},
 	}
 
@@ -162,7 +58,7 @@ func TestBasicValidator_ValidateRequestSeal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validator.ValidateRequestSeal(tt.requestSeal)
+			err := validator.ValidateStartPeriod(tt.startPeriod)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -174,134 +70,27 @@ func TestBasicValidator_ValidateRequestSeal(t *testing.T) {
 	}
 }
 
-func TestBasicValidator_ValidateL2Block(t *testing.T) {
+func TestBasicValidator_ValidateStartInstance(t *testing.T) {
 	t.Parallel()
 
 	validator := NewBasicValidator()
 
 	tests := []struct {
-		name    string
-		l2Block *pb.L2Block
-		wantErr bool
-		errMsg  string
+		name          string
+		startInstance *pb.StartInstance
+		wantErr       bool
+		errMsg        string
 	}{
 		{
-			name: "valid L2Block passes validation",
-			l2Block: &pb.L2Block{
-				Slot:            1,
-				ChainId:         []byte("chain1"),
-				BlockNumber:     1,
-				BlockHash:       []byte("block_hash"),
-				ParentBlockHash: []byte("parent_hash"),
-				IncludedXts:     [][]byte{[]byte("xt1")},
-				Block:           []byte("encoded_block_data"),
-			},
-			wantErr: false,
-		},
-		{
-			name:    "nil L2Block returns error",
-			l2Block: nil,
-			wantErr: true,
-			errMsg:  "L2Block message is nil",
-		},
-		{
-			name: "zero slot number returns error",
-			l2Block: &pb.L2Block{
-				Slot:        0,
-				ChainId:     []byte("chain1"),
-				BlockNumber: 1,
-				BlockHash:   []byte("hash"),
-				Block:       []byte("data"),
-			},
-			wantErr: true,
-			errMsg:  "invalid slot number: 0",
-		},
-		{
-			name: "missing chain ID returns error",
-			l2Block: &pb.L2Block{
-				Slot:        1,
-				ChainId:     []byte(""),
-				BlockNumber: 1,
-				BlockHash:   []byte("hash"),
-				Block:       []byte("data"),
-			},
-			wantErr: true,
-			errMsg:  "missing chain ID",
-		},
-		{
-			name: "zero block number is valid (genesis block)",
-			l2Block: &pb.L2Block{
-				Slot:        1,
-				ChainId:     []byte("chain1"),
-				BlockNumber: 0,
-				BlockHash:   []byte("hash"),
-				Block:       []byte("data"),
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing block hash returns error",
-			l2Block: &pb.L2Block{
-				Slot:        1,
-				ChainId:     []byte("chain1"),
-				BlockNumber: 1,
-				BlockHash:   []byte(""),
-				Block:       []byte("data"),
-			},
-			wantErr: true,
-			errMsg:  "missing block hash",
-		},
-		{
-			name: "missing block data returns error",
-			l2Block: &pb.L2Block{
-				Slot:        1,
-				ChainId:     []byte("chain1"),
-				BlockNumber: 1,
-				BlockHash:   []byte("hash"),
-				Block:       []byte(""),
-			},
-			wantErr: true,
-			errMsg:  "missing block data",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := validator.ValidateL2Block(tt.l2Block)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestBasicValidator_ValidateStartSC(t *testing.T) {
-	t.Parallel()
-
-	validator := NewBasicValidator()
-
-	tests := []struct {
-		name    string
-		startSC *pb.StartSC
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name: "valid StartSC passes validation",
-			startSC: &pb.StartSC{
-				Slot:             1,
-				XtSequenceNumber: 1,
-				XtId:             []byte("xt_id"),
+			name: "valid StartInstance passes validation",
+			startInstance: &pb.StartInstance{
+				InstanceId:     []byte("instance_id"),
+				PeriodId:       1,
+				SequenceNumber: 1,
 				XtRequest: &pb.XTRequest{
-					Transactions: []*pb.TransactionRequest{
+					TransactionRequests: []*pb.TransactionRequest{
 						{
-							ChainId:     []byte("chain1"),
+							ChainId:     1,
 							Transaction: [][]byte{[]byte("tx1")},
 						},
 					},
@@ -310,52 +99,41 @@ func TestBasicValidator_ValidateStartSC(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "nil StartSC returns error",
-			startSC: nil,
-			wantErr: true,
-			errMsg:  "StartSC message is nil",
+			name:          "nil StartInstance returns error",
+			startInstance: nil,
+			wantErr:       true,
+			errMsg:        "StartSC message is nil",
 		},
 		{
-			name: "zero slot number returns error",
-			startSC: &pb.StartSC{
-				Slot:             0,
-				XtSequenceNumber: 1,
-				XtId:             []byte("xt_id"),
-				XtRequest:        &pb.XTRequest{},
-			},
-			wantErr: true,
-			errMsg:  "invalid slot number: 0",
-		},
-		{
-			name: "missing XT ID returns error",
-			startSC: &pb.StartSC{
-				Slot:             1,
-				XtSequenceNumber: 1,
-				XtId:             []byte(""),
-				XtRequest:        &pb.XTRequest{},
+			name: "missing instance ID returns error",
+			startInstance: &pb.StartInstance{
+				InstanceId:     []byte(""),
+				PeriodId:       1,
+				SequenceNumber: 1,
+				XtRequest:      &pb.XTRequest{},
 			},
 			wantErr: true,
 			errMsg:  "missing cross-chain transaction ID",
 		},
 		{
 			name: "missing XT request returns error",
-			startSC: &pb.StartSC{
-				Slot:             1,
-				XtSequenceNumber: 1,
-				XtId:             []byte("xt_id"),
-				XtRequest:        nil,
+			startInstance: &pb.StartInstance{
+				InstanceId:     []byte("instance_id"),
+				PeriodId:       1,
+				SequenceNumber: 1,
+				XtRequest:      nil,
 			},
 			wantErr: true,
 			errMsg:  "missing cross-chain transaction request",
 		},
 		{
 			name: "invalid XT request returns error",
-			startSC: &pb.StartSC{
-				Slot:             1,
-				XtSequenceNumber: 1,
-				XtId:             []byte("xt_id"),
+			startInstance: &pb.StartInstance{
+				InstanceId:     []byte("instance_id"),
+				PeriodId:       1,
+				SequenceNumber: 1,
 				XtRequest: &pb.XTRequest{
-					Transactions: []*pb.TransactionRequest{},
+					TransactionRequests: []*pb.TransactionRequest{},
 				},
 			},
 			wantErr: true,
@@ -367,7 +145,7 @@ func TestBasicValidator_ValidateStartSC(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validator.ValidateStartSC(tt.startSC)
+			err := validator.ValidateStartInstance(tt.startInstance)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -379,68 +157,39 @@ func TestBasicValidator_ValidateStartSC(t *testing.T) {
 	}
 }
 
-func TestBasicValidator_ValidateRollBackAndStartSlot(t *testing.T) {
+func TestBasicValidator_ValidateRollback(t *testing.T) {
 	t.Parallel()
 
 	validator := NewBasicValidator()
 
 	tests := []struct {
 		name    string
-		rb      *pb.RollBackAndStartSlot
+		rb      *pb.Rollback
 		wantErr bool
 		errMsg  string
 	}{
 		{
-			name: "valid RollBackAndStartSlot passes validation",
-			rb: &pb.RollBackAndStartSlot{
-				CurrentSlot:          1,
-				NextSuperblockNumber: 1,
-				LastSuperblockHash:   []byte("hash"),
-				L2BlocksRequest: []*pb.L2BlockRequest{
-					{
-						ChainId:     []byte("chain1"),
-						BlockNumber: 1,
-						ParentHash:  []byte("parent"),
-					},
-				},
+			name: "valid Rollback passes validation",
+			rb: &pb.Rollback{
+				PeriodId:                      1,
+				LastFinalizedSuperblockNumber: 10,
+				LastFinalizedSuperblockHash:   []byte("hash"),
 			},
 			wantErr: false,
 		},
 		{
-			name:    "nil RollBackAndStartSlot returns error",
+			name:    "nil Rollback returns error",
 			rb:      nil,
 			wantErr: true,
-			errMsg:  "RollBackAndStartSlot message is nil",
+			errMsg:  "rollback message is nil",
 		},
 		{
-			name: "zero current slot returns error",
-			rb: &pb.RollBackAndStartSlot{
-				CurrentSlot:          0,
-				NextSuperblockNumber: 1,
-				L2BlocksRequest:      []*pb.L2BlockRequest{},
+			name: "zero periodID returns error",
+			rb: &pb.Rollback{
+				PeriodId: 0,
 			},
 			wantErr: true,
-			errMsg:  "invalid current slot: 0",
-		},
-		{
-			name: "zero superblock number returns error",
-			rb: &pb.RollBackAndStartSlot{
-				CurrentSlot:          1,
-				NextSuperblockNumber: 0,
-				L2BlocksRequest:      []*pb.L2BlockRequest{},
-			},
-			wantErr: true,
-			errMsg:  "invalid superblock number: 0",
-		},
-		{
-			name: "empty L2 block requests returns error",
-			rb: &pb.RollBackAndStartSlot{
-				CurrentSlot:          1,
-				NextSuperblockNumber: 1,
-				L2BlocksRequest:      []*pb.L2BlockRequest{},
-			},
-			wantErr: true,
-			errMsg:  "no L2 block requests in RollBackAndStartSlot",
+			errMsg:  "invalid current period: 0",
 		},
 	}
 
@@ -448,7 +197,7 @@ func TestBasicValidator_ValidateRollBackAndStartSlot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validator.ValidateRollBackAndStartSlot(tt.rb)
+			err := validator.ValidateRollback(tt.rb)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -460,77 +209,7 @@ func TestBasicValidator_ValidateRollBackAndStartSlot(t *testing.T) {
 	}
 }
 
-func Test_validateL2BlockRequest(t *testing.T) {
-	t.Parallel()
-
-	validator := &basicValidator{}
-
-	tests := []struct {
-		name    string
-		req     *pb.L2BlockRequest
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name: "valid L2BlockRequest passes validation",
-			req: &pb.L2BlockRequest{
-				ChainId:     []byte("chain1"),
-				BlockNumber: 1,
-				ParentHash:  []byte("parent_hash"),
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid L2BlockRequest with empty parent hash passes validation",
-			req: &pb.L2BlockRequest{
-				ChainId:     []byte("chain1"),
-				BlockNumber: 1,
-				ParentHash:  []byte(""),
-			},
-			wantErr: false,
-		},
-		{
-			name:    "nil L2BlockRequest returns error",
-			req:     nil,
-			wantErr: true,
-			errMsg:  "L2BlockRequest is nil",
-		},
-		{
-			name: "missing chain ID returns error",
-			req: &pb.L2BlockRequest{
-				ChainId:     []byte(""),
-				BlockNumber: 1,
-			},
-			wantErr: true,
-			errMsg:  "missing chain ID",
-		},
-		{
-			name: "zero block number is valid (genesis block)",
-			req: &pb.L2BlockRequest{
-				ChainId:     []byte("chain1"),
-				BlockNumber: 0,
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := validator.validateL2BlockRequest(tt.req)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func Test_validateXTRequest(t *testing.T) {
+func Test_ValidateXTRequest(t *testing.T) {
 	t.Parallel()
 
 	validator := &basicValidator{}
@@ -544,13 +223,13 @@ func Test_validateXTRequest(t *testing.T) {
 		{
 			name: "valid XTRequest passes validation",
 			xtReq: &pb.XTRequest{
-				Transactions: []*pb.TransactionRequest{
+				TransactionRequests: []*pb.TransactionRequest{
 					{
-						ChainId:     []byte("chain1"),
+						ChainId:     1,
 						Transaction: [][]byte{[]byte("tx1")},
 					},
 					{
-						ChainId:     []byte("chain2"),
+						ChainId:     2,
 						Transaction: [][]byte{[]byte("tx2")},
 					},
 				},
@@ -566,7 +245,7 @@ func Test_validateXTRequest(t *testing.T) {
 		{
 			name: "empty transactions returns error",
 			xtReq: &pb.XTRequest{
-				Transactions: []*pb.TransactionRequest{},
+				TransactionRequests: []*pb.TransactionRequest{},
 			},
 			wantErr: true,
 			errMsg:  "no transactions in XTRequest",
@@ -574,9 +253,9 @@ func Test_validateXTRequest(t *testing.T) {
 		{
 			name: "invalid transaction request returns error",
 			xtReq: &pb.XTRequest{
-				Transactions: []*pb.TransactionRequest{
+				TransactionRequests: []*pb.TransactionRequest{
 					{
-						ChainId:     []byte(""),
+						ChainId:     0,
 						Transaction: [][]byte{[]byte("tx1")},
 					},
 				},
@@ -602,7 +281,7 @@ func Test_validateXTRequest(t *testing.T) {
 	}
 }
 
-func Test_validateTransactionRequest(t *testing.T) {
+func Test_ValidateTransactionRequest(t *testing.T) {
 	t.Parallel()
 
 	validator := &basicValidator{}
@@ -616,7 +295,7 @@ func Test_validateTransactionRequest(t *testing.T) {
 		{
 			name: "valid TransactionRequest passes validation",
 			txReq: &pb.TransactionRequest{
-				ChainId:     []byte("chain1"),
+				ChainId:     1,
 				Transaction: [][]byte{[]byte("tx1"), []byte("tx2")},
 			},
 			wantErr: false,
@@ -630,7 +309,7 @@ func Test_validateTransactionRequest(t *testing.T) {
 		{
 			name: "missing chain ID returns error",
 			txReq: &pb.TransactionRequest{
-				ChainId:     []byte(""),
+				ChainId:     0,
 				Transaction: [][]byte{[]byte("tx1")},
 			},
 			wantErr: true,
@@ -639,7 +318,7 @@ func Test_validateTransactionRequest(t *testing.T) {
 		{
 			name: "no transactions returns error",
 			txReq: &pb.TransactionRequest{
-				ChainId:     []byte("chain1"),
+				ChainId:     1,
 				Transaction: [][]byte{},
 			},
 			wantErr: true,

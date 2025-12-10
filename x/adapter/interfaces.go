@@ -3,7 +3,7 @@ package adapter
 import (
 	"context"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Adapter defines the interface for a rollup-specific implementation that
@@ -29,10 +29,6 @@ type Adapter interface {
 	// HandleDecision processes an incoming 2PC decision message (commit/abort).
 	// The 'from' parameter indicates the sender's identifier.
 	HandleDecision(ctx context.Context, from string, decision *pb.Decided) error
-
-	// HandleBlock processes an incoming block submission.
-	// The 'from' parameter indicates the sender's identifier.
-	HandleBlock(ctx context.Context, from string, block *pb.Block) error
 
 	// OnStart is a lifecycle hook called when the adapter is starting.
 	// Implementations can use this for initialization logic.

@@ -51,8 +51,8 @@ type APIServerConfig struct {
 
 // ConsensusConfig holds consensus configuration
 type ConsensusConfig struct {
-	InstanceTimeout time.Duration `mapstructure:"instance_timeout" yaml:"instance_timeout" env:"CONSENSUS_INSTANCE_TIMEOUT"`
-	EpochPerPediods uint64        `mapstructure:"epochs_per_period" yaml:"epochs_per_period" env:"CONSENSUS_EPOCHS_PER_PERIOD"`
+	InstanceTimeout time.Duration `mapstructure:"instance_timeout" yaml:"instance_timeout"`
+	EpochPerPediods uint64        `mapstructure:"epochs_per_period" yaml:"epochs_per_period"`
 }
 
 // MetricsConfig holds metrics configuration

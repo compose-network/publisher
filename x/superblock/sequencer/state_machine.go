@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/rs/zerolog"
 )
 
@@ -46,7 +47,7 @@ type StateMachine struct {
 	mu           sync.RWMutex
 	currentState State
 	currentSlot  uint64
-	chainID      []byte
+	chainID      compose.ChainID
 	log          zerolog.Logger
 	callback     StateChangeCallback
 
@@ -54,7 +55,7 @@ type StateMachine struct {
 	transitions []StateTransition
 }
 
-func NewStateMachine(chainID []byte, log zerolog.Logger, callback StateChangeCallback) *StateMachine {
+func NewStateMachine(chainID compose.ChainID, log zerolog.Logger, callback StateChangeCallback) *StateMachine {
 	return &StateMachine{
 		currentState: StateWaiting,
 		currentSlot:  0,

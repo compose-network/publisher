@@ -92,7 +92,11 @@ func (n *messenger) BroadcastStartPeriod(periodID compose.PeriodID, targetSuperb
 }
 
 // BroadcastRollback broadcasts a Rollback message
-func (n *messenger) BroadcastRollback(periodID compose.PeriodID, superblockNumber compose.SuperblockNumber, superblockHash compose.SuperBlockHash) {
+func (n *messenger) BroadcastRollback(
+	periodID compose.PeriodID,
+	superblockNumber compose.SuperblockNumber,
+	superblockHash compose.SuperblockHash,
+) {
 	msg := &pb.Message{
 		SenderId: "publisher",
 		Payload: &pb.Message_Rollback{

@@ -3,41 +3,41 @@ package sequencer
 import (
 	"context"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/publisher/x/transport"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // MinerNotifier defines the interface for notifying miner about sequencer events
 type MinerNotifier interface {
-	NotifySlotStart(startSlot *pb.StartSlot) error
-	NotifyRequestSeal(ctx context.Context, requestSeal *pb.RequestSeal) error
+	NotifyPeriodStart(startSlot *pb.StartPeriod) error
 	NotifyStateChange(from, to State, slot uint64) error
 }
 
 // CoordinatorCallbacks defines callback functions for cross-component communication
 type CoordinatorCallbacks struct {
-	SendCIRC func(ctx context.Context, circ *pb.CIRCMessage) error
+	SendMailboxMessage func(ctx context.Context, circ *pb.MailboxMessage) error
 	// SimulateAndVote runs local-chain simulation for the provided XT request
 	// and returns whether the local transactions are ready to commit (vote=true)
 	// or not (vote=false). This callback is used by the coordinator during
 	// StartSC handling and is implemented by the host SDK (e.g., geth backend).
-	SimulateAndVote func(ctx context.Context, xtReq *pb.XTRequest, xtID *pb.XtID) (bool, error)
+	SimulateAndVote func(ctx context.Context, xtReq *pb.XTRequest, instanceID compose.InstanceID) (bool, error)
 	// CleanupAbortedTransaction is called when an SCP instance decides to abort,
 	// allowing the execution layer to immediately remove staged transactions from
 	// its pending pool. This ensures atomic exclude behavior when blocks are built
 	// before RequestSeal arrives.
-	CleanupAbortedTransaction func(ctx context.Context, xtID *pb.XtID) error
+	CleanupAbortedTransaction func(ctx context.Context, instanceID compose.InstanceID) error
 }
 
 // BlockLifecycleManager handles block building lifecycle events
 type BlockLifecycleManager interface {
 	OnBlockBuildingStart(ctx context.Context, slot uint64) error
-	OnBlockBuildingComplete(ctx context.Context, block *pb.L2Block, success bool) error
 }
 
 // TransactionManager handles transaction preparation and ordering
 type TransactionManager interface {
-	PrepareTransactionsForBlock(ctx context.Context, slot uint64) error
+	PrepareTransactionsForBlock(ctx context.Context, period compose.PeriodID) error
 	GetOrderedTransactionsForBlock(ctx context.Context) ([]*pb.TransactionRequest, error)
 }
 
@@ -49,6 +49,7 @@ type CallbackManager interface {
 
 // Coordinator defines the sequencer coordinator interface
 type Coordinator interface {
+	SubmitXTRequest(ctx context.Context, from string, request *pb.XTRequest) error
 	// Lifecycle
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
@@ -57,13 +58,14 @@ type Coordinator interface {
 	HandleMessage(ctx context.Context, from string, msg *pb.Message) error
 
 	// State queries
-	GetCurrentSlot() uint64
+	GetCurrentPeriod() compose.PeriodID
 	GetState() State
 	GetStats() map[string]interface{}
 	GetActiveSCPInstanceCount() int
 
 	// Consensus access
 	Consensus() consensus.Coordinator
+	Transport() transport.Transport
 
 	// SDK access
 	BlockLifecycleManager
@@ -73,11 +75,9 @@ type Coordinator interface {
 
 // BlockBuilderInterface for L2 block construction
 type BlockBuilderInterface interface {
-	StartSlot(slot uint64, request *pb.L2BlockRequest) error
 	AddLocalTransaction(tx []byte) error
 	AddSCPTransactions(xtID string, txs [][]byte, decision bool) error
-	AddCIRCMessage(msg *pb.CIRCMessage) error
-	SealBlock(includedXTs [][]byte) (*pb.L2Block, error)
+	AddMailboxMessage(msg *pb.MailboxMessage) error
 	GetDraftStats() map[string]interface{}
 	Reset()
 }
@@ -98,8 +98,8 @@ type MessageRouterInterface interface {
 
 // SCPIntegrationInterface for SCP coordination
 type SCPIntegrationInterface interface {
-	HandleStartSC(ctx context.Context, startSC *pb.StartSC) error
-	HandleDecision(xtID *pb.XtID, decision bool) error
+	HandleStartInstance(ctx context.Context, startSC *pb.StartInstance) error
+	HandleDecision(instanceID compose.InstanceID, decision bool) error
 	GetActiveContexts() map[string]*SCPContext
 	ResetForSlot(slot uint64)
 	GetIncludedXTsHex() []string

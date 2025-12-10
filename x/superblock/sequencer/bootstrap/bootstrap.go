@@ -3,17 +3,16 @@ package bootstrap
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"reflect"
 	"strings"
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/consensus"
 	"github.com/compose-network/publisher/x/superblock/sequencer"
-	"github.com/compose-network/publisher/x/superblock/slot"
 	"github.com/compose-network/publisher/x/transport"
 	"github.com/compose-network/publisher/x/transport/tcp"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
 )
@@ -21,12 +20,12 @@ import (
 // Config holds inputs to wire a sequencer with SBCP and P2P CIRC.
 type Config struct {
 	// ChainID is the ID of the chain the sequencer is running for.
-	ChainID []byte
+	ChainID compose.ChainID
 	// SPAddr is the address of the shared publisher in host:port format.
 	SPAddr string
 	// PeerAddrs is a map of chainID to host:port for other sequencers.
 	// The chainID can be in decimal or hex format and will be normalized.
-	PeerAddrs map[string]string
+	PeerAddrs map[compose.ChainID]string
 
 	// Log is the logger to use. If not provided, a no-op logger is used.
 	Log zerolog.Logger
@@ -42,11 +41,6 @@ type Config struct {
 
 	// P2PListenAddr is an optional P2P listen address, overriding P2PServerConfig.ListenAddr.
 	P2PListenAddr string
-
-	// SlotDuration is the duration of a slot. Defaults to 12 s.
-	SlotDuration time.Duration
-	// SlotSealCutover is the fraction of the slot after which it should be sealed. Defaults to 2/3.
-	SlotSealCutover float64
 }
 
 // Runtime exposes the wired components and lifecycle.
@@ -57,8 +51,8 @@ type Runtime struct {
 	SPClient transport.Client
 	// P2PServer is the P2P server for CIRC.
 	P2PServer transport.Server
-	// Peers is a map of hex chainID key to peer client.
-	Peers map[string]transport.Client
+	// Peers is a map of chainID key to peer client.
+	Peers map[compose.ChainID]transport.Client
 
 	log zerolog.Logger
 	cfg Config
@@ -92,23 +86,8 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 	}
 	spClient := tcp.NewClient(spCfg, log)
 
-	// Sequencer coordinator (SBCP)
-	slotDuration := cfg.SlotDuration
-	if slotDuration == 0 {
-		slotDuration = 6 * time.Second
-	}
-	sealCutover := cfg.SlotSealCutover
-	if sealCutover == 0 {
-		sealCutover = 2.0 / 3.0
-	}
-
 	seqCfg := sequencer.Config{
-		ChainID: cfg.ChainID,
-		Slot: slot.Config{
-			Duration:    slotDuration,
-			SealCutover: sealCutover,
-			GenesisTime: time.Unix(1760599941, 0), // Custom genesis time
-		},
+		ChainID:              cfg.ChainID,
 		BlockTimeout:         30 * time.Second,
 		MaxLocalTxs:          1000,
 		SCPTimeout:           10 * time.Second,
@@ -141,22 +120,17 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 
 	log.Info().Interface("peer_addrs", cfg.PeerAddrs).Msg("Setting up peer clients")
 
-	peers := make(map[string]transport.Client)
-	for id, addr := range cfg.PeerAddrs {
+	peers := make(map[compose.ChainID]transport.Client)
+	for chainID, addr := range cfg.PeerAddrs {
 		if strings.TrimSpace(addr) == "" {
-			log.Warn().Str("chain_id", id).Msg("Skipping peer with empty address")
+			log.Warn().Uint64("chain_id", uint64(chainID)).Msg("Skipping peer with empty address")
 			continue
 		}
-		key := normalizeChainIDKey(id)
-		if key == "" {
-			log.Warn().Str("chain_id", id).Msg("Skipping peer with invalid chain ID format")
-			continue
-		}
-		log.Info().Str("chain_id", id).Str("normalized_key", key).Str("addr", addr).Msg("Creating peer client")
+		log.Info().Uint64("chain_id", uint64(chainID)).Str("addr", addr).Msg("Creating peer client")
 		cc := tcp.DefaultClientConfig()
 		cc.ServerAddr = addr
-		cc.ClientID = fmt.Sprintf("peer-%s", key)
-		peers[key] = tcp.NewClient(cc, log)
+		cc.ClientID = fmt.Sprintf("peer-%d", uint64(chainID))
+		peers[chainID] = tcp.NewClient(cc, log)
 	}
 
 	log.Info().Int("peer_count", len(peers)).Interface("peer_keys", getPeerKeys(peers)).Msg("Peer clients created")
@@ -171,7 +145,7 @@ func Setup(ctx context.Context, cfg Config) (*Runtime, error) {
 	}
 
 	coord.SetCallbacks(sequencer.CoordinatorCallbacks{
-		SendCIRC: rt.SendCIRC,
+		SendMailboxMessage: rt.SendMailboxMessage,
 	})
 
 	return rt, nil
@@ -198,26 +172,26 @@ func (r *Runtime) Start(ctx context.Context) error {
 		Interface("peer_keys", getPeerKeys(r.Peers)).
 		Msg("Starting peer connections")
 
-	for key, c := range r.Peers {
-		if addr, exists := r.cfg.PeerAddrs[key]; exists && strings.TrimSpace(addr) != "" {
+	for chainID, transportClient := range r.Peers {
+		if addr, exists := r.cfg.PeerAddrs[chainID]; exists && strings.TrimSpace(addr) != "" {
 			r.log.Info().
-				Str("peer", key).
+				Uint64("peer", uint64(chainID)).
 				Str("addr", addr).
 				Msg("Attempting to connect to peer")
-			if err := c.ConnectWithRetry(ctx, addr, 5); err != nil {
+			if err := transportClient.ConnectWithRetry(ctx, addr, 5); err != nil {
 				r.log.Error().
-					Str("peer", key).
+					Uint64("peer", uint64(chainID)).
 					Str("addr", addr).Err(err).
 					Msg("Failed to connect to peer after retries")
 			} else {
 				r.log.Info().
-					Str("peer", key).
+					Uint64("peer", uint64(chainID)).
 					Str("addr", addr).
 					Msg("Successfully connected to peer")
 			}
 		} else {
 			r.log.Error().
-				Str("peer", key).
+				Uint64("peer", uint64(chainID)).
 				Interface("configured_addrs", r.cfg.PeerAddrs).
 				Msg("No valid address configured for peer")
 		}
@@ -243,7 +217,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	// Disconnect all peer clients
 	for key, c := range r.Peers {
 		if err := c.Disconnect(ctx); err != nil {
-			r.log.Debug().Str("peer", key).Err(err).Msg("Peer disconnect error")
+			r.log.Debug().Uint64("peer", uint64(key)).Err(err).Msg("Peer disconnect error")
 		}
 	}
 
@@ -251,70 +225,48 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	return nil
 }
 
-// SendCIRC sends a CIRC message to the peer indicated by DestinationChain.
-func (r *Runtime) SendCIRC(ctx context.Context, circ *pb.CIRCMessage) error {
-	destKey := consensus.ChainKeyBytes(circ.DestinationChain)
-	r.log.Info().Str("dest_key", destKey).Str("xt_id", circ.XtId.Hex()).Msg("Sending CIRC message to peer")
+// SendMailboxMessage sends a Mailbox message to the peer indicated by DestinationChain.
+func (r *Runtime) SendMailboxMessage(ctx context.Context, mailboxMsg *pb.MailboxMessage) error {
+	r.log.Info().
+		Uint64("dest_key", mailboxMsg.DestinationChain).
+		Str("instance_id", string(mailboxMsg.InstanceId)).
+		Msg("Sending Mailbox message to peer")
 
-	peer, ok := r.Peers[destKey]
+	peer, ok := r.Peers[compose.ChainID(mailboxMsg.DestinationChain)]
 	if !ok || peer == nil {
 		r.log.Error().
-			Str("dest_key", destKey).
-			Str("xt_id", circ.XtId.Hex()).
+			Uint64("dest_key", mailboxMsg.DestinationChain).
+			Str("instance_id", string(mailboxMsg.InstanceId)).
 			Interface("available_peers", getPeerKeys(r.Peers)).
 			Msg("No peer client found for destination chain")
-		return fmt.Errorf("no peer for destination chain %s", destKey)
+
+		return fmt.Errorf("no peer for destination chain %d", mailboxMsg.DestinationChain)
 	}
 
-	msg := &pb.Message{Payload: &pb.Message_CircMessage{CircMessage: circ}}
+	msg := &pb.Message{Payload: &pb.Message_MailboxMessage{MailboxMessage: mailboxMsg}}
 
 	if err := peer.Send(ctx, msg); err != nil {
 		r.log.Error().
 			Err(err).
-			Str("dest_key", destKey).
-			Str("xt_id", circ.XtId.Hex()).
-			Msg("Failed to send CIRC message to peer")
+			Uint64("dest_key", mailboxMsg.DestinationChain).
+			Str("instance_id", string(mailboxMsg.InstanceId)).
+			Msg("Failed to send Mailbox message to peer")
 		return err
 	}
 
-	r.log.Info().Str("dest_key", destKey).Str("xt_id", circ.XtId.Hex()).Msg("CIRC message sent successfully")
+	r.log.Info().
+		Uint64("dest_key", mailboxMsg.DestinationChain).
+		Str("instance_id", string(mailboxMsg.InstanceId)).
+		Msg("Mailbox message sent successfully")
+
 	return nil
 }
 
-// normalizeChainIDKey accepts decimal or hex chainID strings and returns the
-// canonical hex key used by consensus. Unknown formats return an empty string.
-func normalizeChainIDKey(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-
-	// Try decimal first
-	if bi, ok := new(big.Int).SetString(s, 10); ok {
-		return consensus.ChainKeyUint64(bi.Uint64())
-	}
-
-	// Remove optional 0x and validate hex-ish
-	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-		s = s[2:]
-	}
-
-	// If still not valid hex characters, give up; consensus will not know this key
-	for _, ch := range s {
-		if ch < '0' || ch > '9' && ch < 'A' || ch > 'F' && ch < 'a' || ch > 'f' {
-			return ""
-		}
-	}
-
-	// Already hex string; lower-case normalize by decoding/encoding not needed for key
-	return strings.ToLower(s)
-}
-
 // getPeerKeys returns a slice of available peer keys for logging
-func getPeerKeys(peers map[string]transport.Client) []string {
-	keys := make([]string, 0, len(peers))
+func getPeerKeys(peers map[compose.ChainID]transport.Client) []uint64 {
+	keys := make([]uint64, 0, len(peers))
 	for key := range peers {
-		keys = append(keys, key)
+		keys = append(keys, uint64(key))
 	}
 	return keys
 }

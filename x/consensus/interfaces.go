@@ -4,24 +4,25 @@ import (
 	"context"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Coordinator defines the consensus coordinator interface
 type Coordinator interface {
 	// Transaction lifecycle
-	StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error
-	RecordVote(xtID *pb.XtID, chainID string, vote bool) (DecisionState, error)
-	RecordDecision(xtID *pb.XtID, decision bool) error
-	GetTransactionState(xtID *pb.XtID) (DecisionState, error)
-	GetActiveTransactions() []*pb.XtID
-	GetState(xtID *pb.XtID) (*TwoPCState, bool)
+	StartTransaction(ctx context.Context, instanceID compose.InstanceID, from string, xtReq *pb.XTRequest) error
+	RecordVote(instanceID compose.InstanceID, chainID compose.ChainID, vote bool) (DecisionState, error)
+	RecordDecision(instanceID compose.InstanceID, decision bool) error
+	GetTransactionState(instanceID compose.InstanceID) (DecisionState, error)
+	GetActiveTransactions() []compose.InstanceID
+	GetState(instanceID compose.InstanceID) (*TwoPCState, bool)
 
-	// CIRC message handling
-	RecordCIRCMessage(circMessage *pb.CIRCMessage) error
-	ConsumeCIRCMessage(xtID *pb.XtID, sourceChainID string) (*pb.CIRCMessage, error)
+	// Mailbox message handling
+	RecordMailboxMessage(mailboxMessage *pb.MailboxMessage) error
+	ConsumeMailboxMessage(instanceID compose.InstanceID, sourceChainID compose.ChainID) (*pb.MailboxMessage, error)
 
 	// Callbacks
 	SetStartCallback(fn StartFn)
@@ -33,9 +34,6 @@ type Coordinator interface {
 	// Implementations should gather committed xTs and trigger any registered BlockFn callback
 	OnBlockCommitted(ctx context.Context, block *types.Block) error
 
-	// OnL2BlockCommitted is called by sequencer SBCP path when a pb.L2Block is sealed and submitted
-	OnL2BlockCommitted(ctx context.Context, block *pb.L2Block) error
-
 	// Lifecycle
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
@@ -43,11 +41,11 @@ type Coordinator interface {
 
 // Callback function types
 type StartFn func(ctx context.Context, from string, xtReq *pb.XTRequest) error
-type VoteFn func(ctx context.Context, xtID *pb.XtID, vote bool) error
-type DecisionFn func(ctx context.Context, xtID *pb.XtID, decision bool) error
+type VoteFn func(ctx context.Context, instanceID compose.InstanceID, vote bool) error
+type DecisionFn func(ctx context.Context, instanceID compose.InstanceID, decision bool) error
 
 // BlockFn sends a block plus committed xTs to the SP layer
-type BlockFn func(ctx context.Context, block *types.Block, xtIDs []*pb.XtID) error
+type BlockFn func(ctx context.Context, block *types.Block, instanceIDs []compose.InstanceID) error
 
 // Config holds coordinator configuration
 type Config struct {

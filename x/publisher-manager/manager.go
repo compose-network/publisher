@@ -13,6 +13,7 @@ import (
 	scpsupervisor "github.com/compose-network/publisher/x/scp-instance-supervisor"
 	"github.com/compose-network/specs/compose"
 	pb "github.com/compose-network/specs/compose/proto"
+	"github.com/compose-network/specs/compose/sbcp"
 	"github.com/rs/zerolog"
 )
 
@@ -43,7 +44,9 @@ func New(cfg Config) (PublisherManager, error) {
 		cfg.Broadcaster,
 	)
 
-	periodRunnerConfig := periodrunner.DefaultPeriodRunnerConfig(cfg.Logger.With().Str("component", "period-runner").Logger())
+	periodRunnerConfig := periodrunner.DefaultPeriodRunnerConfig(
+		cfg.Logger.With().Str("component", "period-runner").Logger(),
+	)
 	periodRunnerConfig.EpochsPerPeriod = cfg.EpochsPerPeriod
 
 	periodRunner := periodrunner.NewLocalPeriodRunner(periodRunnerConfig)
@@ -55,14 +58,24 @@ func New(cfg Config) (PublisherManager, error) {
 	scpsupervisorConfig.InstanceTimeout = cfg.InstanceTimeout
 	scpSupervisor := scpsupervisor.New(scpsupervisorConfig)
 
-	sbcpCtrl, err := sbcpcontroller.New(sbcpcontroller.DefaultConfig(
+	// TODO: set correct config
+	defaultConfig, err := sbcpcontroller.DefaultConfig(
 		cfg.Logger.With().Str("component", "sbcp-sbcpController").Logger(),
+		nil,
 		msgr,
-		compose.PeriodID(currentPeriodID-1), // Check sbcp SBCPController for explanation
+		sbcp.L1(nil),
+		currentPeriodID,
 		0,
-		compose.SuperBlockHash{},
 		0,
-	))
+		compose.SuperblockHash{},
+		0,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("publisherManager: create sbcp controller default config: %w", err)
+	}
+
+	sbcpCtrl, err := sbcpcontroller.New(defaultConfig)
 	if err != nil {
 		return nil, fmt.Errorf("publisherManager: create sbcp sbcpController: %w", err)
 	}

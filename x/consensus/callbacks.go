@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // CallbackManager manages coordinator callbacks with error handling and timeouts
@@ -55,8 +56,6 @@ func (cm *CallbackManager) InvokeStart(ctx context.Context, from string, xtReq *
 		return
 	}
 
-	xtID, _ := xtReq.XtID()
-
 	go func() {
 		ctx, cancel := context.WithTimeout(ctx, cm.timeout)
 		defer cancel()
@@ -64,7 +63,6 @@ func (cm *CallbackManager) InvokeStart(ctx context.Context, from string, xtReq *
 		if err := cm.startFn(ctx, from, xtReq); err != nil {
 			cm.log.Error().
 				Err(err).
-				Str("xt_id", xtID.Hex()).
 				Str("from", from).
 				Msg("Start callback failed")
 		}
@@ -72,46 +70,48 @@ func (cm *CallbackManager) InvokeStart(ctx context.Context, from string, xtReq *
 }
 
 // InvokeVote calls the vote callback with timeout and error handling
-func (cm *CallbackManager) InvokeVote(xtID *pb.XtID, vote bool, duration time.Duration) {
+func (cm *CallbackManager) InvokeVote(instanceID compose.InstanceID, vote bool, duration time.Duration) {
 	if cm.voteFn == nil {
 		return
 	}
 
-	cm.invokeCallback("vote", xtID, func(ctx context.Context) error {
-		return cm.voteFn(ctx, xtID, vote)
+	cm.invokeCallback("vote", instanceID, func(ctx context.Context) error {
+		return cm.voteFn(ctx, instanceID, vote)
 	})
 }
 
 // InvokeDecision calls the decision callback with timeout and error handling
-func (cm *CallbackManager) InvokeDecision(xtID *pb.XtID, decision bool, duration time.Duration) {
+func (cm *CallbackManager) InvokeDecision(instanceID compose.InstanceID, decision bool, duration time.Duration) {
 	if cm.decisionFn == nil {
 		return
 	}
 
-	cm.invokeCallback("decision", xtID, func(ctx context.Context) error {
-		return cm.decisionFn(ctx, xtID, decision)
+	cm.invokeCallback("decision", instanceID, func(ctx context.Context) error {
+		return cm.decisionFn(ctx, instanceID, decision)
 	})
 }
 
 // InvokeBlock calls the block callback with timeout and error handling
-func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, xtIDs []*pb.XtID) {
+func (cm *CallbackManager) InvokeBlock(ctx context.Context, block *types.Block, instanceIDs []compose.InstanceID) {
 	if cm.blockFn == nil {
 		return
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(ctx, cm.timeout)
 		defer cancel()
-		if err := cm.blockFn(ctx, block, xtIDs); err != nil {
+		if err := cm.blockFn(ctx, block, instanceIDs); err != nil {
 			cm.log.Error().
 				Err(err).
-				Int("xt_count", len(xtIDs)).
+				Int("instanceIDs_count", len(instanceIDs)).
 				Msg("Block callback failed")
 		}
 	}()
 }
 
 // invokeCallback is a helper to invoke callbacks with error handling and timeout
-func (cm *CallbackManager) invokeCallback(callbackType string, xtID *pb.XtID, fn func(context.Context) error) {
+func (cm *CallbackManager) invokeCallback(
+	callbackType string, instanceID compose.InstanceID, fn func(context.Context) error,
+) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cm.timeout)
 		defer cancel()
@@ -119,7 +119,7 @@ func (cm *CallbackManager) invokeCallback(callbackType string, xtID *pb.XtID, fn
 		if err := fn(ctx); err != nil {
 			cm.log.Error().
 				Err(err).
-				Str("xt_id", xtID.Hex()).
+				Str("instance_id", instanceID.String()).
 				Str("type", callbackType).
 				Msg("Callback failed")
 		}

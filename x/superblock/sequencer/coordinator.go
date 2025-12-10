@@ -1,16 +1,15 @@
 package sequencer
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/consensus"
-	"github.com/compose-network/publisher/x/superblock/protocol"
 	"github.com/compose-network/publisher/x/transport"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
 
@@ -18,7 +17,7 @@ import (
 type SequencerCoordinator struct {
 	mu      sync.RWMutex
 	config  Config
-	chainID []byte
+	chainID compose.ChainID
 	log     zerolog.Logger
 
 	// Core components
@@ -35,19 +34,18 @@ type SequencerCoordinator struct {
 	minerNotifier MinerNotifier
 	callbacks     CoordinatorCallbacks
 
-	// Current slot context
-	currentSlot    uint64
-	currentRequest *pb.L2BlockRequest
+	// Current period ID
+	periodID compose.PeriodID
 
 	// Runtime state
 	running bool
 	stopCh  chan struct{}
 
-	// Queue StartSC messages that arrive while an SCP instance is active
+	// Queue StartInstance messages that arrive while an SCP instance is active
 	// TODO: rethink
-	pendingStartSCs []struct {
+	pendingStartInstances []struct {
 		from  string
-		start *pb.StartSC
+		start *pb.StartInstance
 	}
 }
 
@@ -86,13 +84,10 @@ func NewSequencerCoordinator(
 		coordinator.blockBuilder,
 	)
 
-	// Initialize protocol handlers
-	sbcpMessageHandler := NewSBCPHandler(coordinator, log)
-	sbcpHandler := protocol.NewHandler(sbcpMessageHandler, protocol.NewBasicValidator(), log)
 	scpHandler := consensus.NewProtocolHandler(baseConsensus, log)
 
 	// Initialize message router with protocol handlers
-	coordinator.messageRouter = NewMessageRouter(sbcpHandler, scpHandler, log)
+	coordinator.messageRouter = NewMessageRouter(nil, scpHandler, log)
 
 	// Bind consensus decision callback directly to the coordinator so lifecycle is unified
 	// and external callers (e.g., SDK hosts) don't need to forward decisions.
@@ -101,6 +96,14 @@ func NewSequencerCoordinator(
 	}
 
 	return coordinator
+}
+
+func (sc *SequencerCoordinator) SubmitXTRequest(ctx context.Context, from string, request *pb.XTRequest) error {
+	panic("not implemented")
+}
+
+func (sc *SequencerCoordinator) Transport() transport.Transport {
+	panic("not implemented")
 }
 
 // Start starts the sequencer coordinator
@@ -156,205 +159,62 @@ func (sc *SequencerCoordinator) HandleMessage(ctx context.Context, from string, 
 	return sc.messageRouter.Route(ctx, from, msg)
 }
 
-func (sc *SequencerCoordinator) handleStartSlot(startSlot *pb.StartSlot) error {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	sc.log.Info().
-		Uint64("slot", startSlot.Slot).
-		Uint64("superblock_number", startSlot.NextSuperblockNumber).
-		Int("l2_requests", len(startSlot.L2BlocksRequest)).
-		Str("chain_id", fmt.Sprintf("%x", sc.chainID)).
-		Msg("Received StartSlot")
-
-	// StartSlot messages should always be processed regardless of current state
-	// This handles SP crashes/restarts where slot numbers may reset or rollback
-	prevSlot := atomic.LoadUint64(&sc.currentSlot)
-	if prevSlot > 0 && prevSlot > startSlot.Slot {
-		sc.log.Info().
-			Uint64("current_slot", prevSlot).
-			Uint64("new_slot", startSlot.Slot).
-			Msg("Processing StartSlot with lower slot number - likely SP restart/rollback")
-	}
-
-	// Find our L2BlockRequest
-	var ourRequest *pb.L2BlockRequest
-	for _, req := range startSlot.L2BlocksRequest {
-		if bytes.Equal(req.ChainId, sc.chainID) {
-			ourRequest = req
-			break
-		}
-	}
-
-	atomic.StoreUint64(&sc.currentSlot, startSlot.Slot)
-
-	if ourRequest == nil {
-		// Collect SP-provided chain IDs for diagnostics
-		spChains := make([]string, 0, len(startSlot.L2BlocksRequest))
-		for _, r := range startSlot.L2BlocksRequest {
-			spChains = append(spChains, fmt.Sprintf("%x", r.ChainId))
-		}
-
-		sc.log.Info().
-			Uint64("slot", startSlot.Slot).
-			Str("our_chain_id", fmt.Sprintf("%x", sc.chainID)).
-			Strs("sp_chain_ids", spChains).
-			Msg("Not participating in this slot (no matching ChainID)")
-		return nil
-	}
-
-	sc.log.Info().
-		Uint64("block_number", ourRequest.BlockNumber).
-		Str("parent_hash", fmt.Sprintf("%x", ourRequest.ParentHash)).
-		Msg("Participating in slot - starting block building")
-
-	sc.currentRequest = ourRequest
-
-	// Start block builder
-	if err := sc.blockBuilder.StartSlot(startSlot.Slot, ourRequest); err != nil {
-		return fmt.Errorf("failed to start block builder: %w", err)
-	}
-
-	// Reset SCP per-slot tracking
-	sc.scpIntegration.ResetForSlot(startSlot.Slot)
-
-	// StartSlot messages should be processed regardless of the current state to handle
-	// publisher crashes and restarts. Reset to Waiting first if needed, then proceed to Building-Free.
-	curr := sc.stateMachine.GetCurrentState()
-	if curr != StateWaiting {
-		_ = sc.stateMachine.TransitionTo(StateWaiting, startSlot.Slot, "reset by StartSlot")
-	}
-	if err := sc.stateMachine.TransitionTo(StateBuildingFree, startSlot.Slot, "received StartSlot"); err != nil {
-		return err
-	}
-
-	// Notify miner about slot start for block building coordination
-	if sc.minerNotifier != nil {
-		if err := sc.minerNotifier.NotifySlotStart(startSlot); err != nil {
-			sc.log.Error().Err(err).Msg("Failed to notify miner of slot start")
-		}
-	}
-
-	return nil
-}
-
-// handleRollBackAndStartSlot processes rollback + slot restart instructions from SP
-func (sc *SequencerCoordinator) handleRollBackAndStartSlot(
-	from string,
-	rb *pb.RollBackAndStartSlot,
-) error {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	sc.log.Warn().
-		Str("from", from).
-		Uint64("slot", rb.CurrentSlot).
-		Uint64("superblock_number", rb.NextSuperblockNumber).
-		Int("l2_requests", len(rb.L2BlocksRequest)).
-		Msg("Handling RollBackAndStartSlot - resetting draft and state")
-
-	// Record the slot value so later SBCP messages see the right slot, even if we don't participate
-	atomic.StoreUint64(&sc.currentSlot, rb.CurrentSlot)
-
-	// Find our L2BlockRequest
-	var ourRequest *pb.L2BlockRequest
-	for _, req := range rb.L2BlocksRequest {
-		if bytes.Equal(req.ChainId, sc.chainID) {
-			ourRequest = req
-			break
-		}
-	}
-
-	if ourRequest == nil {
-		// Collect SP-provided chain IDs for diagnostics
-		spChains := make([]string, 0, len(rb.L2BlocksRequest))
-		for _, r := range rb.L2BlocksRequest {
-			spChains = append(spChains, fmt.Sprintf("%x", r.ChainId))
-		}
-
-		sc.log.Info().
-			Uint64("slot", rb.CurrentSlot).
-			Str("our_chain_id", fmt.Sprintf("%x", sc.chainID)).
-			Strs("sp_chain_ids", spChains).
-			Msg("Not participating in this rollback slot (no matching ChainID)")
-		return nil
-	}
-
-	sc.currentRequest = ourRequest
-
-	// Reset builder and start new draft from requested parent
-	sc.blockBuilder.Reset()
-	if err := sc.blockBuilder.StartSlot(rb.CurrentSlot, ourRequest); err != nil {
-		return fmt.Errorf("failed to start block builder on rollback: %w", err)
-	}
-
-	// Reset SCP per-slot tracking
-	sc.scpIntegration.ResetForSlot(rb.CurrentSlot)
-
-	// Transition to Building-Free regardless of previous state
-	if sc.stateMachine.GetCurrentState() != StateWaiting {
-		_ = sc.stateMachine.TransitionTo(StateWaiting, rb.CurrentSlot, "reset by RollBackAndStartSlot")
-	}
-	if err := sc.stateMachine.TransitionTo(StateBuildingFree,
-		rb.CurrentSlot,
-		"received RollBackAndStartSlot"); err != nil {
-		return err
-	}
-
-	// Notify miner about slot start for block building coordination (optional)
-	if sc.minerNotifier != nil {
-		// Synthesize a StartSlot-like structure for notifier
-		startSlot := &pb.StartSlot{
-			Slot:                 rb.CurrentSlot,
-			NextSuperblockNumber: rb.NextSuperblockNumber,
-			LastSuperblockHash:   rb.LastSuperblockHash,
-			L2BlocksRequest:      rb.L2BlocksRequest,
-		}
-		if err := sc.minerNotifier.NotifySlotStart(startSlot); err != nil {
-			sc.log.Error().Err(err).Msg("Failed to notify miner after rollback")
-		}
-	}
-
-	return nil
-}
-
-func (sc *SequencerCoordinator) handleStartSC(
+// handleStartPeriod processes StartPeriod from SP
+func (sc *SequencerCoordinator) handleStartPeriod(
 	ctx context.Context,
 	from string,
-	startSC *pb.StartSC) error {
+	rb *pb.StartPeriod,
+) error {
+	panic("not implemented")
+}
+
+// handleRollback processes rollback from SP
+func (sc *SequencerCoordinator) handleRollback(
+	ctx context.Context,
+	from string,
+	rb *pb.Rollback,
+) error {
+	panic("not implemented")
+}
+
+// handleStartInstance processes StartInstance from SP
+func (sc *SequencerCoordinator) handleStartInstance(
+	ctx context.Context,
+	from string,
+	startInstance *pb.StartInstance) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
-	if startSC.Slot != sc.currentSlot {
+	if startInstance.PeriodId != uint64(sc.periodID) {
 		sc.log.Warn().
-			Uint64("msg_slot", startSC.Slot).
-			Uint64("current_slot", sc.currentSlot).
-			Msg("StartSC for wrong slot")
+			Uint64("period_id", startInstance.PeriodId).
+			Uint64("current_period_id", uint64(sc.periodID)).
+			Msg("StartInstance for wrong period ID")
 		return nil
 	}
 
 	if sc.stateMachine.GetCurrentState() != StateBuildingFree {
 		// Queue for later processing once the current SCP instance completes
-		sc.pendingStartSCs = append(sc.pendingStartSCs, struct {
+		sc.pendingStartInstances = append(sc.pendingStartInstances, struct {
 			from  string
-			start *pb.StartSC
-		}{from: from, start: startSC})
+			start *pb.StartInstance
+		}{from: from, start: startInstance})
 		sc.log.Warn().
 			Str("state", sc.stateMachine.GetCurrentState().String()).
-			Int("queued", len(sc.pendingStartSCs)).
+			Int("queued", len(sc.pendingStartInstances)).
 			Msg("StartSC received while locked; queued for later")
 		return nil
 	}
 
 	// Enforce StartSC ordering: previous instance must be decided and sequence must be monotonic
 	if sc.scpIntegration.GetActiveCount() > 0 {
-		sc.pendingStartSCs = append(sc.pendingStartSCs, struct {
+		sc.pendingStartInstances = append(sc.pendingStartInstances, struct {
 			from  string
-			start *pb.StartSC
-		}{from: from, start: startSC})
+			start *pb.StartInstance
+		}{from: from, start: startInstance})
 		sc.log.Warn().
-			Uint64("sequence", startSC.XtSequenceNumber).
-			Int("queued", len(sc.pendingStartSCs)).
+			Uint64("sequence", startInstance.SequenceNumber).
+			Int("queued", len(sc.pendingStartInstances)).
 			Msg("StartSC queued: previous instance undecided")
 		return nil
 	}
@@ -363,44 +223,45 @@ func (sc *SequencerCoordinator) handleStartSC(
 	if lastSeq, ok := sc.scpIntegration.GetLastDecidedSequenceNumber(); ok {
 		requiredSeq = lastSeq + 1
 	}
-	if startSC.XtSequenceNumber != requiredSeq {
+	if startInstance.SequenceNumber != requiredSeq {
 		sc.log.Warn().
-			Uint64("got_seq", startSC.XtSequenceNumber).
+			Uint64("got_seq", startInstance.SequenceNumber).
 			Uint64("required_seq", requiredSeq).
-			Msg("StartSC ignored: non-monotonic sequence")
+			Msg("StartInstance ignored: non-monotonic sequence")
 		return nil
 	}
 
-	xtID := &pb.XtID{Hash: startSC.XtId}
-
 	sc.log.Info().
-		Str("xt_id", xtID.Hex()).
-		Uint64("sequence", startSC.XtSequenceNumber).
+		Str("instance_ID", string(startInstance.InstanceId)).
+		Uint64("sequence", startInstance.SequenceNumber).
 		Msg("Starting SCP for cross-chain transaction")
 
 	// Transition to Building-Locked
 	if err := sc.stateMachine.TransitionTo(
 		StateBuildingLocked,
-		startSC.Slot,
-		fmt.Sprintf("StartSC seq=%d", startSC.XtSequenceNumber),
+		startInstance.PeriodId,
+		fmt.Sprintf("StartSC seq=%d", startInstance.SequenceNumber),
 	); err != nil {
 		return err
 	}
 
 	// Handle SCP integration
-	if err := sc.scpIntegration.HandleStartSC(ctx, startSC); err != nil {
+	if err := sc.scpIntegration.HandleStartInstance(ctx, startInstance); err != nil {
 		return err
 	}
 
 	// Extract our transactions
-	myTxs := sc.extractMyTransactions(startSC.XtRequest)
+	myTxs := sc.extractMyTransactions(startInstance.XtRequest)
+
+	var instanceID compose.InstanceID
+	copy(instanceID[:], startInstance.InstanceId)
 
 	var voteResult = true
 
 	if sc.callbacks.SimulateAndVote != nil && len(myTxs) > 0 {
-		success, err := sc.callbacks.SimulateAndVote(ctx, startSC.XtRequest, xtID)
+		success, err := sc.callbacks.SimulateAndVote(ctx, startInstance.XtRequest, instanceID)
 		if err != nil {
-			sc.log.Error().Err(err).Str("xt_id", xtID.Hex()).Msg("Simulation failed")
+			sc.log.Error().Err(err).Str("instance_id", instanceID.String()).Msg("Simulation failed")
 			voteResult = false
 		} else {
 			voteResult = success
@@ -408,15 +269,15 @@ func (sc *SequencerCoordinator) handleStartSC(
 	} else if len(myTxs) > 0 {
 		// TODO: handle this case
 		sc.log.Warn().
-			Str("xt_id", xtID.Hex()).
+			Str("instance_id", instanceID.String()).
 			Msg("No simulation callback configured, voting true blindly")
 	}
 
 	// Send vote based on a simulation result
 	vote := &pb.Vote{
-		SenderChainId: sc.chainID,
-		XtId:          xtID,
-		Vote:          voteResult,
+		ChainId:    uint64(sc.chainID),
+		InstanceId: startInstance.InstanceId,
+		Vote:       voteResult,
 	}
 
 	msg := &pb.Message{
@@ -430,7 +291,7 @@ func (sc *SequencerCoordinator) handleStartSC(
 	}
 
 	sc.log.Info().
-		Str("xt_id", xtID.Hex()).
+		Str("instance_id", string(startInstance.InstanceId)).
 		Bool("vote", voteResult).
 		Msg("Sent vote to SP based on simulation")
 
@@ -441,175 +302,13 @@ func (sc *SequencerCoordinator) handleStartSC(
 func (sc *SequencerCoordinator) extractMyTransactions(xtReq *pb.XTRequest) [][]byte {
 	myTxs := make([][]byte, 0)
 
-	for _, txReq := range xtReq.Transactions {
-		if bytes.Equal(txReq.ChainId, sc.chainID) {
+	for _, txReq := range xtReq.TransactionRequests {
+		if compose.ChainID(txReq.ChainId) == sc.chainID {
 			myTxs = append(myTxs, txReq.Transaction...)
 		}
 	}
 
 	return myTxs
-}
-
-//nolint:unparam,gocyclo // in progress
-func (sc *SequencerCoordinator) handleRequestSeal(ctx context.Context, from string, requestSeal *pb.RequestSeal) error {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	if requestSeal.Slot < sc.currentSlot {
-		sc.log.Warn().
-			Uint64("msg_slot", requestSeal.Slot).
-			Uint64("current_slot", sc.currentSlot).
-			Msg("RequestSeal for old slot")
-		return nil
-	}
-
-	// If RequestSeal is for a newer slot, update our slot tracking
-	// This can happen if we missed StartSlot messages or during startup
-	if requestSeal.Slot > sc.currentSlot {
-		sc.log.Info().
-			Uint64("msg_slot", requestSeal.Slot).
-			Uint64("current_slot", sc.currentSlot).
-			Msg("Updating slot from RequestSeal message")
-		atomic.StoreUint64(&sc.currentSlot, requestSeal.Slot)
-	}
-
-	// If we are not participating in this slot (no current request/draft), ignore the seal politely
-	if sc.currentRequest == nil {
-		sc.log.Info().
-			Uint64("slot", requestSeal.Slot).
-			Int("included_xts", len(requestSeal.IncludedXts)).
-			Msg("Ignoring RequestSeal: not participating in this slot")
-		return nil
-	}
-
-	sc.log.Info().
-		Uint64("slot", requestSeal.Slot).
-		Int("included_xts", len(requestSeal.IncludedXts)).
-		Msg("Received RequestSeal - sealing block")
-
-	// Verify superset: includedxTs(draft.scpInstances) ⊆ RequestSeal.IncludedXts
-	// Build set from RequestSeal
-	includedSet := make(map[string]struct{}, len(requestSeal.IncludedXts))
-	for _, id := range requestSeal.IncludedXts {
-		includedSet[fmt.Sprintf("%x", id)] = struct{}{}
-	}
-	// Compare with locally decided-included XTs
-	for _, idHex := range sc.scpIntegration.GetIncludedXTsHex() {
-		if _, ok := includedSet[idHex]; !ok {
-			sc.log.Warn().
-				Str("missing_xt", idHex).
-				Msg("RequestSeal ignored: superset check failed")
-			return nil
-		}
-	}
-
-	// Handle any stuck SCP instances
-	activeContexts := sc.scpIntegration.GetActiveContexts()
-	for xtIDStr, scpCtx := range activeContexts {
-		if scpCtx.Decision == nil {
-			// Force decide based on inclusion
-			decision := false
-			for _, xtBytes := range requestSeal.IncludedXts {
-				if xtIDStr == fmt.Sprintf("%x", xtBytes) {
-					decision = true
-					break
-				}
-			}
-
-			sc.log.Info().
-				Str("xt_id", xtIDStr).
-				Bool("decision", decision).
-				Msg("Force deciding stuck SCP instance")
-
-			if err := sc.scpIntegration.HandleDecision(scpCtx.XtID, decision); err != nil {
-				sc.log.Error().Err(err).Str("xt_id", xtIDStr).Msg("Failed to force decide")
-			}
-		}
-	}
-
-	// Clear queued StartSC messages: RequestSeal marks the end of the SCP phase for this slot.
-	// Messages that were queued but not yet processed arrived too late (after the seal cutover
-	// time) to be included in this slot. The publisher tracks attempted transactions and will
-	// re-queue them for the next slot if this slot fails. The sequencer should not carry over
-	// queued messages across slot boundaries.
-	if len(sc.pendingStartSCs) > 0 {
-		sc.log.Info().
-			Int("dropped_count", len(sc.pendingStartSCs)).
-			Uint64("slot", requestSeal.Slot).
-			Msg("Clearing queued StartSC messages at RequestSeal (too late for this slot)")
-		sc.pendingStartSCs = nil
-	}
-
-	// Notify miner to seal current block
-	if sc.minerNotifier != nil {
-		if err := sc.minerNotifier.NotifyRequestSeal(ctx, requestSeal); err != nil {
-			sc.log.Error().Err(err).Msg("Failed to notify miner of request seal")
-		}
-	}
-
-	// Transition to Submission if not already there; real block sealing/submission
-	// will be handled by the miner and EthAPIBackend once the block is actually built.
-	if sc.stateMachine.GetCurrentState() != StateSubmission {
-		if err := sc.stateMachine.TransitionTo(
-			StateSubmission,
-			requestSeal.Slot,
-			"received RequestSeal",
-		); err != nil {
-			return err
-		}
-	} else {
-		sc.log.Debug().
-			Uint64("slot", requestSeal.Slot).
-			Msg("RequestSeal received while already in Submission; idempotent no-op")
-	}
-	return nil
-}
-
-// sealAndSubmitBlock seals the current block and submits to SP
-//
-//nolint:unused // in progress
-func (sc *SequencerCoordinator) sealAndSubmitBlock(ctx context.Context, includedXTs [][]byte) error {
-	// Build L2 block
-	l2Block, err := sc.blockBuilder.SealBlock(includedXTs)
-	if err != nil {
-		return fmt.Errorf("failed to seal block: %w", err)
-	}
-
-	sc.log.Info().
-		Uint64("slot", l2Block.Slot).
-		Uint64("block_number", l2Block.BlockNumber).
-		Str("block_hash", fmt.Sprintf("%x", l2Block.BlockHash)).
-		Int("included_xts", len(l2Block.IncludedXts)).
-		Msg("Submitting L2 block to SP")
-
-	// Submit to SP
-	msg := &pb.Message{
-		SenderId: fmt.Sprintf("seq-%x", sc.chainID),
-		Payload:  &pb.Message_L2Block{L2Block: l2Block},
-	}
-
-	if err := sc.transport.Send(ctx, msg); err != nil {
-		sc.log.Error().Err(err).Msg("Failed to submit L2 block")
-		return err
-	}
-
-	// Transition back to Waiting
-	if err := sc.stateMachine.TransitionTo(
-		StateWaiting,
-		l2Block.Slot,
-		"L2 block submitted",
-	); err != nil {
-		return err
-	}
-
-	// Reset block builder for next slot
-	sc.blockBuilder.Reset()
-
-	sc.log.Info().
-		Uint64("slot", l2Block.Slot).
-		Msg("L2 block submitted successfully")
-
-	return nil
 }
 
 // onStateChange handles actions on state transitions
@@ -648,8 +347,8 @@ func (sc *SequencerCoordinator) Consensus() consensus.Coordinator {
 	return sc.consensusCoord
 }
 
-func (sc *SequencerCoordinator) GetCurrentSlot() uint64 {
-	return atomic.LoadUint64(&sc.currentSlot)
+func (sc *SequencerCoordinator) GetCurrentPeriod() compose.PeriodID {
+	return compose.PeriodID(atomic.LoadUint64((*uint64)(&sc.periodID)))
 }
 
 func (sc *SequencerCoordinator) GetState() State {
@@ -663,7 +362,7 @@ func (sc *SequencerCoordinator) GetStats() map[string]interface{} {
 	stats := map[string]interface{}{
 		"running":       sc.running,
 		"chain_id":      fmt.Sprintf("%x", sc.chainID),
-		"current_slot":  atomic.LoadUint64(&sc.currentSlot),
+		"current_slot":  atomic.LoadUint64((*uint64)(&sc.periodID)),
 		"current_state": sc.stateMachine.GetCurrentState().String(),
 		"transitions":   len(sc.stateMachine.GetTransitions()),
 	}
@@ -724,36 +423,6 @@ func (sc *SequencerCoordinator) OnBlockBuildingStart(ctx context.Context, slot u
 	return nil
 }
 
-// OnBlockBuildingComplete is called when block building completes
-func (sc *SequencerCoordinator) OnBlockBuildingComplete(ctx context.Context, block *pb.L2Block, success bool) error {
-	if success && block != nil {
-		sc.log.Info().
-			Uint64("slot", block.Slot).
-			Uint64("block_number", block.BlockNumber).
-			Str("block_hash", fmt.Sprintf("%x", block.BlockHash)).
-			Msg("Block building completed successfully")
-
-		// TODO: we should call Consensus().OnL2BlockCommitted here
-
-		// Transition back to Waiting after successful sealing
-		if sc.stateMachine.GetCurrentState() == StateSubmission {
-			if err := sc.stateMachine.TransitionTo(StateWaiting, block.Slot, "L2 block submitted"); err != nil {
-				sc.log.Error().Err(err).Msg("Failed to transition to Waiting after block submission")
-			}
-		}
-
-		// Reset block builder for the next slot
-		if sc.blockBuilder != nil {
-			sc.blockBuilder.Reset()
-		}
-	} else {
-		sc.log.Warn().
-			Bool("success", success).
-			Msg("Block building completed with issues")
-	}
-	return nil
-}
-
 // handleConsensusDecision processes the final decision from the consensus layer for a cross-chain
 // transaction. It updates the block builder state and manages transaction lifecycle based on whether
 // the transaction was committed (decision=true) or aborted (decision=false).
@@ -765,21 +434,23 @@ func (sc *SequencerCoordinator) OnBlockBuildingComplete(ctx context.Context, blo
 //
 // After processing the decision, if the coordinator has returned to Building-Free state and there
 // are queued cross-chain transactions waiting, the next one is automatically started.
-func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, xtID *pb.XtID, decision bool) error {
+func (sc *SequencerCoordinator) handleConsensusDecision(
+	ctx context.Context, instanceID compose.InstanceID, decision bool,
+) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
 	sc.log.Info().
-		Str("xt_id", xtID.Hex()).
+		Str("instance_id", instanceID.String()).
 		Bool("decision", decision).
 		Msg("Processing consensus decision at coordinator")
 
 	// HandleDecision is idempotent - if RequestSeal already processed this, it's a no-op
-	if err := sc.scpIntegration.HandleDecision(xtID, decision); err != nil {
+	if err := sc.scpIntegration.HandleDecision(instanceID, decision); err != nil {
 		// If context not found, it means RequestSeal already handled this decision
 		sc.log.Debug().
 			Err(err).
-			Str("xt_id", xtID.Hex()).
+			Str("instance_id", instanceID.String()).
 			Msg("SCP context already processed (likely by RequestSeal)")
 		return nil
 	}
@@ -787,36 +458,36 @@ func (sc *SequencerCoordinator) handleConsensusDecision(ctx context.Context, xtI
 	// For aborted transactions, immediately invoke cleanup callback to remove from pending pool.
 	// This ensures the transaction cannot be committed in blocks built before RequestSeal arrives.
 	if !decision && sc.callbacks.CleanupAbortedTransaction != nil {
-		if err := sc.callbacks.CleanupAbortedTransaction(ctx, xtID); err != nil {
-			sc.log.Warn().Err(err).Str("xt_id", xtID.Hex()).Msg("Cleanup callback failed for aborted transaction")
+		if err := sc.callbacks.CleanupAbortedTransaction(ctx, instanceID); err != nil {
+			sc.log.Warn().Err(err).Str("instance_id", instanceID.String()).Msg("Cleanup callback failed for aborted transaction")
 		}
 	}
 
 	// If we returned to Building-Free and have queued StartSCs, process the next one
-	if sc.stateMachine.GetCurrentState() == StateBuildingFree && len(sc.pendingStartSCs) > 0 {
-		next := sc.pendingStartSCs[0]
-		sc.pendingStartSCs = sc.pendingStartSCs[1:]
+	if sc.stateMachine.GetCurrentState() == StateBuildingFree && len(sc.pendingStartInstances) > 0 {
+		next := sc.pendingStartInstances[0]
+		sc.pendingStartInstances = sc.pendingStartInstances[1:]
 		sc.log.Info().
-			Int("remaining", len(sc.pendingStartSCs)).
-			Uint64("slot", sc.currentSlot).
+			Int("remaining", len(sc.pendingStartInstances)).
+			Uint64("period_id", uint64(sc.periodID)).
 			Msg("Starting next queued StartSC after decision")
 		// Drop lock while invoking handler to avoid deadlocks and allow nested transitions
 		sc.mu.Unlock()
 		defer sc.mu.Lock()
-		return sc.handleStartSC(ctx, next.from, next.start)
+		return sc.handleStartInstance(ctx, next.from, next.start)
 	}
 
 	return nil
 }
 
 // PrepareTransactionsForBlock prepares transactions for block inclusion
-func (sc *SequencerCoordinator) PrepareTransactionsForBlock(ctx context.Context, slot uint64) error {
-	if slot != sc.currentSlot {
-		return fmt.Errorf("preparing for wrong slot: current=%d, requested=%d", sc.currentSlot, slot)
+func (sc *SequencerCoordinator) PrepareTransactionsForBlock(ctx context.Context, periodID compose.PeriodID) error {
+	if periodID != sc.periodID {
+		return fmt.Errorf("preparing for wrong period: current=%d, requested=%d", sc.periodID, periodID)
 	}
 
 	sc.log.Debug().
-		Uint64("slot", slot).
+		Uint64("period_id", uint64(periodID)).
 		Msg("Preparing transactions for block")
 
 	// Prepare any coordination transactions through block builder
@@ -862,14 +533,4 @@ func (sc *SequencerCoordinator) SetMinerNotifier(notifier MinerNotifier) {
 
 	sc.minerNotifier = notifier
 	sc.log.Debug().Msg("Miner notifier set")
-}
-
-// WrapCoordinator wraps an existing consensus coordinator with SBCP functionality
-func WrapCoordinator(
-	baseConsensus consensus.Coordinator,
-	config Config,
-	transport transport.Client,
-	log zerolog.Logger,
-) (Coordinator, error) {
-	return NewSequencerCoordinator(baseConsensus, config, transport, log), nil
 }

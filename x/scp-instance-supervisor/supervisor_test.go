@@ -63,7 +63,9 @@ type stubSCPFactory struct {
 	created []*stubSCPInstance
 }
 
-func (f *stubSCPFactory) New(instance compose.Instance, _ scp.PublisherNetwork, _ zerolog.Logger) (scp.PublisherInstance, error) {
+func (f *stubSCPFactory) New(
+	instance compose.Instance, _ scp.PublisherNetwork, _ zerolog.Logger,
+) (scp.PublisherInstance, error) {
 	inst := newStubSCPInstance(instance)
 	f.mu.Lock()
 	f.created = append(f.created, inst)

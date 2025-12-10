@@ -4,7 +4,8 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Role represents the coordinator role
@@ -61,26 +62,26 @@ func (s DecisionState) String() string {
 // TwoPCState holds state for a single cross-chain transaction
 type TwoPCState struct {
 	mu                  sync.RWMutex
-	XTID                *pb.XtID
+	InstanceID          compose.InstanceID
 	Decision            DecisionState
-	ParticipatingChains map[string]struct{}
-	Votes               map[string]bool
+	ParticipatingChains map[compose.ChainID]struct{}
+	Votes               map[compose.ChainID]bool
 	Timer               *time.Timer
 	StartTime           time.Time
 	XTRequest           *pb.XTRequest
-	CIRCMessages        map[string][]*pb.CIRCMessage
+	MailboxMessages     map[compose.ChainID][]*pb.MailboxMessage
 }
 
 // NewTwoPCState creates a new 2PC state
-func NewTwoPCState(xtID *pb.XtID, req *pb.XTRequest, chains map[string]struct{}) *TwoPCState {
+func NewTwoPCState(instanceID compose.InstanceID, req *pb.XTRequest, chains map[compose.ChainID]struct{}) *TwoPCState {
 	return &TwoPCState{
-		XTID:                xtID,
+		InstanceID:          instanceID,
 		Decision:            StateUndecided,
 		ParticipatingChains: chains,
-		Votes:               make(map[string]bool),
+		Votes:               make(map[compose.ChainID]bool),
 		StartTime:           time.Now(),
 		XTRequest:           req,
-		CIRCMessages:        make(map[string][]*pb.CIRCMessage),
+		MailboxMessages:     make(map[compose.ChainID][]*pb.MailboxMessage),
 	}
 }
 
@@ -127,7 +128,7 @@ func (t *TwoPCState) GetDecision() DecisionState {
 }
 
 // AddVote atomically adds a vote if not already present
-func (t *TwoPCState) AddVote(chainID string, vote bool) bool {
+func (t *TwoPCState) AddVote(chainID compose.ChainID, vote bool) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -140,11 +141,11 @@ func (t *TwoPCState) AddVote(chainID string, vote bool) bool {
 }
 
 // GetVotes returns a copy of current votes (thread-safe)
-func (t *TwoPCState) GetVotes() map[string]bool {
+func (t *TwoPCState) GetVotes() map[compose.ChainID]bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	votes := make(map[string]bool, len(t.Votes))
+	votes := make(map[compose.ChainID]bool, len(t.Votes))
 	for k, v := range t.Votes {
 		votes[k] = v
 	}

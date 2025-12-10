@@ -124,7 +124,7 @@ func (s *stubPeriodRunner) Stop(ctx context.Context) error {
 	return s.stopErr
 }
 
-func (s *stubPeriodRunner) PeriodForTime(time.Time) (uint64, time.Time) {
+func (s *stubPeriodRunner) PeriodForTime(time.Time) (compose.PeriodID, time.Time) {
 	return 0, time.Time{}
 }
 
@@ -157,7 +157,7 @@ func (s *stubController) NotifyInstanceDecided(ctx context.Context, instance com
 	return s.notifyErr
 }
 
-func (s *stubController) AdvanceSettledState(compose.SuperblockNumber, compose.SuperBlockHash) error {
+func (s *stubController) AdvanceSettledState(compose.SuperblockNumber, compose.SuperblockHash) error {
 	return nil
 }
 

@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
 
@@ -49,21 +50,28 @@ func (h *protocolHandler) Handle(ctx context.Context, from string, msg *pb.Messa
 	switch msgType {
 	case MsgXTRequest:
 		xtReq := msg.GetXtRequest()
-		return h.coordinator.StartTransaction(ctx, from, xtReq)
+		// TODO: XTRequest doesn't contain instance ID - this code path may be deprecated
+		// Instance ID should come from StartInstance message in SBCP flow
+		var instanceID compose.InstanceID
+		return h.coordinator.StartTransaction(ctx, instanceID, from, xtReq)
 
 	case MsgVote:
 		vote := msg.GetVote()
-		chainID := ChainKeyBytes(vote.SenderChainId)
-		_, err := h.coordinator.RecordVote(vote.XtId, chainID, vote.Vote)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], vote.InstanceId)
+		chainID := compose.ChainID(vote.ChainId)
+		_, err := h.coordinator.RecordVote(instanceID, chainID, vote.Vote)
 		return err
 
 	case MsgDecided:
 		decided := msg.GetDecided()
-		return h.coordinator.RecordDecision(decided.XtId, decided.Decision)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], decided.InstanceId)
+		return h.coordinator.RecordDecision(instanceID, decided.Decision)
 
-	case MsgCIRCMessage:
-		circMsg := msg.GetCircMessage()
-		return h.coordinator.RecordCIRCMessage(circMsg)
+	case MsgMailboxMessage:
+		circMsg := msg.GetMailboxMessage()
+		return h.coordinator.RecordMailboxMessage(circMsg)
 
 	case MsgUnknown:
 		return fmt.Errorf("unhandled SCP message type %s from %s", msgType.String(), from)

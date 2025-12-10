@@ -10,7 +10,6 @@ import (
 
 	"strings"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/superblock/l1/contracts"
 	"github.com/compose-network/publisher/x/superblock/store"
 	"github.com/ethereum/go-ethereum"
@@ -125,7 +124,6 @@ func TestPublishSuperblock_SignsAndSends(t *testing.T) {
 		Slot:       1,
 		ParentHash: common.HexToHash(strings.Repeat("00", 32)),
 		Timestamp:  time.Now(),
-		L2Blocks:   []*pb.L2Block{},
 	}
 	tx, err := pub.PublishSuperblockWithProof(ctx, sb, []byte{0x01, 0x02, 0x03}, nil)
 	if err != nil {

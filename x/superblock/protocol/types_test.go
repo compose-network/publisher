@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 func TestMessageType_String(t *testing.T) {
@@ -18,29 +18,19 @@ func TestMessageType_String(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "StartSlot message type",
-			msgType:  MsgStartSlot,
-			expected: "StartSlot",
+			name:     "StartPeriod message type",
+			msgType:  MsgStartPeriod,
+			expected: "StartPeriod",
 		},
 		{
-			name:     "RequestSeal message type",
-			msgType:  MsgRequestSeal,
-			expected: "RequestSeal",
+			name:     "StartInstance message type",
+			msgType:  MsgStartInstance,
+			expected: "StartInstance",
 		},
 		{
-			name:     "L2Block message type",
-			msgType:  MsgL2Block,
-			expected: "L2Block",
-		},
-		{
-			name:     "StartSC message type",
-			msgType:  MsgStartSC,
-			expected: "StartSC",
-		},
-		{
-			name:     "RollBackAndStartSlot message type",
-			msgType:  MsgRollBackAndStartSlot,
-			expected: "RollBackAndStartSlot",
+			name:     "Rollback message type",
+			msgType:  MsgRollback,
+			expected: "Rollback",
 		},
 		{
 			name:     "unknown message type",
@@ -69,27 +59,17 @@ func TestMessageType_IsValid(t *testing.T) {
 	}{
 		{
 			name:    "StartSlot is valid",
-			msgType: MsgStartSlot,
+			msgType: MsgStartPeriod,
 			valid:   true,
 		},
 		{
-			name:    "RequestSeal is valid",
-			msgType: MsgRequestSeal,
+			name:    "StartInstance is valid",
+			msgType: MsgStartInstance,
 			valid:   true,
 		},
 		{
-			name:    "L2Block is valid",
-			msgType: MsgL2Block,
-			valid:   true,
-		},
-		{
-			name:    "StartSC is valid",
-			msgType: MsgStartSC,
-			valid:   true,
-		},
-		{
-			name:    "RollBackAndStartSlot is valid",
-			msgType: MsgRollBackAndStartSlot,
+			name:    "Rollback is valid",
+			msgType: MsgRollback,
 			valid:   true,
 		},
 		{
@@ -126,96 +106,50 @@ func TestClassifyMessage(t *testing.T) {
 		{
 			name: "StartSlot message is correctly classified",
 			msg: &pb.Message{
-				Payload: &pb.Message_StartSlot{
-					StartSlot: &pb.StartSlot{
-						Slot:                 1,
-						NextSuperblockNumber: 1,
-						LastSuperblockHash:   []byte("hash"),
-						L2BlocksRequest: []*pb.L2BlockRequest{
-							{
-								ChainId:     []byte("chain1"),
-								BlockNumber: 1,
-								ParentHash:  []byte("parent"),
-							},
-						},
+				Payload: &pb.Message_StartPeriod{
+					StartPeriod: &pb.StartPeriod{
+						PeriodId:         1,
+						SuperblockNumber: 10,
 					},
 				},
 			},
-			expected: MsgStartSlot,
+			expected: MsgStartPeriod,
 			valid:    true,
 		},
 		{
-			name: "RequestSeal message is correctly classified",
+			name: "StartInstance message is correctly classified",
 			msg: &pb.Message{
-				Payload: &pb.Message_RequestSeal{
-					RequestSeal: &pb.RequestSeal{
-						Slot:        1,
-						IncludedXts: [][]byte{[]byte("xt1"), []byte("xt2")},
-					},
-				},
-			},
-			expected: MsgRequestSeal,
-			valid:    true,
-		},
-		{
-			name: "L2Block message is correctly classified",
-			msg: &pb.Message{
-				Payload: &pb.Message_L2Block{
-					L2Block: &pb.L2Block{
-						Slot:            1,
-						ChainId:         []byte("chain1"),
-						BlockNumber:     1,
-						BlockHash:       []byte("hash"),
-						ParentBlockHash: []byte("parent"),
-						IncludedXts:     [][]byte{[]byte("xt1")},
-						Block:           []byte("blockdata"),
-					},
-				},
-			},
-			expected: MsgL2Block,
-			valid:    true,
-		},
-		{
-			name: "StartSC message is correctly classified",
-			msg: &pb.Message{
-				Payload: &pb.Message_StartSc{
-					StartSc: &pb.StartSC{
-						Slot:             1,
-						XtSequenceNumber: 1,
-						XtId:             []byte("xtid"),
+				Payload: &pb.Message_StartInstance{
+					StartInstance: &pb.StartInstance{
+						InstanceId:     []byte("xtid"),
+						PeriodId:       1,
+						SequenceNumber: 10,
 						XtRequest: &pb.XTRequest{
-							Transactions: []*pb.TransactionRequest{
+							TransactionRequests: []*pb.TransactionRequest{
 								{
-									ChainId:     []byte("chain1"),
 									Transaction: [][]byte{[]byte("tx1")},
+									ChainId:     10,
 								},
 							},
 						},
 					},
 				},
 			},
-			expected: MsgStartSC,
+			expected: MsgStartInstance,
 			valid:    true,
 		},
 		{
-			name: "RollBackAndStartSlot message is correctly classified",
+			name: "Rollback message is correctly classified",
 			msg: &pb.Message{
-				Payload: &pb.Message_RollBackAndStartSlot{
-					RollBackAndStartSlot: &pb.RollBackAndStartSlot{
-						CurrentSlot:          1,
-						NextSuperblockNumber: 1,
-						LastSuperblockHash:   []byte("hash"),
-						L2BlocksRequest: []*pb.L2BlockRequest{
-							{
-								ChainId:     []byte("chain1"),
-								BlockNumber: 1,
-								ParentHash:  []byte("parent"),
-							},
-						},
+				Payload: &pb.Message_Rollback{
+					Rollback: &pb.Rollback{
+						PeriodId:                      1,
+						LastFinalizedSuperblockNumber: 10,
+						LastFinalizedSuperblockHash:   []byte("hash"),
 					},
 				},
 			},
-			expected: MsgRollBackAndStartSlot,
+			expected: MsgRollback,
 			valid:    true,
 		},
 		{
@@ -223,9 +157,9 @@ func TestClassifyMessage(t *testing.T) {
 			msg: &pb.Message{
 				Payload: &pb.Message_Vote{
 					Vote: &pb.Vote{
-						SenderChainId: []byte("chain1"),
-						XtId:          &pb.XtID{Hash: []byte("xtid")},
-						Vote:          true,
+						InstanceId: []byte("instance"),
+						ChainId:    10,
+						Vote:       true,
 					},
 				},
 			},
@@ -237,9 +171,9 @@ func TestClassifyMessage(t *testing.T) {
 			msg: &pb.Message{
 				Payload: &pb.Message_XtRequest{
 					XtRequest: &pb.XTRequest{
-						Transactions: []*pb.TransactionRequest{
+						TransactionRequests: []*pb.TransactionRequest{
 							{
-								ChainId:     []byte("chain1"),
+								ChainId:     10,
 								Transaction: [][]byte{[]byte("tx1")},
 							},
 						},
@@ -288,59 +222,34 @@ func TestIsSBCPMessage(t *testing.T) {
 		isSBCP bool
 	}{
 		{
-			name: "StartSlot is SBCP message",
+			name: "StartPeriod is SBCP message",
 			msg: &pb.Message{
-				Payload: &pb.Message_StartSlot{
-					StartSlot: &pb.StartSlot{
-						Slot:                 1,
-						NextSuperblockNumber: 1,
-						L2BlocksRequest:      []*pb.L2BlockRequest{},
+				Payload: &pb.Message_StartPeriod{
+					StartPeriod: &pb.StartPeriod{},
+				},
+			},
+			isSBCP: true,
+		},
+		{
+			name: "StartInstance is SBCP message",
+			msg: &pb.Message{
+				Payload: &pb.Message_StartInstance{
+					StartInstance: &pb.StartInstance{
+						InstanceId:     []byte("xtid"),
+						PeriodId:       1,
+						SequenceNumber: 10,
+						XtRequest:      &pb.XTRequest{},
 					},
 				},
 			},
 			isSBCP: true,
 		},
 		{
-			name: "RequestSeal is SBCP message",
+			name: "Rollback is SBCP message",
 			msg: &pb.Message{
-				Payload: &pb.Message_RequestSeal{
-					RequestSeal: &pb.RequestSeal{
-						Slot: 1,
-					},
-				},
-			},
-			isSBCP: true,
-		},
-		{
-			name: "L2Block is SBCP message",
-			msg: &pb.Message{
-				Payload: &pb.Message_L2Block{
-					L2Block: &pb.L2Block{
-						Slot:    1,
-						ChainId: []byte("chain1"),
-					},
-				},
-			},
-			isSBCP: true,
-		},
-		{
-			name: "StartSC is SBCP message",
-			msg: &pb.Message{
-				Payload: &pb.Message_StartSc{
-					StartSc: &pb.StartSC{
-						Slot: 1,
-						XtId: []byte("xtid"),
-					},
-				},
-			},
-			isSBCP: true,
-		},
-		{
-			name: "RollBackAndStartSlot is SBCP message",
-			msg: &pb.Message{
-				Payload: &pb.Message_RollBackAndStartSlot{
-					RollBackAndStartSlot: &pb.RollBackAndStartSlot{
-						CurrentSlot: 1,
+				Payload: &pb.Message_Rollback{
+					Rollback: &pb.Rollback{
+						PeriodId: 10,
 					},
 				},
 			},
@@ -374,10 +283,10 @@ func TestIsSBCPMessage(t *testing.T) {
 			isSBCP: false,
 		},
 		{
-			name: "CIRCMessage is not SBCP message",
+			name: "MailboxMessage is not SBCP message",
 			msg: &pb.Message{
-				Payload: &pb.Message_CircMessage{
-					CircMessage: &pb.CIRCMessage{},
+				Payload: &pb.Message_MailboxMessage{
+					MailboxMessage: &pb.MailboxMessage{},
 				},
 			},
 			isSBCP: false,
@@ -413,11 +322,9 @@ func TestMessageType_Completeness(t *testing.T) {
 		t.Parallel()
 
 		validTypes := []MessageType{
-			MsgStartSlot,
-			MsgRequestSeal,
-			MsgL2Block,
-			MsgStartSC,
-			MsgRollBackAndStartSlot,
+			MsgStartPeriod,
+			MsgStartInstance,
+			MsgRollback,
 		}
 
 		for _, msgType := range validTypes {
@@ -431,11 +338,9 @@ func TestMessageType_Completeness(t *testing.T) {
 		t.Parallel()
 
 		validTypes := []MessageType{
-			MsgStartSlot,
-			MsgRequestSeal,
-			MsgL2Block,
-			MsgStartSC,
-			MsgRollBackAndStartSlot,
+			MsgStartPeriod,
+			MsgStartInstance,
+			MsgRollback,
 		}
 
 		for _, msgType := range validTypes {

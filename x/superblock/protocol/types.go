@@ -3,29 +3,25 @@ package protocol
 import (
 	"fmt"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // MessageType represents SBCP protocol message types
 type MessageType int
 
 const (
-	_                       MessageType = iota
-	MsgStartSlot                        // SP starts slot
-	MsgRequestSeal                      // SP requests block seal
-	MsgL2Block                          // Sequencer submits block
-	MsgStartSC                          // SP starts a cross-chain transaction
-	MsgRollBackAndStartSlot             // SP requests rollback and restart slot
+	_                MessageType = iota
+	MsgStartInstance             // SP starts a cross-chain transaction
+	MsgStartPeriod               // SP starts a cross-chain transaction
+	MsgRollback                  // SP requests rollback and restart slot
 )
 
 // String returns a human-readable message type name
 func (t MessageType) String() string {
 	names := map[MessageType]string{
-		MsgStartSlot:            "StartSlot",
-		MsgRequestSeal:          "RequestSeal",
-		MsgL2Block:              "L2Block",
-		MsgStartSC:              "StartSC",
-		MsgRollBackAndStartSlot: "RollBackAndStartSlot",
+		MsgStartInstance: "StartInstance",
+		MsgStartPeriod:   "StartPeriod",
+		MsgRollback:      "Rollback",
 	}
 
 	if name, ok := names[t]; ok {
@@ -36,7 +32,7 @@ func (t MessageType) String() string {
 
 // IsValid returns true if a message type is valid
 func (t MessageType) IsValid() bool {
-	return t >= MsgStartSlot && t <= MsgRollBackAndStartSlot
+	return t >= MsgStartInstance && t <= MsgRollback
 }
 
 // ClassifyMessage returns SBCP message type from a protobuf message
@@ -46,16 +42,12 @@ func ClassifyMessage(msg *pb.Message) (MessageType, bool) {
 	}
 
 	switch msg.Payload.(type) {
-	case *pb.Message_StartSlot:
-		return MsgStartSlot, true
-	case *pb.Message_RequestSeal:
-		return MsgRequestSeal, true
-	case *pb.Message_L2Block:
-		return MsgL2Block, true
-	case *pb.Message_StartSc:
-		return MsgStartSC, true
-	case *pb.Message_RollBackAndStartSlot:
-		return MsgRollBackAndStartSlot, true
+	case *pb.Message_StartPeriod:
+		return MsgStartPeriod, true
+	case *pb.Message_StartInstance:
+		return MsgStartInstance, true
+	case *pb.Message_Rollback:
+		return MsgRollback, true
 	default:
 		return 0, false
 	}

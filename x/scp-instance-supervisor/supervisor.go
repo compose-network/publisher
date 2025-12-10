@@ -19,8 +19,9 @@ var ErrInstanceAlreadyActive = errors.New("instance-scpSupervisor: scp instance 
 // ErrInstanceNotFound indicates that an SCP instance was not found.
 var ErrInstanceNotFound = errors.New("instance-scpSupervisor: instance not found")
 
-// scpSupervisor implements SCPSupervisor, managing the lifecycle of multiple SCP instances (start, votes, timeout, and finalization).
-// Whenever an instance finalizes (or can't be properly started), the OnFinalize hook is invoked.
+// scpSupervisor implements SCPSupervisor, managing the lifecycle of multiple SCP instances
+// (start, votes, timeout, and finalization). Whenever an instance finalizes (or can't be
+// properly started), the OnFinalize hook is invoked.
 type scpSupervisor struct {
 	mu     sync.RWMutex
 	logger zerolog.Logger
@@ -77,7 +78,9 @@ func (s *scpSupervisor) SetOnFinalizeHook(hook OnFinalizeHook) {
 }
 
 // StartInstance creates and runs a new SCP instance
-func (s *scpSupervisor) StartInstance(ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance) error {
+func (s *scpSupervisor) StartInstance(
+	ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -89,7 +92,8 @@ func (s *scpSupervisor) StartInstance(ctx context.Context, queued *queue.QueuedX
 	}
 
 	// Create SCP runner
-	runner, err := s.factory(instance, s.messenger, s.logger.With().Str("component", "scp").Str("instance-id", key).Logger())
+	logger := s.logger.With().Str("component", "scp").Str("instance-id", key).Logger()
+	runner, err := s.factory(instance, s.messenger, logger)
 	if err != nil {
 		s.OnFinalize(instance)
 		return err
@@ -111,7 +115,11 @@ func (s *scpSupervisor) StartInstance(ctx context.Context, queued *queue.QueuedX
 	s.active[key] = entry
 	runner.Run()
 
-	s.logger.Info().Str("instance_id", key).Uint64("period_id", uint64(instance.PeriodID)).Uint64("sequence", uint64(instance.SequenceNumber)).Msg("SCP instance started")
+	s.logger.Info().
+		Str("instance_id", key).
+		Uint64("period_id", uint64(instance.PeriodID)).
+		Uint64("sequence", uint64(instance.SequenceNumber)).
+		Msg("SCP instance started")
 	return nil
 }
 
@@ -129,23 +137,22 @@ func (s *scpSupervisor) HandleVote(ctx context.Context, vote *pb.Vote) error {
 		return err
 	}
 
-	s.tryFinalize(ctx, entry, DecisionSourceMessage)
+	s.tryFinalize(entry, DecisionSourceMessage)
 	return nil
 }
 
 // handleTimeout is invoked after an instance timeout.
 // It calls the Timeout method and tries to finalize.
 func (s *scpSupervisor) handleTimeout(entry *ActiveInstance) {
-	ctx := context.Background()
 	if err := entry.Runner.Timeout(); err != nil {
 		s.logger.Error().Err(err).Str("instance_id", entry.Key).Msg("timeout callback failed")
 		return
 	}
-	s.tryFinalize(ctx, entry, DecisionSourceTimeout)
+	s.tryFinalize(entry, DecisionSourceTimeout)
 }
 
 // tryFinalize checks if the instance has finalized and, if so, performs cleanup and notification.
-func (s *scpSupervisor) tryFinalize(ctx context.Context, entry *ActiveInstance, source DecisionSource) {
+func (s *scpSupervisor) tryFinalize(entry *ActiveInstance, source DecisionSource) {
 	state := entry.Runner.DecisionState()
 	if state == compose.DecisionStatePending {
 		return
@@ -173,7 +180,11 @@ func (s *scpSupervisor) tryFinalize(ctx context.Context, entry *ActiveInstance, 
 			s.OnFinalize(entry.Instance)
 		}
 
-		s.logger.Info().Str("instance_id", entry.Key).Bool("accepted", decision.Accepted).Str("source", string(source)).Msg("SCP instance finalized")
+		s.logger.Info().
+			Str("instance_id", entry.Key).
+			Bool("accepted", decision.Accepted).
+			Str("source", string(source)).
+			Msg("SCP instance finalized")
 	})
 }
 
@@ -188,10 +199,6 @@ func (s *scpSupervisor) History() []CompletedInstance {
 
 // Stop stops the scpSupervisor, best-effort finalizing active instances.
 func (s *scpSupervisor) Stop(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	s.mu.RLock()
 	active := make([]*ActiveInstance, 0, len(s.active))
 	for _, entry := range s.active {
@@ -206,7 +213,7 @@ func (s *scpSupervisor) Stop(ctx context.Context) error {
 		if err := entry.Runner.Timeout(); err != nil {
 			s.logger.Error().Err(err).Str("instance_id", entry.Key).Msg("failed to trigger timeout during stop")
 		}
-		s.tryFinalize(ctx, entry, DecisionSourceTimeout)
+		s.tryFinalize(entry, DecisionSourceTimeout)
 	}
 
 	return nil

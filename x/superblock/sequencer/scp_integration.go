@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"sync"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
 	"github.com/compose-network/publisher/x/consensus"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 	"github.com/rs/zerolog"
 )
 
 type SCPContext struct {
-	XtID           *pb.XtID
+	InstanceID     compose.InstanceID
+	PeriodID       compose.PeriodID
 	Request        *pb.XTRequest
-	Slot           uint64
 	SequenceNumber uint64
 	MyTransactions [][]byte
 	Decision       *bool
@@ -21,15 +22,15 @@ type SCPContext struct {
 
 type SCPIntegration struct {
 	mu           sync.RWMutex
-	chainID      []byte
+	chainID      compose.ChainID
 	consensus    consensus.Coordinator
 	stateMachine *StateMachine
 	log          zerolog.Logger
 
-	activeContexts map[string]*SCPContext // xtID -> context
+	activeContexts map[compose.InstanceID]*SCPContext // instanceID -> context
 
 	// per-slot tracked state
-	includedXTs map[string][]byte // hex xtID -> raw xtID bytes for this slot (decided=true)
+	includedInstanceIDs map[compose.InstanceID]struct{} // instanceIDs for this slot (decided=true)
 	// last decided sequence number for monotonic StartSC enforcement
 	lastDecidedSeq    uint64
 	hasLastDecidedSeq bool
@@ -38,101 +39,99 @@ type SCPIntegration struct {
 }
 
 func NewSCPIntegration(
-	chainID []byte,
+	chainID compose.ChainID,
 	consensus consensus.Coordinator,
 	stateMachine *StateMachine,
 	log zerolog.Logger,
 	builder *BlockBuilder,
 ) *SCPIntegration {
 	return &SCPIntegration{
-		chainID:        chainID,
-		consensus:      consensus,
-		stateMachine:   stateMachine,
-		log:            log.With().Str("component", "scp_integration").Logger(),
-		activeContexts: make(map[string]*SCPContext),
-		includedXTs:    make(map[string][]byte),
-		blockBuilder:   builder,
+		chainID:             chainID,
+		consensus:           consensus,
+		stateMachine:        stateMachine,
+		log:                 log.With().Str("component", "scp_integration").Logger(),
+		activeContexts:      make(map[compose.InstanceID]*SCPContext),
+		includedInstanceIDs: make(map[compose.InstanceID]struct{}),
+		blockBuilder:        builder,
 	}
 }
 
-func (si *SCPIntegration) HandleStartSC(ctx context.Context, startSC *pb.StartSC) error {
-	xtID := &pb.XtID{Hash: startSC.XtId}
-	xtIDStr := xtID.Hex()
+func (si *SCPIntegration) HandleStartInstance(ctx context.Context, startInstance *pb.StartInstance) error {
+	var instanceID compose.InstanceID
+	copy(instanceID[:], startInstance.InstanceId)
 
 	si.mu.Lock()
 	defer si.mu.Unlock()
 
 	// Ensure local consensus state exists for this xT so CIRC
 	// messages can be recorded/consumed by the sequencer's coordinator
-	if err := si.consensus.StartTransaction(ctx, "sequencer", startSC.XtRequest); err != nil {
+	if err := si.consensus.StartTransaction(ctx, instanceID, "sequencer", startInstance.XtRequest); err != nil {
 		// Do not fail the flow – log and continue to avoid blocking SBCP.
 		// CIRC Record/Consume will clearly error if state is missing.
 		si.log.Error().
 			Err(err).
-			Str("xt_id", xtIDStr).
+			Str("instance_id", instanceID.String()).
 			Msg("Failed to start local 2PC state for StartSC")
 	} else {
 		si.log.Debug().
-			Str("xt_id", xtIDStr).
+			Str("instance_id", instanceID.String()).
 			Msg("Initialized local 2PC state for StartSC")
 	}
 
 	// Create SCP context
 	scpCtx := &SCPContext{
-		XtID:           xtID,
-		Request:        startSC.XtRequest,
-		Slot:           startSC.Slot,
-		SequenceNumber: startSC.XtSequenceNumber,
-		MyTransactions: si.extractMyTransactions(startSC.XtRequest),
+		InstanceID:     instanceID,
+		PeriodID:       compose.PeriodID(startInstance.PeriodId),
+		Request:        startInstance.XtRequest,
+		SequenceNumber: startInstance.SequenceNumber,
+		MyTransactions: si.extractMyTransactions(startInstance.XtRequest),
 	}
 
-	si.activeContexts[xtIDStr] = scpCtx
+	si.activeContexts[instanceID] = scpCtx
 
 	si.log.Info().
-		Str("xt_id", xtIDStr).
-		Uint64("sequence", startSC.XtSequenceNumber).
+		Str("instance_id", instanceID.String()).
+		Uint64("sequence", startInstance.SequenceNumber).
 		Int("my_txs", len(scpCtx.MyTransactions)).
 		Msg("Started SCP context")
 
 	return nil
 }
 
-func (si *SCPIntegration) HandleDecision(xtID *pb.XtID, decision bool) error {
+func (si *SCPIntegration) HandleDecision(instanceID compose.InstanceID, decision bool) error {
 	si.mu.Lock()
 	defer si.mu.Unlock()
 
-	xtIDStr := xtID.Hex()
-
-	scpCtx, exists := si.activeContexts[xtIDStr]
+	scpCtx, exists := si.activeContexts[instanceID]
 	if !exists {
-		return fmt.Errorf("no SCP context found for xt_id %s", xtIDStr)
+		return fmt.Errorf("no SCP context found for xt_id %s", instanceID.String())
 	}
 
 	scpCtx.Decision = &decision
 
 	si.log.Info().
-		Str("xt_id", xtIDStr).
+		Str("instance_id", instanceID.String()).
 		Bool("decision", decision).
 		Msg("SCP decision received")
 
 	// Update block builder with decision for our chain's txs
 	if si.blockBuilder != nil {
 		if decision {
-			_ = si.blockBuilder.AddSCPTransactions(xtIDStr, scpCtx.MyTransactions, true)
+			_ = si.blockBuilder.AddSCPTransactions(instanceID, scpCtx.MyTransactions, true)
 		} else {
-			_ = si.blockBuilder.AddSCPTransactions(xtIDStr, nil, false)
+			_ = si.blockBuilder.AddSCPTransactions(instanceID, nil, false)
 		}
 	}
 
-	// Track included XTs for superset check
+	// Track included InstanceIDs for superset check
 	if decision {
-		si.includedXTs[xtIDStr] = scpCtx.XtID.Hash
+		si.includedInstanceIDs[instanceID] = struct{}{}
 	} else {
-		delete(si.includedXTs, xtIDStr)
+		delete(si.includedInstanceIDs, instanceID)
 	}
 
 	// Clean up context after decision
-	delete(si.activeContexts, xtIDStr)
+	delete(si.activeContexts, instanceID)
 
 	// If we were the last SCP instance, transition back to Free
 	if len(si.activeContexts) == 0 && si.stateMachine.GetCurrentState() == StateBuildingLocked {
@@ -148,18 +147,9 @@ func (si *SCPIntegration) HandleDecision(xtID *pb.XtID, decision bool) error {
 func (si *SCPIntegration) extractMyTransactions(xtReq *pb.XTRequest) [][]byte {
 	myTxs := make([][]byte, 0)
 
-	for _, txReq := range xtReq.Transactions {
-		if len(txReq.ChainId) == len(si.chainID) {
-			match := true
-			for i := range si.chainID {
-				if txReq.ChainId[i] != si.chainID[i] {
-					match = false
-					break
-				}
-			}
-			if match {
-				myTxs = append(myTxs, txReq.Transaction...)
-			}
+	for _, txReq := range xtReq.TransactionRequests {
+		if compose.ChainID(txReq.ChainId) == si.chainID {
+			myTxs = append(myTxs, txReq.Transaction...)
 		}
 	}
 
@@ -172,7 +162,7 @@ func (si *SCPIntegration) GetActiveContexts() map[string]*SCPContext {
 
 	result := make(map[string]*SCPContext)
 	for k, v := range si.activeContexts {
-		result[k] = v
+		result[k.String()] = v
 	}
 
 	return result
@@ -183,18 +173,18 @@ func (si *SCPIntegration) ResetForSlot(slot uint64) {
 	si.mu.Lock()
 	defer si.mu.Unlock()
 	si.currentSlot = slot
-	si.activeContexts = make(map[string]*SCPContext)
-	si.includedXTs = make(map[string][]byte)
+	si.activeContexts = make(map[compose.InstanceID]*SCPContext)
+	si.includedInstanceIDs = make(map[compose.InstanceID]struct{})
 	si.hasLastDecidedSeq = false
 }
 
-// GetIncludedXTsHex returns hex-encoded xtIDs decided to include in current slot
-func (si *SCPIntegration) GetIncludedXTsHex() []string {
+// GetIncludedInstanceIDs returns hex-encoded xtIDs decided to include in current slot
+func (si *SCPIntegration) GetIncludedInstanceIDs() []compose.InstanceID {
 	si.mu.RLock()
 	defer si.mu.RUnlock()
-	out := make([]string, 0, len(si.includedXTs))
-	for k := range si.includedXTs {
-		out = append(out, k)
+	out := make([]compose.InstanceID, 0, len(si.includedInstanceIDs))
+	for instanceID := range si.includedInstanceIDs {
+		out = append(out, instanceID)
 	}
 	return out
 }

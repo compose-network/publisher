@@ -13,7 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Helper to create a test coordinator with no-op metrics
@@ -37,15 +38,15 @@ func newTestCoordinator(t *testing.T, role Role, timeout time.Duration) (*coordi
 
 // Mock callbacks for testing
 type mockCallbacks struct {
-	mu          sync.Mutex
-	wg          sync.WaitGroup
-	starts      []*pb.XTRequest
-	votes       map[string]bool
-	decisions   map[string]bool
-	blocks      []*types.Block
-	blockXtIDs  [][]*pb.XtID
-	voteErr     error
-	decisionErr error
+	mu               sync.Mutex
+	wg               sync.WaitGroup
+	starts           []*pb.XTRequest
+	votes            map[compose.InstanceID]bool
+	decisions        map[compose.InstanceID]bool
+	blocks           []*types.Block
+	blockInstanceIDs [][]compose.InstanceID
+	voteErr          error
+	decisionErr      error
 }
 
 func (m *mockCallbacks) Start(ctx context.Context, from string, xtReq *pb.XTRequest) error {
@@ -56,65 +57,81 @@ func (m *mockCallbacks) Start(ctx context.Context, from string, xtReq *pb.XTRequ
 	return nil
 }
 
-func (m *mockCallbacks) Vote(ctx context.Context, xtID *pb.XtID, vote bool) error {
+func (m *mockCallbacks) Vote(ctx context.Context, instanceID compose.InstanceID, vote bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.votes == nil {
-		m.votes = make(map[string]bool)
+		m.votes = make(map[compose.InstanceID]bool)
 	}
-	m.votes[xtID.Hex()] = vote
+	m.votes[instanceID] = vote
 	m.wg.Done()
 	return m.voteErr
 }
 
-func (m *mockCallbacks) Decision(ctx context.Context, xtID *pb.XtID, decision bool) error {
+func (m *mockCallbacks) Decision(ctx context.Context, instanceID compose.InstanceID, decision bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.decisions == nil {
-		m.decisions = make(map[string]bool)
+		m.decisions = make(map[compose.InstanceID]bool)
 	}
-	m.decisions[xtID.Hex()] = decision
+	m.decisions[instanceID] = decision
 	m.wg.Done()
 	return m.decisionErr
 }
 
-func (m *mockCallbacks) Block(ctx context.Context, block *types.Block, xtIDs []*pb.XtID) error {
+func (m *mockCallbacks) Block(ctx context.Context, block *types.Block, instanceIDs []compose.InstanceID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.blocks = append(m.blocks, block)
-	m.blockXtIDs = append(m.blockXtIDs, xtIDs)
+	m.blockInstanceIDs = append(m.blockInstanceIDs, instanceIDs)
 	m.wg.Done()
 	return nil
 }
 
-func (m *mockCallbacks) getDecision(xtID *pb.XtID) (bool, bool) {
+func (m *mockCallbacks) getDecision(instanceID compose.InstanceID) (bool, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	d, ok := m.decisions[xtID.Hex()]
+	d, ok := m.decisions[instanceID]
 	return d, ok
 }
 
-func (m *mockCallbacks) getVote(xtID *pb.XtID) (bool, bool) {
+func (m *mockCallbacks) getVote(xtID compose.InstanceID) (bool, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	v, ok := m.votes[xtID.Hex()]
+	v, ok := m.votes[xtID]
 	return v, ok
 }
 
-// Helper to create a sample XTRequest
-func newTestXTRequest(t *testing.T, chains []uint64) (*pb.XTRequest, *pb.XtID) {
+// testInstanceIDCounter is used to generate unique instance IDs for tests
+var testInstanceIDCounter uint64
+
+// Helper to create a sample XTRequest with unique instance ID
+func newTestXTRequest(chains []compose.ChainID) (*pb.XTRequest, compose.InstanceID) {
 	req := &pb.XTRequest{
-		Transactions: make([]*pb.TransactionRequest, len(chains)),
+		TransactionRequests: make([]*pb.TransactionRequest, len(chains)),
 	}
 	for i, chain := range chains {
-		req.Transactions[i] = &pb.TransactionRequest{
-			ChainId:     new(big.Int).SetUint64(chain).Bytes(),
+		req.TransactionRequests[i] = &pb.TransactionRequest{
+			ChainId:     uint64(chain),
 			Transaction: [][]byte{[]byte(fmt.Sprintf("tx for %d", chain))},
 		}
 	}
-	xtID, err := req.XtID()
-	require.NoError(t, err)
-	return req, xtID
+
+	// Generate unique instance ID for tests
+	// Note: coordinator currently uses zero-valued ID; tests use counter for uniqueness
+	testInstanceIDCounter++
+	var instanceID compose.InstanceID
+	// Put counter in first 8 bytes for uniqueness
+	instanceID[0] = byte(testInstanceIDCounter >> 56)
+	instanceID[1] = byte(testInstanceIDCounter >> 48)
+	instanceID[2] = byte(testInstanceIDCounter >> 40)
+	instanceID[3] = byte(testInstanceIDCounter >> 32)
+	instanceID[4] = byte(testInstanceIDCounter >> 24)
+	instanceID[5] = byte(testInstanceIDCounter >> 16)
+	instanceID[6] = byte(testInstanceIDCounter >> 8)
+	instanceID[7] = byte(testInstanceIDCounter)
+
+	return req, instanceID
 }
 
 func TestNewCoordinator(t *testing.T) {
@@ -143,9 +160,9 @@ func TestStartTransaction(t *testing.T) {
 	}()
 
 	t.Run("happy path", func(t *testing.T) {
-		xtReq, xtID := newTestXTRequest(t, []uint64{1, 2})
+		xtReq, xtID := newTestXTRequest([]compose.ChainID{1, 2})
 		callbacks.wg.Add(1)
-		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		require.NoError(t, err)
 
 		state, exists := coord.GetState(xtID)
@@ -160,21 +177,21 @@ func TestStartTransaction(t *testing.T) {
 	})
 
 	t.Run("already exists", func(t *testing.T) {
-		xtReq, _ := newTestXTRequest(t, []uint64{3})
+		xtReq, xtID := newTestXTRequest([]compose.ChainID{3})
 		callbacks.wg.Add(1)
-		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		callbacks.wg.Wait()
 		require.NoError(t, err)
 
-		// Try to start again
-		err = coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		// Try to start again with same ID
+		err = coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
 	})
 
 	t.Run("no chains", func(t *testing.T) {
-		xtReq, _ := newTestXTRequest(t, []uint64{})
-		err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+		xtReq, xtID := newTestXTRequest([]compose.ChainID{})
+		err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no participating chains")
 	})
@@ -190,14 +207,14 @@ func TestRecordVote(t *testing.T) {
 		}
 	}()
 
-	xtReq, xtID := newTestXTRequest(t, []uint64{1, 2})
+	xtReq, xtID := newTestXTRequest([]compose.ChainID{1, 2})
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
 	t.Run("valid vote", func(t *testing.T) {
-		decision, err := coord.RecordVote(xtID, ChainKeyUint64(1), true)
+		decision, err := coord.RecordVote(xtID, 1, true)
 		require.NoError(t, err)
 		assert.Equal(t, StateUndecided, decision)
 
@@ -206,20 +223,20 @@ func TestRecordVote(t *testing.T) {
 	})
 
 	t.Run("non-existent transaction", func(t *testing.T) {
-		_, nonExistentID := newTestXTRequest(t, []uint64{4})
-		_, err := coord.RecordVote(nonExistentID, ChainKeyUint64(4), true)
+		_, nonExistentID := newTestXTRequest([]compose.ChainID{4})
+		_, err := coord.RecordVote(nonExistentID, 4, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
 
 	t.Run("non-participant vote", func(t *testing.T) {
-		_, err := coord.RecordVote(xtID, ChainKeyUint64(3), true)
+		_, err := coord.RecordVote(xtID, 3, true)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not participating")
 	})
 
 	t.Run("duplicate vote", func(t *testing.T) {
-		_, err := coord.RecordVote(xtID, ChainKeyUint64(1), false) // already voted
+		_, err := coord.RecordVote(xtID, 1, false) // already voted
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already voted")
 	})
@@ -235,20 +252,20 @@ func TestTwoPC_Leader_Commit(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
-	xtReq, xtID := newTestXTRequest(t, chains)
+	chains := []compose.ChainID{1, 2}
+	xtReq, xtID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), xtID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
 	// All participants vote true
-	decision, err := coord.RecordVote(xtID, ChainKeyUint64(1), true)
+	decision, err := coord.RecordVote(xtID, 1, true)
 	require.NoError(t, err)
 	assert.Equal(t, StateUndecided, decision)
 
 	callbacks.wg.Add(1)
-	decision, err = coord.RecordVote(xtID, ChainKeyUint64(2), true)
+	decision, err = coord.RecordVote(xtID, 2, true)
 	require.NoError(t, err)
 	assert.Equal(t, StateCommit, decision)
 
@@ -274,34 +291,34 @@ func TestTwoPC_Leader_Abort(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
-	xtReq, xtID := newTestXTRequest(t, chains)
+	chains := []compose.ChainID{1, 2}
+	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
 	// One participant votes false
 	callbacks.wg.Add(1)
-	decision, err := coord.RecordVote(xtID, ChainKeyUint64(1), false)
+	decision, err := coord.RecordVote(instanceID, 1, false)
 	require.NoError(t, err)
 	assert.Equal(t, StateAbort, decision)
 
 	// Check final state
-	finalState, err := coord.GetTransactionState(xtID)
+	finalState, err := coord.GetTransactionState(instanceID)
 	require.NoError(t, err)
 	assert.Equal(t, StateAbort, finalState)
 
 	// Check callback
 	callbacks.wg.Wait()
-	dec, ok := callbacks.getDecision(xtID)
+	dec, ok := callbacks.getDecision(instanceID)
 	require.True(t, ok)
 	assert.False(t, dec)
 
 	// Further votes should be ignored
-	_, err = coord.RecordVote(xtID, ChainKeyUint64(2), true)
+	_, err = coord.RecordVote(instanceID, 2, true)
 	require.NoError(t, err) // returns current state, no error
-	state, _ := coord.GetState(xtID)
+	state, _ := coord.GetState(instanceID)
 	assert.Equal(t, 1, state.GetVoteCount()) // vote count should not increase
 }
 
@@ -315,27 +332,27 @@ func TestTwoPC_Leader_Timeout(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
-	xtReq, xtID := newTestXTRequest(t, chains)
+	chains := []compose.ChainID{1, 2}
+	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(2) // one for start, one for timeout decision
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	require.NoError(t, err)
 
 	// Only one participant votes
-	_, err = coord.RecordVote(xtID, ChainKeyUint64(1), true)
+	_, err = coord.RecordVote(instanceID, 1, true)
 	require.NoError(t, err)
 
 	// Wait for timeout
 	time.Sleep(60 * time.Millisecond)
 
 	// Check final state
-	finalState, err := coord.GetTransactionState(xtID)
+	finalState, err := coord.GetTransactionState(instanceID)
 	require.NoError(t, err)
 	assert.Equal(t, StateAbort, finalState)
 
 	// Check callback
 	callbacks.wg.Wait()
-	dec, ok := callbacks.getDecision(xtID)
+	dec, ok := callbacks.getDecision(instanceID)
 	require.True(t, ok)
 	assert.False(t, dec)
 }
@@ -350,52 +367,52 @@ func TestTwoPC_Follower(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
-	xtReq, xtID := newTestXTRequest(t, chains)
+	chains := []compose.ChainID{1, 2}
+	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
 	t.Run("vote does not decide", func(t *testing.T) {
 		// Follower votes, but should not decide
 		callbacks.wg.Add(1)
-		decision, err := coord.RecordVote(xtID, ChainKeyUint64(1), true)
+		decision, err := coord.RecordVote(instanceID, 1, true)
 		require.NoError(t, err)
 		assert.Equal(t, StateUndecided, decision)
 
 		// Check vote callback
 		callbacks.wg.Wait()
-		vote, ok := callbacks.getVote(xtID)
+		vote, ok := callbacks.getVote(instanceID)
 		require.True(t, ok)
 		assert.True(t, vote)
 	})
 
 	t.Run("record decision", func(t *testing.T) {
 		callbacks.wg.Add(1)
-		err := coord.RecordDecision(xtID, true)
+		err := coord.RecordDecision(instanceID, true)
 		require.NoError(t, err)
 
-		finalState, err := coord.GetTransactionState(xtID)
+		finalState, err := coord.GetTransactionState(instanceID)
 		require.NoError(t, err)
 		assert.Equal(t, StateCommit, finalState)
 
 		callbacks.wg.Wait()
-		dec, ok := callbacks.getDecision(xtID)
+		dec, ok := callbacks.getDecision(instanceID)
 		require.True(t, ok)
 		assert.True(t, dec)
 	})
 
 	t.Run("record decision for unknown tx", func(t *testing.T) {
-		_, unknownXtID := newTestXTRequest(t, []uint64{99})
+		_, unknownXtID := newTestXTRequest([]compose.ChainID{99})
 		err := coord.RecordDecision(unknownXtID, true)
 		require.NoError(t, err) // Should not error, just log
 	})
 
 	t.Run("record decision for decided tx", func(t *testing.T) {
-		err := coord.RecordDecision(xtID, false) // already decided
+		err := coord.RecordDecision(instanceID, false) // already decided
 		require.NoError(t, err)
-		finalState, _ := coord.GetTransactionState(xtID)
+		finalState, _ := coord.GetTransactionState(instanceID)
 		assert.Equal(t, StateCommit, finalState) // decision should not change
 	})
 }
@@ -410,59 +427,59 @@ func TestCIRCMessageHandling(t *testing.T) {
 		}
 	}()
 
-	chains := []uint64{1, 2}
-	xtReq, xtID := newTestXTRequest(t, chains)
+	chains := []compose.ChainID{1, 2}
+	xtReq, instanceID := newTestXTRequest(chains)
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "test-sequencer", xtReq)
+	err := coord.StartTransaction(t.Context(), instanceID, "test-sequencer", xtReq)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
 	callbacks.wg.Add(1)
-	_, err = coord.RecordVote(xtID, ChainKeyUint64(1), true)
+	_, err = coord.RecordVote(instanceID, 1, true)
 	require.NoError(t, err)
-	_, err = coord.RecordVote(xtID, ChainKeyUint64(2), true)
+	_, err = coord.RecordVote(instanceID, 2, true)
 	require.NoError(t, err)
 	callbacks.wg.Wait()
 
-	circMsg := &pb.CIRCMessage{
-		SourceChain: new(big.Int).SetUint64(1).Bytes(),
-		XtId:        xtID,
-		Data:        [][]byte{[]byte("circ data")},
+	circMsg := &pb.MailboxMessage{
+		SourceChain: 1,
+		InstanceId:  instanceID[:],
+		Data:        [][]byte{[]byte("mailbox data")},
 	}
 
 	t.Run("record message", func(t *testing.T) {
-		err := coord.RecordCIRCMessage(circMsg)
+		err := coord.RecordMailboxMessage(circMsg)
 		require.NoError(t, err)
 
-		state, _ := coord.GetState(xtID)
-		msgs, ok := state.CIRCMessages[ChainKeyUint64(1)]
+		state, _ := coord.GetState(instanceID)
+		msgs, ok := state.MailboxMessages[1]
 		require.True(t, ok)
 		require.Len(t, msgs, 1)
 		assert.Equal(t, circMsg, msgs[0])
 	})
 
 	t.Run("record for non-participant", func(t *testing.T) {
-		badMsg := &pb.CIRCMessage{
-			SourceChain: new(big.Int).SetUint64(3).Bytes(),
-			XtId:        xtID,
+		badMsg := &pb.MailboxMessage{
+			SourceChain: 3,
+			InstanceId:  instanceID[:],
 		}
-		err := coord.RecordCIRCMessage(badMsg)
+		err := coord.RecordMailboxMessage(badMsg)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not participating")
 	})
 
 	t.Run("consume message", func(t *testing.T) {
-		msg, err := coord.ConsumeCIRCMessage(xtID, ChainKeyUint64(1))
+		msg, err := coord.ConsumeMailboxMessage(instanceID, 1)
 		require.NoError(t, err)
 		assert.Equal(t, circMsg, msg)
 
-		state, _ := coord.GetState(xtID)
-		_, ok := state.CIRCMessages[ChainKeyUint64(1)]
+		state, _ := coord.GetState(instanceID)
+		_, ok := state.MailboxMessages[1]
 		assert.False(t, ok) // queue should be empty
 	})
 
 	t.Run("consume from empty queue", func(t *testing.T) {
-		_, err := coord.ConsumeCIRCMessage(xtID, ChainKeyUint64(1))
+		_, err := coord.ConsumeMailboxMessage(instanceID, 1)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no messages available")
 	})
@@ -479,33 +496,33 @@ func TestOnBlockCommitted(t *testing.T) {
 	}()
 
 	// Committed
-	xtReq1, xtID1 := newTestXTRequest(t, []uint64{1, 2})
+	xtReq1, xtID1 := newTestXTRequest([]compose.ChainID{1, 2})
 	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "s1", xtReq1)
+	err := coord.StartTransaction(t.Context(), xtID1, "s1", xtReq1)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
-	_, err = coord.RecordVote(xtID1, ChainKeyUint64(1), true)
+	_, err = coord.RecordVote(xtID1, 1, true)
 	require.NoError(t, err)
 	callbacks.wg.Add(1)
-	_, err = coord.RecordVote(xtID1, ChainKeyUint64(2), true)
+	_, err = coord.RecordVote(xtID1, 2, true)
 	callbacks.wg.Wait()
 	require.NoError(t, err) // now committed
 
 	// Aborted
-	xtReq2, xtID2 := newTestXTRequest(t, []uint64{3})
+	xtReq2, xtID2 := newTestXTRequest([]compose.ChainID{3})
 	callbacks.wg.Add(1)
-	err = coord.StartTransaction(t.Context(), "s2", xtReq2)
+	err = coord.StartTransaction(t.Context(), xtID2, "s2", xtReq2)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 	callbacks.wg.Add(1)
-	_, err = coord.RecordVote(xtID2, ChainKeyUint64(3), false)
+	_, err = coord.RecordVote(xtID2, 3, false)
 	callbacks.wg.Wait()
 	require.NoError(t, err) // now aborted
 
 	// Undecided
-	xtReq3, _ := newTestXTRequest(t, []uint64{4})
+	xtReq3, xtID3 := newTestXTRequest([]compose.ChainID{4})
 	callbacks.wg.Add(1)
-	err = coord.StartTransaction(t.Context(), "s3", xtReq3)
+	err = coord.StartTransaction(t.Context(), xtID3, "s3", xtReq3)
 	callbacks.wg.Wait()
 	require.NoError(t, err)
 
@@ -519,54 +536,14 @@ func TestOnBlockCommitted(t *testing.T) {
 	require.Len(t, callbacks.blocks, 1)
 	assert.Equal(t, block.Hash(), callbacks.blocks[0].Hash())
 
-	require.Len(t, callbacks.blockXtIDs, 1)
-	committedIDs := callbacks.blockXtIDs[0]
+	require.Len(t, callbacks.blockInstanceIDs, 1)
+	committedIDs := callbacks.blockInstanceIDs[0]
 	require.Len(t, committedIDs, 1)
-	assert.Equal(t, xtID1.Hex(), committedIDs[0].Hex())
+	assert.Equal(t, xtID1, committedIDs[0])
 
 	err = coord.OnBlockCommitted(t.Context(), block)
 	require.NoError(t, err)
 	assert.Len(t, callbacks.blocks, 1) // no new block callback
-}
-
-func TestOnL2BlockCommitted(t *testing.T) {
-	coord, callbacks := newTestCoordinator(t, Follower, 100*time.Millisecond)
-	defer func() {
-		if !coord.Stopped() {
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			defer cancel()
-			coord.Stop(ctx)
-		}
-	}()
-
-	xtReq, xtID := newTestXTRequest(t, []uint64{1})
-	callbacks.wg.Add(1)
-	err := coord.StartTransaction(t.Context(), "s1", xtReq)
-	callbacks.wg.Wait()
-	require.NoError(t, err)
-	state, _ := coord.GetState(xtID)
-	state.SetDecision(StateCommit)
-
-	l2Block := &pb.L2Block{
-		Slot:        1,
-		IncludedXts: [][]byte{xtID.Hash},
-	}
-
-	// Check that the xT is not marked as sent before
-	coord.sentMu.Lock()
-	sent := coord.sentMap[xtID.Hex()]
-	coord.sentMu.Unlock()
-	assert.False(t, sent)
-
-	// Call the function
-	err = coord.OnL2BlockCommitted(t.Context(), l2Block)
-	require.NoError(t, err)
-
-	// Check that the xT is marked as sent
-	coord.sentMu.Lock()
-	sent = coord.sentMap[xtID.Hex()]
-	coord.sentMu.Unlock()
-	assert.True(t, sent)
 }
 
 func TestCoordinatorLifecycle(t *testing.T) {

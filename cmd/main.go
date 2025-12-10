@@ -8,7 +8,7 @@ import (
 	"github.com/compose-network/publisher/log"
 	"github.com/spf13/cobra"
 
-	"github.com/compose-network/publisher/publisher-leader-app/config"
+	"github.com/compose-network/publisher/cmd/config"
 )
 
 var (

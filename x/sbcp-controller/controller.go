@@ -101,9 +101,6 @@ func (c *sbcpController) TryProcessQueue(ctx context.Context) error {
 	if c.isStopped() {
 		return nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 
 	// Remove any expired requests first
 	if cfg := c.queue.Config(); cfg.RequestExpiration > 0 {
@@ -158,20 +155,30 @@ func (c *sbcpController) TryProcessQueue(ctx context.Context) error {
 			continue
 		}
 
-		// Call instance starter
-		if err := c.starter.StartInstance(ctx, queued, instance); err != nil {
-			// If error indicates that it should be requeued, do so
-			if shouldRequeueOnError(err) {
-				if rErr := c.queue.Requeue(ctx, queued); rErr != nil {
-					c.logger.Error().Err(rErr).Msg("failed to requeue after conflict")
-				}
-				return nil
-			}
-			// Otherwise, log and continue
-			c.logger.Error().Err(err).Str("instance_id", instance.ID.String()).Msg("failed to start SCP instance")
-			continue
+		// Start the instance; if requeued due to conflict, stop processing
+		if requeued := c.startInstance(ctx, queued, instance); requeued {
+			return nil
 		}
 	}
+}
+
+// startInstance attempts to start an SCP instance.
+// Returns true if the request was requeued (caller should stop processing).
+func (c *sbcpController) startInstance(
+	ctx context.Context, queued *queue.QueuedXTRequest, instance compose.Instance,
+) bool {
+	if err := c.starter.StartInstance(ctx, queued, instance); err != nil {
+		// If error indicates that it should be requeued, do so
+		if shouldRequeueOnError(err) {
+			if rErr := c.queue.Requeue(ctx, queued); rErr != nil {
+				c.logger.Error().Err(rErr).Msg("failed to requeue after conflict")
+			}
+			return true // Signal that we should stop processing to avoid immediate retry
+		}
+		// Otherwise, log and continue
+		c.logger.Error().Err(err).Str("instance_id", instance.ID.String()).Msg("failed to start SCP instance")
+	}
+	return false
 }
 
 // NotifyInstanceDecided should be called when an instance has been decided.
@@ -185,7 +192,9 @@ func (c *sbcpController) NotifyInstanceDecided(ctx context.Context, instance com
 }
 
 // AdvanceSettledState advances the settled superblock state.
-func (c *sbcpController) AdvanceSettledState(superblockNumber compose.SuperblockNumber, superblockHash compose.SuperBlockHash) error {
+func (c *sbcpController) AdvanceSettledState(
+	superblockNumber compose.SuperblockNumber, superblockHash compose.SuperblockHash,
+) error {
 	if err := c.publisher.AdvanceSettledState(superblockNumber, superblockHash); err != nil {
 		c.logger.Error().Err(err).
 			Uint64("superblock_number", uint64(superblockNumber)).

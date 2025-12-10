@@ -55,7 +55,10 @@ func parseFlags() commandFlags {
 	flag.StringVar(&flags.chainID2, "chain-id2", "", "Chain ID2 (decimal or 0x-prefixed hex)")
 	flag.StringVar(&flags.instanceID, "instance-id", "", "Hex-encoded instance identifier (for votes)")
 	flag.StringVar(&flags.voteValue, "vote", "", "Vote value for send-vote: commit|abort|true|false")
-	flag.DurationVar(&flags.waitWindow, "wait", 2*time.Second, "Time to keep the connection open after sending the message")
+	flag.DurationVar(
+		&flags.waitWindow, "wait", 2*time.Second,
+		"Time to keep the connection open after sending the message",
+	)
 
 	flag.Parse()
 
@@ -78,7 +81,7 @@ func run(cfg commandFlags) error {
 	clientCfg.ServerAddr = cfg.spAddr
 	clientCfg.ClientID = cfg.clientID
 
-	var client transport.Client = tcp.NewClient(clientCfg, logger)
+	client := tcp.NewClient(clientCfg, logger)
 
 	if cfg.privateKey != "" {
 		authManager, err := auth.NewManagerFromHex(cfg.privateKey)
@@ -91,34 +94,7 @@ func run(cfg commandFlags) error {
 		client = client.WithAuth(authManager)
 		logger = logger.With().Str("address", authManager.Address()).Logger()
 	}
-
-	client.SetHandler(func(ctx context.Context, msg *pb.Message) ([]common.Hash, error) {
-		switch payload := msg.Payload.(type) {
-		case *pb.Message_Decided:
-			logger.Info().
-				Str("instance_id", fmt.Sprintf("%x", payload.Decided.GetInstanceId())).
-				Bool("decision", payload.Decided.GetDecision()).
-				Msg("received decision from SP")
-		case *pb.Message_StartInstance:
-			logger.Info().
-				Str("instance_id", fmt.Sprintf("%x", payload.StartInstance.GetInstanceId())).
-				Uint64("period_id", payload.StartInstance.GetPeriodId()).
-				Uint64("sequence", payload.StartInstance.GetSequenceNumber()).
-				Msg("received StartInstance from SP")
-		case *pb.Message_StartPeriod:
-			logger.Info().
-				Uint64("period_id", payload.StartPeriod.GetPeriodId()).
-				Uint64("superblock_number", payload.StartPeriod.GetSuperblockNumber()).
-				Msg("received StartPeriod from SP")
-		case *pb.Message_Ping:
-			logger.Info().Msg("received ping from SP")
-		case *pb.Message_Pong:
-			logger.Info().Msg("received pong from SP")
-		default:
-			logger.Info().Str("payload_type", fmt.Sprintf("%T", payload)).Msg("received message from SP")
-		}
-		return nil, nil
-	})
+	setHandlers(client, logger)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -161,6 +137,36 @@ func run(cfg commandFlags) error {
 	return nil
 }
 
+func setHandlers(client transport.Client, logger zerolog.Logger) {
+	client.SetHandler(func(ctx context.Context, msg *pb.Message) ([]common.Hash, error) {
+		switch payload := msg.Payload.(type) {
+		case *pb.Message_Decided:
+			logger.Info().
+				Str("instance_id", fmt.Sprintf("%x", payload.Decided.GetInstanceId())).
+				Bool("decision", payload.Decided.GetDecision()).
+				Msg("received decision from SP")
+		case *pb.Message_StartInstance:
+			logger.Info().
+				Str("instance_id", fmt.Sprintf("%x", payload.StartInstance.GetInstanceId())).
+				Uint64("period_id", payload.StartInstance.GetPeriodId()).
+				Uint64("sequence", payload.StartInstance.GetSequenceNumber()).
+				Msg("received StartInstance from SP")
+		case *pb.Message_StartPeriod:
+			logger.Info().
+				Uint64("period_id", payload.StartPeriod.GetPeriodId()).
+				Uint64("superblock_number", payload.StartPeriod.GetSuperblockNumber()).
+				Msg("received StartPeriod from SP")
+		case *pb.Message_Ping:
+			logger.Info().Msg("received ping from SP")
+		case *pb.Message_Pong:
+			logger.Info().Msg("received pong from SP")
+		default:
+			logger.Info().Str("payload_type", fmt.Sprintf("%T", payload)).Msg("received message from SP")
+		}
+		return nil, nil
+	})
+}
+
 func sendXTRequest(ctx context.Context, client transport.Client, cfg commandFlags) error {
 	if cfg.chainID1 == "" {
 		return errors.New("submit-xt requires -chain-id1")
@@ -180,9 +186,13 @@ func sendXTRequest(ctx context.Context, client transport.Client, cfg commandFlag
 
 	// txBytes is a random sequence of bytes
 	txBytes1 := make([]byte, 256)
-	_, err = rand.Read(txBytes1)
+	if _, err := rand.Read(txBytes1); err != nil {
+		return fmt.Errorf("generate random tx bytes: %w", err)
+	}
 	txBytes2 := make([]byte, 256)
-	_, err = rand.Read(txBytes2)
+	if _, err := rand.Read(txBytes2); err != nil {
+		return fmt.Errorf("generate random tx bytes: %w", err)
+	}
 
 	msg := &pb.Message{
 		SenderId: client.GetID(),

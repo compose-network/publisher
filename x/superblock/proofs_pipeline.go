@@ -1,3 +1,4 @@
+//nolint:unused // Pipeline code retained for future use
 package superblock
 
 import (

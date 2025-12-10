@@ -3,7 +3,6 @@ package consensus
 import (
 	"context"
 	"errors"
-	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -12,7 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/compose-network/publisher/proto/rollup/v1"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
 )
 
 // Mock Coordinator for handler tests
@@ -20,45 +20,50 @@ type mockCoordinator struct {
 	mock.Mock
 }
 
-func (m *mockCoordinator) StartTransaction(ctx context.Context, from string, xtReq *pb.XTRequest) error {
-	args := m.Called(ctx, from, xtReq)
+func (m *mockCoordinator) StartTransaction(
+	ctx context.Context, instanceID compose.InstanceID, from string, xtReq *pb.XTRequest,
+) error {
+	args := m.Called(ctx, instanceID, from, xtReq)
 	return args.Error(0)
 }
 
-func (m *mockCoordinator) RecordVote(xtID *pb.XtID, chainID string, vote bool) (DecisionState, error) {
-	args := m.Called(xtID, chainID, vote)
+func (m *mockCoordinator) RecordVote(
+	instanceID compose.InstanceID, chainID compose.ChainID, vote bool,
+) (DecisionState, error) {
+	args := m.Called(instanceID, chainID, vote)
 	return args.Get(0).(DecisionState), args.Error(1)
 }
 
-func (m *mockCoordinator) RecordDecision(xtID *pb.XtID, decision bool) error {
-	args := m.Called(xtID, decision)
+func (m *mockCoordinator) RecordDecision(instanceID compose.InstanceID, decision bool) error {
+	args := m.Called(instanceID, decision)
 	return args.Error(0)
 }
 
-func (m *mockCoordinator) RecordCIRCMessage(circMessage *pb.CIRCMessage) error {
-	args := m.Called(circMessage)
+func (m *mockCoordinator) RecordMailboxMessage(mailboxMessage *pb.MailboxMessage) error {
+	args := m.Called(mailboxMessage)
 	return args.Error(0)
 }
 
 // Implement remaining Coordinator interface methods
-func (m *mockCoordinator) GetTransactionState(xtID *pb.XtID) (DecisionState, error) {
-	args := m.Called(xtID)
+func (m *mockCoordinator) GetTransactionState(instanceID compose.InstanceID) (DecisionState, error) {
+	args := m.Called(instanceID)
 	return args.Get(0).(DecisionState), args.Error(1)
 }
 
-func (m *mockCoordinator) GetActiveTransactions() []*pb.XtID {
+func (m *mockCoordinator) GetActiveTransactions() []compose.InstanceID {
 	args := m.Called()
-	return args.Get(0).([]*pb.XtID)
+	return args.Get(0).([]compose.InstanceID)
 }
 
-func (m *mockCoordinator) GetState(xtID *pb.XtID) (*TwoPCState, bool) {
-	args := m.Called(xtID)
+func (m *mockCoordinator) GetState(instanceID compose.InstanceID) (*TwoPCState, bool) {
+	args := m.Called(instanceID)
 	return args.Get(0).(*TwoPCState), args.Bool(1)
 }
 
-func (m *mockCoordinator) ConsumeCIRCMessage(xtID *pb.XtID, sourceChainID string) (*pb.CIRCMessage, error) {
-	args := m.Called(xtID, sourceChainID)
-	return args.Get(0).(*pb.CIRCMessage), args.Error(1)
+func (m *mockCoordinator) ConsumeMailboxMessage(
+	instanceID compose.InstanceID, sourceChainID compose.ChainID) (*pb.MailboxMessage, error) {
+	args := m.Called(instanceID, sourceChainID)
+	return args.Get(0).(*pb.MailboxMessage), args.Error(1)
 }
 
 func (m *mockCoordinator) SetStartCallback(fn StartFn) {
@@ -92,11 +97,6 @@ func (m *mockCoordinator) OnBlockCommitted(ctx context.Context, block *types.Blo
 	return args.Error(0)
 }
 
-func (m *mockCoordinator) OnL2BlockCommitted(ctx context.Context, block *pb.L2Block) error {
-	args := m.Called(ctx, block)
-	return args.Error(0)
-}
-
 func TestProtocolHandler_CanHandle(t *testing.T) {
 	t.Parallel()
 	handler := NewProtocolHandler(nil, zerolog.Nop())
@@ -109,8 +109,8 @@ func TestProtocolHandler_CanHandle(t *testing.T) {
 		{"XTRequest", &pb.Message{Payload: &pb.Message_XtRequest{}}, true},
 		{"Vote", &pb.Message{Payload: &pb.Message_Vote{}}, true},
 		{"Decided", &pb.Message{Payload: &pb.Message_Decided{}}, true},
-		{"CIRCMessage", &pb.Message{Payload: &pb.Message_CircMessage{}}, true},
-		{"Other Message", &pb.Message{Payload: &pb.Message_StartSlot{}}, false},
+		{"MailboxMessage", &pb.Message{Payload: &pb.Message_MailboxMessage{}}, true},
+		{"Other Message", &pb.Message{Payload: &pb.Message_StartPeriod{}}, false},
 		{"Nil Payload", &pb.Message{}, false},
 		{"Nil Message", nil, false},
 	}
@@ -133,7 +133,8 @@ func TestProtocolHandler_Handle(t *testing.T) {
 		xtReq := &pb.XTRequest{}
 		msg := &pb.Message{Payload: &pb.Message_XtRequest{XtRequest: xtReq}}
 
-		coord.On("StartTransaction", ctx, from, xtReq).Return(nil)
+		var zeroInstanceID compose.InstanceID
+		coord.On("StartTransaction", ctx, zeroInstanceID, from, xtReq).Return(nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)
@@ -142,10 +143,12 @@ func TestProtocolHandler_Handle(t *testing.T) {
 	t.Run("Vote", func(t *testing.T) {
 		coord := new(mockCoordinator)
 		handler := NewProtocolHandler(coord, zerolog.Nop())
-		vote := &pb.Vote{SenderChainId: new(big.Int).SetUint64(1).Bytes(), Vote: true}
+		vote := &pb.Vote{ChainId: 1, Vote: true, InstanceId: []byte{'i', 'd'}}
 		msg := &pb.Message{Payload: &pb.Message_Vote{Vote: vote}}
 
-		coord.On("RecordVote", vote.XtId, ChainKeyUint64(1), true).Return(StateUndecided, nil)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], []byte{'i', 'd'})
+		coord.On("RecordVote", instanceID, compose.ChainID(1), true).Return(StateUndecided, nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)
@@ -154,22 +157,24 @@ func TestProtocolHandler_Handle(t *testing.T) {
 	t.Run("Decided", func(t *testing.T) {
 		coord := new(mockCoordinator)
 		handler := NewProtocolHandler(coord, zerolog.Nop())
-		decided := &pb.Decided{Decision: true}
+		decided := &pb.Decided{Decision: true, InstanceId: []byte{'i', 'd'}}
 		msg := &pb.Message{Payload: &pb.Message_Decided{Decided: decided}}
 
-		coord.On("RecordDecision", decided.XtId, true).Return(nil)
+		var instanceID compose.InstanceID
+		copy(instanceID[:], []byte{'i', 'd'})
+		coord.On("RecordDecision", instanceID, true).Return(nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)
 	})
 
-	t.Run("CIRCMessage", func(t *testing.T) {
+	t.Run("MailboxMessage", func(t *testing.T) {
 		coord := new(mockCoordinator)
 		handler := NewProtocolHandler(coord, zerolog.Nop())
-		circMsg := &pb.CIRCMessage{}
-		msg := &pb.Message{Payload: &pb.Message_CircMessage{CircMessage: circMsg}}
+		mailboxMsg := &pb.MailboxMessage{}
+		msg := &pb.Message{Payload: &pb.Message_MailboxMessage{MailboxMessage: mailboxMsg}}
 
-		coord.On("RecordCIRCMessage", circMsg).Return(nil)
+		coord.On("RecordMailboxMessage", mailboxMsg).Return(nil)
 		err := handler.Handle(ctx, from, msg)
 		require.NoError(t, err)
 		coord.AssertExpectations(t)
@@ -177,7 +182,7 @@ func TestProtocolHandler_Handle(t *testing.T) {
 
 	t.Run("Unknown Message", func(t *testing.T) {
 		handler := NewProtocolHandler(nil, zerolog.Nop())
-		msg := &pb.Message{Payload: &pb.Message_StartSlot{}}
+		msg := &pb.Message{Payload: &pb.Message_StartPeriod{}}
 		err := handler.Handle(ctx, from, msg)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unknown SCP message type")
@@ -190,7 +195,8 @@ func TestProtocolHandler_Handle(t *testing.T) {
 		msg := &pb.Message{Payload: &pb.Message_XtRequest{XtRequest: xtReq}}
 		expectedErr := errors.New("boom")
 
-		coord.On("StartTransaction", ctx, from, xtReq).Return(expectedErr)
+		var zeroInstanceID compose.InstanceID
+		coord.On("StartTransaction", ctx, zeroInstanceID, from, xtReq).Return(expectedErr)
 		err := handler.Handle(ctx, from, msg)
 		require.Error(t, err)
 		assert.Equal(t, expectedErr, err)
