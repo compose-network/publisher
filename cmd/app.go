@@ -215,7 +215,13 @@ func (a *App) initialize(ctx context.Context) error {
 
 	collectorSvc := collector.New(ctx, a.log)
 
-	publisherMgr, err := publishermanager.New(publishermanager.Config{})
+	publisherMgr, err := publishermanager.New(publishermanager.Config{
+		Context:         ctx,
+		Logger:          a.log,
+		Broadcaster:     tcpServer,
+		InstanceTimeout: a.cfg.Consensus.InstanceTimeout,
+		EpochsPerPeriod: uint64(a.cfg.Consensus.InstanceTimeout.Seconds()),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create publisher manager: %w", err)
 	}
