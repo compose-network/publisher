@@ -220,7 +220,7 @@ func (a *App) initialize(ctx context.Context) error {
 		Logger:          a.log,
 		Broadcaster:     tcpServer,
 		InstanceTimeout: a.cfg.Consensus.InstanceTimeout,
-		EpochsPerPeriod: a.cfg.Consensus.EpochPerPediods,
+		EpochsPerPeriod: a.cfg.Consensus.EpochsPerPeriod,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create publisher manager: %w", err)
