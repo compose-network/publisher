@@ -46,7 +46,7 @@ func (c *consensusInbox) WaitForDependency(
 	for {
 		select {
 		case <-timeoutCtx.Done():
-			return nil, c.logCIRCTimeout(xtID, sourceKey)
+			return nil, c.logCIRCTimeout(xtID, dep)
 		case <-ticker.C:
 			attempt++
 			circMsg, err := c.queue.ConsumeCIRCMessage(xtID, sourceKey)
@@ -100,7 +100,7 @@ func (c *consensusInbox) logCIRCWait(
 		Msg("Still waiting for CIRC message")
 }
 
-func (c *consensusInbox) logCIRCTimeout(xtID *rollupv1.XtID, sourceChainID string) error {
+func (c *consensusInbox) logCIRCTimeout(xtID *rollupv1.XtID, dep CrossRollupDependency) error {
 	if c.queue != nil {
 		if st, ok := c.queue.GetState(xtID); ok && st != nil {
 			counts := make(map[string]int)
@@ -109,10 +109,21 @@ func (c *consensusInbox) logCIRCTimeout(xtID *rollupv1.XtID, sourceChainID strin
 			}
 			c.log.Warn().
 				Str("xt_id", xtID.Hex()).
-				Str("from", sourceChainID).
+				Uint64("src_chain", dep.SourceChainID).
+				Uint64("dest_chain", dep.DestChainID).
+				Str("sender", dep.Sender.Hex()).
+				Str("session_id", dep.SessionID.String()).
+				Str("label", string(dep.Label)).
 				Interface("queues", counts).
 				Msg("Timeout waiting for CIRC message")
 		}
 	}
-	return fmt.Errorf("timeout waiting for CIRC message from chain %s", sourceChainID)
+	return fmt.Errorf(
+		"timeout waiting for CIRC message: read(chainMessageSender=%d, sender=%s, sessionId=%s, label=%s) on dest chain %d",
+		dep.SourceChainID,
+		dep.Sender.Hex(),
+		dep.SessionID.String(),
+		string(dep.Label),
+		dep.DestChainID,
+	)
 }
