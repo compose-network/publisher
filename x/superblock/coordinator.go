@@ -1119,6 +1119,10 @@ func (c *Coordinator) publishSuperblockTx(
 		return fmt.Errorf("proof is required for superblock submission")
 	}
 
+	if c.l1Publisher == nil {
+		return fmt.Errorf("l1Publisher is not configured, cannot publish superblock %d", sb.Number)
+	}
+
 	recorded, err := c.l1Publisher.PublishSuperblockWithProof(ctx, sb, proof, outputs)
 	if err != nil {
 		return err
