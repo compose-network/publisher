@@ -2,6 +2,7 @@ package superblock
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -511,6 +512,16 @@ func (p *proofPipeline) pollOnce(ctx context.Context) {
 	for id, job := range jobs {
 		status, err := p.prover.GetStatus(ctx, id)
 		if err != nil {
+			if errors.Is(err, proofs.ErrJobNotFound) {
+				p.log.Warn().Str("job_id", id).Msg("Job lost on prover, marking failed")
+				_ = p.collector.UpdateStatus(ctx, job.hash, func(st *proofs.Status) {
+					st.State = proofs.StateFailed
+					st.Error = "job lost on prover"
+				})
+				p.removeJob(id)
+				go p.processQueuedJobs(ctx)
+				continue
+			}
 			p.log.Warn().Err(err).Str("job_id", id).Msg("Failed to fetch proof status")
 			continue
 		}

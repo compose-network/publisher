@@ -163,7 +163,10 @@ func (c *HTTPClient) GetStatus(ctx context.Context, jobID string) (proofs.ProofJ
 	if !status.Success {
 		errMsg := status.errorMessage()
 		if errMsg == "" {
-			return proofs.ProofJobStatus{}, errors.New("prover returned unsuccessful status")
+			return proofs.ProofJobStatus{}, proofs.ErrProverUnsuccessful
+		}
+		if errMsg == "Request not found" {
+			return proofs.ProofJobStatus{}, proofs.ErrJobNotFound
 		}
 		return proofs.ProofJobStatus{}, fmt.Errorf("prover reported failure: %s", errMsg)
 	}

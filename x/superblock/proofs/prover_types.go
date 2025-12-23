@@ -1,6 +1,14 @@
 package proofs
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var (
+	ErrJobNotFound        = errors.New("job not found on prover")
+	ErrProverUnsuccessful = errors.New("prover returned unsuccessful status")
+)
 
 type ProverClient interface {
 	RequestProof(ctx context.Context, job ProofJobInput) (jobID string, err error)
