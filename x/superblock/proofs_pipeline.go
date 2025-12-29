@@ -185,6 +185,8 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 			Msg("Not ready - waiting for remaining chain proofs")
 		_ = p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
 			st.Required = required
+			st.SuperblockNumber = sb.Number
+			st.SuperblockHash = sb.Hash
 			if st.State == "" {
 				st.State = proofs.StateCollecting
 			}
@@ -207,6 +209,8 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 		_ = p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
 			st.Required = required
 			st.State = proofs.StateQueued
+			st.SuperblockNumber = sb.Number
+			st.SuperblockHash = sb.Hash
 			st.Error = ""
 		})
 		return nil
@@ -217,6 +221,8 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 	jobID, err := p.prover.RequestProof(ctx, job)
 	if err != nil {
 		_ = p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
+			st.SuperblockNumber = sb.Number
+			st.SuperblockHash = sb.Hash
 			st.State = proofs.StateFailed
 			st.Error = err.Error()
 		})
@@ -225,6 +231,8 @@ func (p *proofPipeline) HandleSuperblock(ctx context.Context, sb *store.Superblo
 
 	if err := p.collector.UpdateStatus(ctx, sb.Hash, func(st *proofs.Status) {
 		st.Required = required
+		st.SuperblockNumber = sb.Number
+		st.SuperblockHash = sb.Hash
 		st.State = proofs.StateProving
 		st.JobID = jobID
 		st.Error = ""
