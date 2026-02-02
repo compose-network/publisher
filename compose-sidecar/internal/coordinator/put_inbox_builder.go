@@ -28,8 +28,6 @@ type DefaultPutInboxBuilder struct {
 	rpcURL         string
 	client         *ethclient.Client
 	abi            abi.ABI
-	nonce          uint64
-	nonceSet       bool
 }
 
 // PutInboxBuilderConfig holds configuration for the PutInboxBuilder.
@@ -73,18 +71,21 @@ func NewPutInboxBuilder(cfg PutInboxBuilderConfig) (*DefaultPutInboxBuilder, err
 	}, nil
 }
 
-// BuildPutInboxTx builds a signed putInbox transaction for the given dependency.
-func (b *DefaultPutInboxBuilder) BuildPutInboxTx(ctx context.Context, dep protocol.CrossRollupDependency) (*ethtypes.Transaction, error) {
-	// Get nonce
+func (b *DefaultPutInboxBuilder) PendingNonceAt(ctx context.Context) (uint64, error) {
 	coordinatorAddr := crypto.PubkeyToAddress(b.privateKey.PublicKey)
-	if !b.nonceSet {
-		nonce, err := b.client.PendingNonceAt(ctx, coordinatorAddr)
-		if err != nil {
-			return nil, fmt.Errorf("get nonce: %w", err)
-		}
-		b.nonce = nonce
-		b.nonceSet = true
+	nonce, err := b.client.PendingNonceAt(ctx, coordinatorAddr)
+	if err != nil {
+		return 0, fmt.Errorf("get nonce: %w", err)
 	}
+	return nonce, nil
+}
+
+// BuildPutInboxTxWithNonce builds and signs a putInbox transaction with the given nonce.
+func (b *DefaultPutInboxBuilder) BuildPutInboxTxWithNonce(
+	ctx context.Context,
+	dep protocol.CrossRollupDependency,
+	nonce uint64,
+) (*ethtypes.Transaction, error) {
 
 	// Encode putInbox call
 	sessionID := big.NewInt(0)
@@ -108,7 +109,7 @@ func (b *DefaultPutInboxBuilder) BuildPutInboxTx(ctx context.Context, dep protoc
 	// Build EIP-1559 transaction
 	txData := &ethtypes.DynamicFeeTx{
 		ChainID:   new(big.Int).SetUint64(b.chainID),
-		Nonce:     b.nonce,
+		Nonce:     nonce,
 		GasTipCap: big.NewInt(1000000000),  // 1 gwei
 		GasFeeCap: big.NewInt(20000000000), // 20 gwei
 		Gas:       500000,
@@ -126,14 +127,12 @@ func (b *DefaultPutInboxBuilder) BuildPutInboxTx(ctx context.Context, dep protoc
 		return nil, fmt.Errorf("sign transaction: %w", err)
 	}
 
-	b.nonce++
-
 	b.log.Debug().
 		Uint64("source_chain", dep.SourceChainID).
 		Str("sender", dep.Sender.Hex()).
 		Str("receiver", dep.Receiver.Hex()).
 		Str("tx_hash", signedTx.Hash().Hex()).
-		Uint64("nonce", b.nonce-1).
+		Uint64("nonce", nonce).
 		Msg("Built putInbox transaction")
 
 	return signedTx, nil

@@ -43,6 +43,7 @@ type DefaultCoordinator struct {
 	mailboxQueue    mailbox.Queue
 	peerCoordinator peer.Coordinator
 	putInboxBuilder PutInboxBuilder
+	nonceManager    *DeferredNonceManager
 
 	peerVotes map[string]map[uint64]bool
 
@@ -67,8 +68,10 @@ type CoordinatorConfig struct {
 
 // PutInboxBuilder builds signed putInbox transactions for fulfilled dependencies.
 type PutInboxBuilder interface {
-	// BuildPutInboxTx builds a signed putInbox transaction for the given dependency.
-	BuildPutInboxTx(ctx context.Context, dep protocol.CrossRollupDependency) (*ethtypes.Transaction, error)
+	// PendingNonceAt returns the current pending nonce for the coordinator address.
+	PendingNonceAt(ctx context.Context) (uint64, error)
+	// BuildPutInboxTxWithNonce builds a signed putInbox transaction with the given nonce.
+	BuildPutInboxTxWithNonce(ctx context.Context, dep protocol.CrossRollupDependency, nonce uint64) (*ethtypes.Transaction, error)
 }
 
 func NewCoordinator(cfg CoordinatorConfig) *DefaultCoordinator {
@@ -85,6 +88,7 @@ func NewCoordinator(cfg CoordinatorConfig) *DefaultCoordinator {
 		mailboxQueue:      cfg.MailboxQueue,
 		peerCoordinator:   cfg.PeerCoordinator,
 		putInboxBuilder:   cfg.PutInboxBuilder,
+		nonceManager:      NewDeferredNonceManager(),
 		peerVotes:         make(map[string]map[uint64]bool),
 		stopCh:            make(chan struct{}),
 	}
@@ -194,7 +198,13 @@ func (c *DefaultCoordinator) HandleStartInstance(ctx context.Context, msg *proto
 }
 
 func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protocol.BuilderPollRequest) (*protocol.BuilderPollResponse, error) {
+	if req.FlashblockIndex == 0 {
+		return &protocol.BuilderPollResponse{Hold: false}, nil
+	}
+
 	c.mu.Lock()
+
+	c.nonceManager.ResetForBlock(req.BlockNumber)
 
 	state := &protocol.ChainState{
 		ChainID:         req.ChainID,
@@ -213,8 +223,8 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 		Uint64("flashblock", req.FlashblockIndex).
 		Msg("Builder poll received")
 
+	var entries []*pendingXTEntry
 	var pendingXTs []*pendingXTEntry
-	var committedTxs []protocol.TransactionPayload
 
 	for id, xt := range c.pending {
 		_, needsChain := xt.Transactions[req.ChainID]
@@ -222,47 +232,12 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 			continue
 		}
 
+		entry := &pendingXTEntry{id: id, xt: xt}
+		entries = append(entries, entry)
 		if xt.Decision == nil {
-			pendingXTs = append(pendingXTs, &pendingXTEntry{id: id, xt: xt})
+			pendingXTs = append(pendingXTs, entry)
 			xt.ChainStates[req.ChainID] = state
-		} else if *xt.Decision {
-			// Skip if already delivered to this chain (prevents duplicate/stale tx delivery)
-			if xt.DeliveredChains != nil && xt.DeliveredChains[req.ChainID] {
-				continue
-			}
-			if rawTx, ok := xt.RawTxs[req.ChainID]; ok {
-				// Prepend putInbox transactions first - they must execute before the main tx
-				for _, putInbox := range xt.PutInboxTxs {
-					putInboxBytes, err := putInbox.MarshalBinary()
-					if err == nil {
-						committedTxs = append(committedTxs, protocol.TransactionPayload{
-							Raw:        fmt.Sprintf("0x%x", putInboxBytes),
-							Required:   true,
-							InstanceID: id,
-						})
-					}
-				}
-				// Then add the main transaction
-				committedTxs = append(committedTxs, protocol.TransactionPayload{
-					Raw:        fmt.Sprintf("0x%x", rawTx),
-					Required:   true,
-					InstanceID: id,
-				})
-				// Mark as delivered so we don't return same txs on subsequent polls
-				if xt.DeliveredChains == nil {
-					xt.DeliveredChains = make(map[uint64]bool)
-				}
-				xt.DeliveredChains[req.ChainID] = true
-			}
 		}
-	}
-
-	if len(pendingXTs) == 0 {
-		c.mu.Unlock()
-		return &protocol.BuilderPollResponse{
-			Hold: false,
-			Txs:  committedTxs,
-		}, nil
 	}
 
 	var xtsToProcess []*pendingXTEntry
@@ -286,16 +261,237 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 		go c.processXT(context.Background(), entry.id, entry.xt)
 	}
 
+	if len(entries) == 0 {
+		return &protocol.BuilderPollResponse{Hold: false}, nil
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return xtLess(entries[i], entries[j])
+	})
+
+	// First attempt to deliver any committed prefix.
+	deliverable, blocking := c.collectDeliverable(req.ChainID, entries)
+	if len(deliverable) > 0 {
+		txs, err := c.buildCommittedTransactions(ctx, req.ChainID, deliverable)
+		if err != nil {
+			c.log.Error().Err(err).Msg("Failed to build putInbox transactions")
+			return &protocol.BuilderPollResponse{
+				Hold:        true,
+				PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
+			}, nil
+		}
+		c.markDelivered(req.ChainID, deliverable)
+		return &protocol.BuilderPollResponse{Hold: false, Txs: txs}, nil
+	}
+
+	if blocking == nil {
+		return &protocol.BuilderPollResponse{Hold: false}, nil
+	}
+
 	// Use background context with internal timeout to avoid being canceled by the builder's poll timeout.
-	// The builder may timeout after 200ms, but we need to continue processing and return results.
 	waitCtx, cancel := context.WithTimeout(context.Background(), defaultHoldTimeout)
 	defer cancel()
-	return c.waitForAllDecisions(waitCtx, req.ChainID, pendingXTs, committedTxs)
+	if !c.waitForDecision(waitCtx, req.ChainID, blocking.id) {
+		return &protocol.BuilderPollResponse{
+			Hold:        true,
+			PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
+		}, nil
+	}
+
+	// Decision arrived, recompute deliverable prefix.
+	deliverable, _ = c.collectDeliverable(req.ChainID, entries)
+	if len(deliverable) == 0 {
+		return &protocol.BuilderPollResponse{Hold: false}, nil
+	}
+	txs, err := c.buildCommittedTransactions(ctx, req.ChainID, deliverable)
+	if err != nil {
+		c.log.Error().Err(err).Msg("Failed to build putInbox transactions")
+		return &protocol.BuilderPollResponse{
+			Hold:        true,
+			PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
+		}, nil
+	}
+	c.markDelivered(req.ChainID, deliverable)
+	return &protocol.BuilderPollResponse{Hold: false, Txs: txs}, nil
 }
 
 type pendingXTEntry struct {
 	id string
 	xt *types.PendingXT
+}
+
+type deliverableXT struct {
+	id    string
+	xt    *types.PendingXT
+	rawTx []byte
+	deps  []protocol.CrossRollupDependency
+}
+
+func xtLess(a, b *pendingXTEntry) bool {
+	if a.xt.PeriodID != b.xt.PeriodID {
+		return a.xt.PeriodID < b.xt.PeriodID
+	}
+	if a.xt.SequenceNum != b.xt.SequenceNum {
+		return a.xt.SequenceNum < b.xt.SequenceNum
+	}
+	if !a.xt.CreatedAt.Equal(b.xt.CreatedAt) {
+		return a.xt.CreatedAt.Before(b.xt.CreatedAt)
+	}
+	return a.id < b.id
+}
+
+func depsForChain(deps []protocol.CrossRollupDependency, chainID uint64) []protocol.CrossRollupDependency {
+	if len(deps) == 0 {
+		return nil
+	}
+	filtered := make([]protocol.CrossRollupDependency, 0, len(deps))
+	for _, dep := range deps {
+		if dep.DestChainID == chainID {
+			filtered = append(filtered, dep)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func (c *DefaultCoordinator) collectDeliverable(chainID uint64, entries []*pendingXTEntry) ([]deliverableXT, *pendingXTEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var deliverable []deliverableXT
+	for _, entry := range entries {
+		xt := entry.xt
+		if xt.DeliveredChains != nil && xt.DeliveredChains[chainID] {
+			continue
+		}
+		if xt.Decision == nil {
+			return deliverable, entry
+		}
+		if !*xt.Decision {
+			if xt.DeliveredChains == nil {
+				xt.DeliveredChains = make(map[uint64]bool)
+			}
+			xt.DeliveredChains[chainID] = true
+			continue
+		}
+		rawTx, ok := xt.RawTxs[chainID]
+		if !ok {
+			continue
+		}
+		deliverable = append(deliverable, deliverableXT{
+			id:    entry.id,
+			xt:    xt,
+			rawTx: rawTx,
+			deps:  depsForChain(xt.FulfilledDeps, chainID),
+		})
+	}
+
+	return deliverable, nil
+}
+
+func (c *DefaultCoordinator) buildCommittedTransactions(
+	ctx context.Context,
+	chainID uint64,
+	deliverable []deliverableXT,
+) ([]protocol.TransactionPayload, error) {
+	if len(deliverable) == 0 {
+		return nil, nil
+	}
+
+	totalDeps := 0
+	for _, entry := range deliverable {
+		totalDeps += len(entry.deps)
+	}
+
+	var nextNonce uint64
+	if totalDeps > 0 {
+		if c.putInboxBuilder == nil {
+			return nil, fmt.Errorf("putInbox builder not configured")
+		}
+		startNonce, err := c.nonceManager.Reserve(ctx, totalDeps, c.putInboxBuilder.PendingNonceAt)
+		if err != nil {
+			return nil, err
+		}
+		nextNonce = startNonce
+	}
+
+	txs := make([]protocol.TransactionPayload, 0, len(deliverable)+totalDeps)
+	for _, entry := range deliverable {
+		for _, dep := range entry.deps {
+			putInboxTx, err := c.putInboxBuilder.BuildPutInboxTxWithNonce(ctx, dep, nextNonce)
+			if err != nil {
+				return nil, err
+			}
+			nextNonce++
+			putInboxBytes, err := putInboxTx.MarshalBinary()
+			if err != nil {
+				return nil, err
+			}
+			txs = append(txs, protocol.TransactionPayload{
+				Raw:        fmt.Sprintf("0x%x", putInboxBytes),
+				Required:   true,
+				InstanceID: entry.id,
+			})
+		}
+		txs = append(txs, protocol.TransactionPayload{
+			Raw:        fmt.Sprintf("0x%x", entry.rawTx),
+			Required:   true,
+			InstanceID: entry.id,
+		})
+	}
+
+	return txs, nil
+}
+
+func (c *DefaultCoordinator) markDelivered(chainID uint64, deliverable []deliverableXT) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, entry := range deliverable {
+		if entry.xt.DeliveredChains == nil {
+			entry.xt.DeliveredChains = make(map[uint64]bool)
+		}
+		entry.xt.DeliveredChains[chainID] = true
+	}
+}
+
+func (c *DefaultCoordinator) waitForDecision(ctx context.Context, chainID uint64, instanceID string) bool {
+	c.mu.Lock()
+	xt, exists := c.pending[instanceID]
+	if !exists {
+		c.mu.Unlock()
+		return true
+	}
+	if xt.Decision != nil {
+		c.mu.Unlock()
+		return true
+	}
+
+	if c.waiters[instanceID] == nil {
+		c.waiters[instanceID] = make(map[uint64]chan *protocol.BuilderPollResponse)
+	}
+	ch := make(chan *protocol.BuilderPollResponse, 1)
+	c.waiters[instanceID][chainID] = ch
+	c.mu.Unlock()
+
+	select {
+	case <-ch:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (c *DefaultCoordinator) signalWaiters(waiters map[uint64]chan *protocol.BuilderPollResponse) {
+	for _, ch := range waiters {
+		select {
+		case ch <- &protocol.BuilderPollResponse{}:
+		default:
+		}
+		close(ch)
+	}
 }
 
 func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[uint64][]byte) (string, error) {
@@ -500,47 +696,18 @@ func (c *DefaultCoordinator) OnDecision(ctx context.Context, instanceID string, 
 	xt.Decision = &decision
 	xt.DecidedAt = time.Now()
 
-	// Build putInbox transactions for fulfilled dependencies if decision is commit
-	if decision && c.putInboxBuilder != nil && len(xt.FulfilledDeps) > 0 {
-		for _, dep := range xt.FulfilledDeps {
-			// Only build putInbox for dependencies that target this chain
-			if dep.DestChainID != c.chainID {
-				continue
-			}
-			putInboxTx, err := c.putInboxBuilder.BuildPutInboxTx(ctx, dep)
-			if err != nil {
-				c.log.Error().Err(err).
-					Str("instance_id", instanceID).
-					Uint64("source_chain", dep.SourceChainID).
-					Msg("Failed to build putInbox transaction")
-				continue
-			}
-			xt.PutInboxTxs = append(xt.PutInboxTxs, putInboxTx)
-			c.log.Debug().
-				Str("instance_id", instanceID).
-				Uint64("source_chain", dep.SourceChainID).
-				Str("tx_hash", putInboxTx.Hash().Hex()).
-				Msg("Built putInbox transaction")
-		}
-	}
-
 	waiters := c.waiters[instanceID]
 	c.mu.Unlock()
 
 	c.log.Info().
 		Str("instance_id", instanceID).
 		Bool("decision", decision).
-		Int("put_inbox_txs", len(xt.PutInboxTxs)).
 		Msg("Decision received")
 
-	for chainID, ch := range waiters {
-		resp := c.buildResponse(xt, chainID, decision)
-		select {
-		case ch <- resp:
-		default:
-		}
-		close(ch)
-	}
+	c.signalWaiters(waiters)
+	c.mu.Lock()
+	delete(c.waiters, instanceID)
+	c.mu.Unlock()
 
 	return nil
 }
@@ -552,70 +719,6 @@ func (c *DefaultCoordinator) allChainsReady(xt *types.PendingXT) bool {
 		}
 	}
 	return true
-}
-
-func (c *DefaultCoordinator) waitForAllDecisions(ctx context.Context, chainID uint64, pendingXTs []*pendingXTEntry, alreadyCommitted []protocol.TransactionPayload) (*protocol.BuilderPollResponse, error) {
-	type xtWaiter struct {
-		id string
-		ch chan *protocol.BuilderPollResponse
-	}
-
-	c.mu.Lock()
-	var waiters []xtWaiter
-	for _, entry := range pendingXTs {
-		if entry.xt.Decision != nil {
-			if *entry.xt.Decision {
-				if rawTx, ok := entry.xt.RawTxs[chainID]; ok {
-					alreadyCommitted = append(alreadyCommitted, protocol.TransactionPayload{
-						Raw:        fmt.Sprintf("0x%x", rawTx),
-						Required:   true,
-						InstanceID: entry.id,
-					})
-				}
-			}
-			continue
-		}
-
-		if c.waiters[entry.id] == nil {
-			c.waiters[entry.id] = make(map[uint64]chan *protocol.BuilderPollResponse)
-		}
-		ch := make(chan *protocol.BuilderPollResponse, 1)
-		c.waiters[entry.id][chainID] = ch
-		waiters = append(waiters, xtWaiter{id: entry.id, ch: ch})
-	}
-	c.mu.Unlock()
-
-	if len(waiters) == 0 {
-		return &protocol.BuilderPollResponse{
-			Hold: false,
-			Txs:  alreadyCommitted,
-		}, nil
-	}
-
-	timeout := time.After(defaultHoldTimeout)
-	results := make([]protocol.TransactionPayload, 0, len(alreadyCommitted)+len(waiters))
-	results = append(results, alreadyCommitted...)
-
-	for _, w := range waiters {
-		select {
-		case resp := <-w.ch:
-			if resp != nil && len(resp.Txs) > 0 {
-				results = append(results, resp.Txs...)
-			}
-		case <-timeout:
-			return &protocol.BuilderPollResponse{
-				Hold:        true,
-				PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
-			}, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-
-	return &protocol.BuilderPollResponse{
-		Hold: false,
-		Txs:  results,
-	}, nil
 }
 
 func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, xt *types.PendingXT) {
@@ -877,47 +980,6 @@ func (c *DefaultCoordinator) waitForDependencies(ctx context.Context, instanceID
 	return fulfilled, nil
 }
 
-func (c *DefaultCoordinator) buildResponse(xt *types.PendingXT, chainID uint64, decision bool) *protocol.BuilderPollResponse {
-	if !decision {
-		return &protocol.BuilderPollResponse{
-			Hold: false,
-			Txs:  nil,
-		}
-	}
-
-	txBytes, ok := xt.RawTxs[chainID]
-	if !ok {
-		return &protocol.BuilderPollResponse{
-			Hold: false,
-			Txs:  nil,
-		}
-	}
-
-	txs := []protocol.TransactionPayload{
-		{
-			Raw:        fmt.Sprintf("0x%x", txBytes),
-			Required:   true,
-			InstanceID: xt.ID,
-		},
-	}
-
-	for _, putInbox := range xt.PutInboxTxs {
-		putInboxBytes, err := putInbox.MarshalBinary()
-		if err == nil {
-			txs = append([]protocol.TransactionPayload{{
-				Raw:        fmt.Sprintf("0x%x", putInboxBytes),
-				Required:   true,
-				InstanceID: xt.ID,
-			}}, txs...)
-		}
-	}
-
-	return &protocol.BuilderPollResponse{
-		Hold: false,
-		Txs:  txs,
-	}
-}
-
 func (c *DefaultCoordinator) Cleanup(maxAge time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1059,30 +1121,6 @@ func (c *DefaultCoordinator) tryMakeDecision(ctx context.Context, instanceID str
 	xt.Decision = &decision
 	xt.DecidedAt = time.Now()
 
-	// Build putInbox transactions for fulfilled dependencies if decision is commit
-	if decision && c.putInboxBuilder != nil && len(xt.FulfilledDeps) > 0 {
-		for _, dep := range xt.FulfilledDeps {
-			// Only build putInbox for dependencies that target this chain
-			if dep.DestChainID != c.chainID {
-				continue
-			}
-			putInboxTx, err := c.putInboxBuilder.BuildPutInboxTx(ctx, dep)
-			if err != nil {
-				c.log.Error().Err(err).
-					Str("instance_id", instanceID).
-					Uint64("source_chain", dep.SourceChainID).
-					Msg("Failed to build putInbox transaction")
-				continue
-			}
-			xt.PutInboxTxs = append(xt.PutInboxTxs, putInboxTx)
-			c.log.Debug().
-				Str("instance_id", instanceID).
-				Uint64("source_chain", dep.SourceChainID).
-				Str("tx_hash", putInboxTx.Hash().Hex()).
-				Msg("Built putInbox transaction")
-		}
-	}
-
 	waiters := c.waiters[instanceID]
 	c.mu.Unlock()
 
@@ -1090,18 +1128,13 @@ func (c *DefaultCoordinator) tryMakeDecision(ctx context.Context, instanceID str
 		Str("instance_id", instanceID).
 		Bool("decision", decision).
 		Int("votes", collectedVotes).
-		Int("put_inbox_txs", len(xt.PutInboxTxs)).
 		Msg("Made local decision (v2 standalone mode)")
 
 	// Notify waiters
-	for chainID, ch := range waiters {
-		resp := c.buildResponse(xt, chainID, decision)
-		select {
-		case ch <- resp:
-		default:
-		}
-		close(ch)
-	}
+	c.signalWaiters(waiters)
+	c.mu.Lock()
+	delete(c.waiters, instanceID)
+	c.mu.Unlock()
 }
 
 // HandlePeerVote processes a vote received from a peer sidecar.
