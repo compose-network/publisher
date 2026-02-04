@@ -21,7 +21,7 @@ type Coordinator interface {
 	HandleBuilderPoll(ctx context.Context, req *protocol.BuilderPollRequest) (*protocol.BuilderPollResponse, error)
 
 	// SubmitXT submits a new cross-chain transaction for coordination.
-	SubmitXT(ctx context.Context, id string, txs map[uint64][]byte) (string, error)
+	SubmitXT(ctx context.Context, id string, txs map[uint64][][]byte) (string, error)
 
 	// HandleStartInstance handles a StartInstance message from the publisher.
 	HandleStartInstance(ctx context.Context, msg *proto.StartInstance) error
@@ -45,7 +45,7 @@ type Coordinator interface {
 	HandleForwardedXT(
 		ctx context.Context,
 		instanceID string,
-		txs map[uint64][]byte,
+		txs map[uint64][][]byte,
 		originChain uint64,
 		originSeq uint64,
 	) error

@@ -167,8 +167,8 @@ func (c *DefaultCoordinator) HandleStartInstance(ctx context.Context, msg *proto
 		return fmt.Errorf("instance %s already pending", instanceID)
 	}
 
-	txMap := make(map[uint64]*ethtypes.Transaction)
-	rawTxMap := make(map[uint64][]byte)
+	txMap := make(map[uint64][]*ethtypes.Transaction)
+	rawTxMap := make(map[uint64][][]byte)
 
 	for _, req := range msg.XtRequest.TransactionRequests {
 		chainID := req.ChainId
@@ -178,8 +178,8 @@ func (c *DefaultCoordinator) HandleStartInstance(ctx context.Context, msg *proto
 				c.mu.Unlock()
 				return fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
 			}
-			txMap[chainID] = tx
-			rawTxMap[chainID] = txBytes
+			txMap[chainID] = append(txMap[chainID], tx)
+			rawTxMap[chainID] = append(rawTxMap[chainID], txBytes)
 		}
 	}
 
@@ -340,10 +340,10 @@ type chainOverlay struct {
 }
 
 type deliverableXT struct {
-	id    string
-	xt    *types.PendingXT
-	rawTx []byte
-	deps  []protocol.CrossRollupDependency
+	id     string
+	xt     *types.PendingXT
+	rawTxs [][]byte
+	deps   []protocol.CrossRollupDependency
 }
 
 func xtLess(a, b *pendingXTEntry) bool {
@@ -404,15 +404,15 @@ func (c *DefaultCoordinator) collectDeliverable(
 			xt.DeliveredChains[chainID] = true
 			continue
 		}
-		rawTx, ok := xt.RawTxs[chainID]
-		if !ok {
+		rawTxs, ok := xt.RawTxs[chainID]
+		if !ok || len(rawTxs) == 0 {
 			continue
 		}
 		deliverable = append(deliverable, deliverableXT{
-			id:    entry.id,
-			xt:    xt,
-			rawTx: rawTx,
-			deps:  depsForChain(xt.FulfilledDeps, chainID),
+			id:     entry.id,
+			xt:     xt,
+			rawTxs: rawTxs,
+			deps:   depsForChain(xt.FulfilledDeps, chainID),
 		})
 	}
 
@@ -463,11 +463,13 @@ func (c *DefaultCoordinator) buildCommittedTransactions(
 				InstanceID: entry.id,
 			})
 		}
-		txs = append(txs, protocol.TransactionPayload{
-			Raw:        fmt.Sprintf("0x%x", entry.rawTx),
-			Required:   true,
-			InstanceID: entry.id,
-		})
+		for _, rawTx := range entry.rawTxs {
+			txs = append(txs, protocol.TransactionPayload{
+				Raw:        fmt.Sprintf("0x%x", rawTx),
+				Required:   true,
+				InstanceID: entry.id,
+			})
+		}
 	}
 
 	return txs, nil
@@ -495,9 +497,20 @@ func (c *DefaultCoordinator) signalWaiters(waiters map[uint64]chan *protocol.Bui
 	}
 }
 
-func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[uint64][]byte) (string, error) {
+func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[uint64][][]byte) (string, error) {
+	cleanTxs := make(map[uint64][][]byte)
+	for chainID, chainTxs := range txs {
+		if len(chainTxs) == 0 {
+			continue
+		}
+		cleanTxs[chainID] = chainTxs
+	}
+	if len(cleanTxs) == 0 {
+		return "", fmt.Errorf("no transactions provided")
+	}
+
 	if c.isPublisherConnected() {
-		xtRequest := buildXTRequest(txs)
+		xtRequest := buildXTRequest(cleanTxs)
 		requestKey := xtRequestFingerprint(xtRequest)
 		waiter := c.registerSubmissionWaiter(requestKey)
 
@@ -530,21 +543,23 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[ui
 		return "", fmt.Errorf("XT %s already pending", id)
 	}
 
-	txMap := make(map[uint64]*ethtypes.Transaction)
-	for chainID, txBytes := range txs {
-		tx := new(ethtypes.Transaction)
-		if err := tx.UnmarshalBinary(txBytes); err != nil {
-			c.mu.Unlock()
-			return "", fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
+	txMap := make(map[uint64][]*ethtypes.Transaction)
+	for chainID, chainTxs := range cleanTxs {
+		for _, txBytes := range chainTxs {
+			tx := new(ethtypes.Transaction)
+			if err := tx.UnmarshalBinary(txBytes); err != nil {
+				c.mu.Unlock()
+				return "", fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
+			}
+			txMap[chainID] = append(txMap[chainID], tx)
 		}
-		txMap[chainID] = tx
 	}
 
 	xt := &types.PendingXT{
 		ID:             id,
 		InstanceID:     []byte(id),
 		Transactions:   txMap,
-		RawTxs:         txs,
+		RawTxs:         cleanTxs,
 		ChainStates:    make(map[uint64]*protocol.ChainState),
 		StateOverrides: make(map[uint64]map[string]any),
 		PeerVotes:      make(map[uint64]bool),
@@ -604,7 +619,7 @@ func (c *DefaultCoordinator) sendXTRequestToPublisher(ctx context.Context, xtReq
 	return nil
 }
 
-func buildXTRequest(txs map[uint64][]byte) *proto.XTRequest {
+func buildXTRequest(txs map[uint64][][]byte) *proto.XTRequest {
 	if len(txs) == 0 {
 		return &proto.XTRequest{}
 	}
@@ -619,9 +634,13 @@ func buildXTRequest(txs map[uint64][]byte) *proto.XTRequest {
 
 	txRequests := make([]*proto.TransactionRequest, 0, len(chainIDs))
 	for _, chainID := range chainIDs {
+		chainTxs := txs[chainID]
+		if len(chainTxs) == 0 {
+			continue
+		}
 		txRequests = append(txRequests, &proto.TransactionRequest{
 			ChainId:     chainID,
-			Transaction: [][]byte{txs[chainID]},
+			Transaction: chainTxs,
 		})
 	}
 
@@ -733,13 +752,8 @@ func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, x
 	chainLock.Lock()
 	defer chainLock.Unlock()
 
-	vote := true
-	var allSentMsgs []protocol.CrossRollupMessage
-	var allFulfilledDeps []protocol.CrossRollupDependency
-
-	// In v2 standalone mode, only simulate the local chain's transaction
-	txBytes, hasLocalTx := xt.RawTxs[c.chainID]
-	if !hasLocalTx {
+	txBytesList, hasLocalTx := xt.RawTxs[c.chainID]
+	if !hasLocalTx || len(txBytesList) == 0 {
 		c.log.Debug().
 			Str("instance_id", instanceID).
 			Uint64("local_chain", c.chainID).
@@ -791,127 +805,143 @@ func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, x
 		return cloneStateOverrides(overlay.Overlay)
 	}()
 
-	// Simulate the local chain's transaction
-	result, err := c.simulator.SimulateWithMailbox(ctx, c.chainID, txBytes, baseOverrides, nil, nil)
-	if err != nil {
-		c.log.Error().Err(err).Uint64("chain_id", c.chainID).Msg("Simulation failed")
-		c.sendVote(ctx, instanceID, xt, false)
-		return
-	}
+	currentOverrides := baseOverrides
+	var xtOverrides map[string]any
+	allSentMsgs := make([]protocol.CrossRollupMessage, 0)
+	allDeps := make([]protocol.CrossRollupDependency, 0)
+	allFulfilledDeps := make([]protocol.CrossRollupDependency, 0)
+	depKeys := make(map[string]struct{})
+	fulfilledKeys := make(map[string]struct{})
 
-	// Always capture dependencies and outbound messages from simulation
-	xt.Dependencies = append(xt.Dependencies, result.Dependencies...)
-	xt.OutboundMessages = append(xt.OutboundMessages, result.OutboundMessages...)
-
-	// If simulation failed and no dependencies, vote false immediately
-	if !result.Success && len(result.Dependencies) == 0 {
-		tx := xt.Transactions[c.chainID]
-		txHash := ""
-		if tx != nil {
-			txHash = tx.Hash().Hex()
-		}
-		c.log.Warn().
-			Uint64("chain_id", c.chainID).
-			Str("error", result.Error).
-			Str("tx_hash", txHash).
-			Msg("Simulation returned failure with no dependencies")
-		c.sendVote(ctx, instanceID, xt, false)
-		return
-	}
-
-	// Send CIRC messages for cross-chain communication
-	for _, msg := range xt.OutboundMessages {
-		if err := c.sendCIRCMessage(ctx, instanceID, xt.InstanceID, &msg); err != nil {
-			c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Failed to send CIRC message")
-		} else {
-			allSentMsgs = append(allSentMsgs, msg)
-		}
-	}
-
-	// Wait for dependencies if any (including from failed simulations that need inbox data)
-	if len(xt.Dependencies) > 0 {
-		c.log.Debug().
-			Str("instance_id", instanceID).
-			Int("dependencies", len(xt.Dependencies)).
-			Msg("Waiting for dependencies")
-
-		fulfilledDeps, err := c.waitForDependencies(ctx, instanceID, xt)
-		if err != nil {
-			c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Failed to fulfill dependencies")
-			c.sendVote(ctx, instanceID, xt, false)
-			return
-		}
-		allFulfilledDeps = fulfilledDeps
-		xt.FulfilledDeps = fulfilledDeps
-	}
-
-	// Re-simulate with fulfilled dependencies
-	if len(allFulfilledDeps) > 0 {
-		for i := 0; i < maxResimulations; i++ {
-			result, err = c.simulator.SimulateWithMailbox(
+	for txIndex, txBytes := range txBytesList {
+		success := false
+		for attempt := 0; attempt < maxResimulations; attempt++ {
+			result, err := c.simulator.SimulateWithMailbox(
 				ctx,
 				c.chainID,
 				txBytes,
-				baseOverrides,
+				currentOverrides,
 				allSentMsgs,
 				allFulfilledDeps,
 			)
 			if err != nil {
-				c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Re-simulation failed")
+				c.log.Error().Err(err).Uint64("chain_id", c.chainID).Msg("Simulation failed")
 				c.sendVote(ctx, instanceID, xt, false)
 				return
+			}
+
+			newDeps := make([]protocol.CrossRollupDependency, 0, len(result.Dependencies))
+			for _, dep := range result.Dependencies {
+				key := depKey(dep)
+				if _, ok := depKeys[key]; !ok {
+					depKeys[key] = struct{}{}
+					allDeps = append(allDeps, dep)
+				}
+				if _, ok := fulfilledKeys[key]; !ok {
+					newDeps = append(newDeps, dep)
+				}
+			}
+
+			for _, msg := range result.OutboundMessages {
+				if containsMessage(allSentMsgs, msg) {
+					continue
+				}
+				if err := c.sendCIRCMessage(ctx, instanceID, xt.InstanceID, &msg); err != nil {
+					c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Failed to send CIRC message")
+				}
+				allSentMsgs = append(allSentMsgs, msg)
+			}
+
+			if !result.Success && len(result.Dependencies) == 0 {
+				txs := xt.Transactions[c.chainID]
+				txHash := ""
+				if txIndex < len(txs) && txs[txIndex] != nil {
+					txHash = txs[txIndex].Hash().Hex()
+				}
+				c.log.Warn().
+					Uint64("chain_id", c.chainID).
+					Str("error", result.Error).
+					Str("tx_hash", txHash).
+					Int("tx_index", txIndex).
+					Msg("Simulation returned failure with no dependencies")
+				c.sendVote(ctx, instanceID, xt, false)
+				return
+			}
+
+			if len(newDeps) > 0 {
+				c.log.Debug().
+					Str("instance_id", instanceID).
+					Int("dependencies", len(newDeps)).
+					Int("tx_index", txIndex).
+					Msg("Waiting for dependencies")
+
+				fulfilled, err := c.waitForDependencies(ctx, instanceID, xt, newDeps)
+				if err != nil {
+					c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Failed to fulfill dependencies")
+					c.sendVote(ctx, instanceID, xt, false)
+					return
+				}
+				for _, dep := range fulfilled {
+					key := depKey(dep)
+					if _, ok := fulfilledKeys[key]; ok {
+						continue
+					}
+					fulfilledKeys[key] = struct{}{}
+					allFulfilledDeps = append(allFulfilledDeps, dep)
+				}
+				continue
 			}
 
 			if !result.Success {
 				c.log.Warn().
 					Str("instance_id", instanceID).
 					Str("error", result.Error).
-					Int("attempt", i+1).
-					Msg("Re-simulation returned failure")
-				// If still failing and no new dependencies, vote false
-				if len(result.Dependencies) == 0 {
-					c.sendVote(ctx, instanceID, xt, false)
-					return
-				}
+					Int("attempt", attempt+1).
+					Int("tx_index", txIndex).
+					Msg("Simulation still failing after dependencies")
+				c.sendVote(ctx, instanceID, xt, false)
+				return
 			}
 
-			newMsgs := false
-			for _, msg := range result.OutboundMessages {
-				if !containsMessage(allSentMsgs, msg) {
-					if err := c.sendCIRCMessage(ctx, instanceID, xt.InstanceID, &msg); err == nil {
-						allSentMsgs = append(allSentMsgs, msg)
-						newMsgs = true
-					}
-				}
+			if result.StateOverrides != nil {
+				delta := cloneStateOverrides(result.StateOverrides)
+				xtOverrides = simsdk.MergeStateOverrides(xtOverrides, cloneStateOverrides(delta))
+				currentOverrides = simsdk.MergeStateOverrides(currentOverrides, delta)
 			}
 
-			// Success and no new messages/dependencies - we're done
-			if result.Success && !newMsgs && len(result.Dependencies) == 0 {
-				break
-			}
+			success = true
+			break
 		}
 
-		// Final check after all re-simulations
-		if !result.Success {
+		if !success {
 			c.log.Warn().
 				Str("instance_id", instanceID).
-				Str("error", result.Error).
-				Msg("Re-simulation still failing after max attempts")
+				Int("tx_index", txIndex).
+				Msg("Simulation failed after max attempts")
 			c.sendVote(ctx, instanceID, xt, false)
 			return
 		}
 	}
 
-	if result.StateOverrides != nil {
-		c.mu.Lock()
+	c.mu.Lock()
+	if len(allDeps) > 0 {
+		xt.Dependencies = allDeps
+	}
+	if len(allSentMsgs) > 0 {
+		xt.OutboundMessages = allSentMsgs
+	}
+	if len(allFulfilledDeps) > 0 {
+		xt.FulfilledDeps = allFulfilledDeps
+	}
+	if xtOverrides != nil {
 		if xt.StateOverrides == nil {
 			xt.StateOverrides = make(map[uint64]map[string]any)
 		}
-		xt.StateOverrides[c.chainID] = result.StateOverrides
-		c.mu.Unlock()
+		xt.StateOverrides[c.chainID] = xtOverrides
 	}
+	c.mu.Unlock()
 
-	c.sendVote(ctx, instanceID, xt, vote)
+	c.sendVote(ctx, instanceID, xt, true)
 }
 
 func (c *DefaultCoordinator) sendVote(ctx context.Context, instanceID string, xt *types.PendingXT, vote bool) {
@@ -1025,15 +1055,16 @@ func (c *DefaultCoordinator) waitForDependencies(
 	ctx context.Context,
 	instanceID string,
 	xt *types.PendingXT,
+	deps []protocol.CrossRollupDependency,
 ) ([]protocol.CrossRollupDependency, error) {
 	if c.mailboxQueue == nil {
 		return nil, fmt.Errorf("mailbox queue not configured")
 	}
 
-	fulfilled := make([]protocol.CrossRollupDependency, 0, len(xt.Dependencies))
+	fulfilled := make([]protocol.CrossRollupDependency, 0, len(deps))
 	timeout := time.After(defaultCIRCTimeout)
 
-	for _, dep := range xt.Dependencies {
+	for _, dep := range deps {
 		for {
 			c.mu.RLock()
 			pendingMsgs := xt.PendingMailbox
@@ -1143,6 +1174,28 @@ func containsMessage(msgs []protocol.CrossRollupMessage, msg protocol.CrossRollu
 		}
 	}
 	return false
+}
+
+func depKey(dep protocol.CrossRollupDependency) string {
+	label := ""
+	if len(dep.Label) > 0 {
+		label = hex.EncodeToString(dep.Label)
+	}
+	session := ""
+	if dep.SessionID != nil {
+		session = dep.SessionID.String()
+	}
+	return fmt.Sprintf(
+		"%d|%d|%s|%s|%s|%s|%t|%t",
+		dep.SourceChainID,
+		dep.DestChainID,
+		dep.Sender.Hex(),
+		dep.Receiver.Hex(),
+		session,
+		label,
+		dep.RequiredData,
+		dep.IsInboxRead,
+	)
 }
 
 func cloneStateOverrides(src map[string]any) map[string]any {
@@ -1307,7 +1360,7 @@ func (c *DefaultCoordinator) HandlePeerVote(ctx context.Context, instanceID stri
 func (c *DefaultCoordinator) HandleForwardedXT(
 	ctx context.Context,
 	instanceID string,
-	txs map[uint64][]byte,
+	txs map[uint64][][]byte,
 	originChain uint64,
 	originSeq uint64,
 ) error {
@@ -1324,21 +1377,32 @@ func (c *DefaultCoordinator) HandleForwardedXT(
 		return nil
 	}
 
-	txMap := make(map[uint64]*ethtypes.Transaction)
-	for chainID, txBytes := range txs {
-		tx := new(ethtypes.Transaction)
-		if err := tx.UnmarshalBinary(txBytes); err != nil {
-			c.mu.Unlock()
-			return fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
+	cleanTxs := make(map[uint64][][]byte)
+	txMap := make(map[uint64][]*ethtypes.Transaction)
+	for chainID, chainTxs := range txs {
+		if len(chainTxs) == 0 {
+			continue
 		}
-		txMap[chainID] = tx
+		cleanTxs[chainID] = chainTxs
+		for _, txBytes := range chainTxs {
+			tx := new(ethtypes.Transaction)
+			if err := tx.UnmarshalBinary(txBytes); err != nil {
+				c.mu.Unlock()
+				return fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
+			}
+			txMap[chainID] = append(txMap[chainID], tx)
+		}
+	}
+	if len(cleanTxs) == 0 {
+		c.mu.Unlock()
+		return fmt.Errorf("forwarded XT has no transactions")
 	}
 
 	xt := &types.PendingXT{
 		ID:             instanceID,
 		InstanceID:     []byte(instanceID),
 		Transactions:   txMap,
-		RawTxs:         txs,
+		RawTxs:         cleanTxs,
 		ChainStates:    make(map[uint64]*protocol.ChainState),
 		StateOverrides: make(map[uint64]map[string]any),
 		PeerVotes:      make(map[uint64]bool),
@@ -1360,7 +1424,7 @@ func (c *DefaultCoordinator) HandleForwardedXT(
 
 	c.mu.Unlock()
 
-	requestKey := xtRequestFingerprint(buildXTRequest(txs))
+	requestKey := xtRequestFingerprint(buildXTRequest(cleanTxs))
 	c.resolveSubmissionWaiter(requestKey, instanceID)
 
 	return nil

@@ -11,7 +11,7 @@ import (
 // Coordinator handles peer-to-peer sidecar communication.
 type Coordinator interface {
 	// ForwardXT forwards an XT to peer sidecars for their chains.
-	ForwardXT(ctx context.Context, instanceID string, txs map[uint64][]byte, originSeq uint64) error
+	ForwardXT(ctx context.Context, instanceID string, txs map[uint64][][]byte, originSeq uint64) error
 
 	// SendVoteToPeers sends our vote to all peer sidecars.
 	SendVoteToPeers(ctx context.Context, instanceID string, chainID uint64, vote bool) error
@@ -32,10 +32,10 @@ type Client interface {
 
 // XTForwardRequest is sent to peer sidecars to forward an XT.
 type XTForwardRequest struct {
-	InstanceID   string            `json:"instance_id"`
-	Transactions map[string]string `json:"transactions"` // chainID -> hex tx
-	OriginChain  uint64            `json:"origin_chain"`
-	OriginSeq    uint64            `json:"origin_seq"`
+	InstanceID   string              `json:"instance_id"`
+	Transactions map[string][]string `json:"transactions"` // chainID -> hex txs
+	OriginChain  uint64              `json:"origin_chain"`
+	OriginSeq    uint64              `json:"origin_seq"`
 }
 
 // VoteRequest is sent to peer sidecars with our vote.
@@ -69,16 +69,23 @@ func NewCoordinator(
 func (c *DefaultCoordinator) ForwardXT(
 	ctx context.Context,
 	instanceID string,
-	txs map[uint64][]byte,
+	txs map[uint64][][]byte,
 	originSeq uint64,
 ) error {
 	if len(txs) == 0 {
 		return nil
 	}
 
-	hexTxs := make(map[string]string, len(txs))
-	for chainID, txBytes := range txs {
-		hexTxs[fmt.Sprintf("%d", chainID)] = fmt.Sprintf("0x%x", txBytes)
+	hexTxs := make(map[string][]string, len(txs))
+	for chainID, chainTxs := range txs {
+		if len(chainTxs) == 0 {
+			continue
+		}
+		encoded := make([]string, 0, len(chainTxs))
+		for _, txBytes := range chainTxs {
+			encoded = append(encoded, fmt.Sprintf("0x%x", txBytes))
+		}
+		hexTxs[fmt.Sprintf("%d", chainID)] = encoded
 	}
 
 	req := XTForwardRequest{

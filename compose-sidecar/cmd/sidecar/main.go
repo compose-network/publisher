@@ -338,12 +338,19 @@ func handlePeerMessage(
 	var xtForward peer.XTForwardRequest
 	if err := json.Unmarshal(data, &xtForward); err == nil && len(xtForward.Transactions) > 0 {
 		// Parse hex transactions back to bytes
-		txs := make(map[uint64][]byte)
-		for chainIDStr, hexTx := range xtForward.Transactions {
+		txs := make(map[uint64][][]byte)
+		for chainIDStr, hexTxs := range xtForward.Transactions {
 			var chainID uint64
 			fmt.Sscanf(chainIDStr, "%d", &chainID)
-			txBytes := common.FromHex(hexTx)
-			txs[chainID] = txBytes
+			if len(hexTxs) == 0 {
+				continue
+			}
+			decoded := make([][]byte, 0, len(hexTxs))
+			for _, hexTx := range hexTxs {
+				txBytes := common.FromHex(hexTx)
+				decoded = append(decoded, txBytes)
+			}
+			txs[chainID] = decoded
 		}
 		return coord.HandleForwardedXT(
 			ctx,
@@ -513,7 +520,6 @@ func (s *quicMailboxSender) Send(ctx context.Context, destChainID uint64, msg *p
 
 	return client.SendRaw(ctx, data)
 }
-
 
 func convertSimulationResult(result *simulation.Result) *protocol.SimulationResult {
 	return &protocol.SimulationResult{

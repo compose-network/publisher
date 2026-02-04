@@ -16,8 +16,8 @@ type PendingXT struct {
 	InstanceID   []byte
 	PeriodID     uint64
 	SequenceNum  uint64
-	Transactions map[uint64]*types.Transaction
-	RawTxs       map[uint64][]byte
+	Transactions map[uint64][]*types.Transaction
+	RawTxs       map[uint64][][]byte
 	ChainStates  map[uint64]*protocol.ChainState
 	CreatedAt    time.Time
 	SimulatedAt  time.Time

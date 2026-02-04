@@ -202,7 +202,7 @@ func (s *Server) handleMailbox(w http.ResponseWriter, r *http.Request) {
 
 // XTSubmitRequest represents a cross-chain transaction submission request.
 type XTSubmitRequest struct {
-	Transactions map[string]string `json:"transactions"` // chainID (string) -> hex-encoded RLP tx
+	Transactions map[string][]string `json:"transactions"` // chainID (string) -> hex-encoded RLP txs
 }
 
 // XTSubmitResponse represents the response to an XT submission.
@@ -225,20 +225,31 @@ func (s *Server) handleXTSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert string chainIDs to uint64 and decode hex transactions
-	txs := make(map[uint64][]byte)
-	for chainIDStr, hexTx := range req.Transactions {
+	txs := make(map[uint64][][]byte)
+	for chainIDStr, hexTxs := range req.Transactions {
 		var chainID uint64
 		if _, err := fmt.Sscanf(chainIDStr, "%d", &chainID); err != nil {
 			s.writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid chain_id: %s", chainIDStr), err)
 			return
 		}
 
-		txBytes, err := hex.DecodeString(strings.TrimPrefix(hexTx, "0x"))
-		if err != nil {
-			s.writeError(w, http.StatusBadRequest, "invalid hex transaction", err)
-			return
+		if len(hexTxs) == 0 {
+			continue
 		}
-		txs[chainID] = txBytes
+		decoded := make([][]byte, 0, len(hexTxs))
+		for _, hexTx := range hexTxs {
+			txBytes, err := hex.DecodeString(strings.TrimPrefix(hexTx, "0x"))
+			if err != nil {
+				s.writeError(w, http.StatusBadRequest, "invalid hex transaction", err)
+				return
+			}
+			decoded = append(decoded, txBytes)
+		}
+		txs[chainID] = decoded
+	}
+	if len(txs) == 0 {
+		s.writeError(w, http.StatusBadRequest, "no transactions provided", nil)
+		return
 	}
 
 	instanceID, err := s.coordinator.SubmitXT(r.Context(), "", txs)
@@ -292,20 +303,31 @@ func (s *Server) handleXTForward(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert string chainIDs to uint64 and decode hex transactions
-	txs := make(map[uint64][]byte)
-	for chainIDStr, hexTx := range req.Transactions {
+	txs := make(map[uint64][][]byte)
+	for chainIDStr, hexTxs := range req.Transactions {
 		var chainID uint64
 		if _, err := fmt.Sscanf(chainIDStr, "%d", &chainID); err != nil {
 			s.writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid chain_id: %s", chainIDStr), err)
 			return
 		}
 
-		txBytes, err := hex.DecodeString(strings.TrimPrefix(hexTx, "0x"))
-		if err != nil {
-			s.writeError(w, http.StatusBadRequest, "invalid hex transaction", err)
-			return
+		if len(hexTxs) == 0 {
+			continue
 		}
-		txs[chainID] = txBytes
+		decoded := make([][]byte, 0, len(hexTxs))
+		for _, hexTx := range hexTxs {
+			txBytes, err := hex.DecodeString(strings.TrimPrefix(hexTx, "0x"))
+			if err != nil {
+				s.writeError(w, http.StatusBadRequest, "invalid hex transaction", err)
+				return
+			}
+			decoded = append(decoded, txBytes)
+		}
+		txs[chainID] = decoded
+	}
+	if len(txs) == 0 {
+		s.writeError(w, http.StatusBadRequest, "no transactions provided", nil)
+		return
 	}
 
 	// Forward to coordinator
