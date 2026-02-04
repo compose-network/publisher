@@ -1,9 +1,11 @@
 package coordinator
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
@@ -12,6 +14,7 @@ import (
 	"github.com/compose-network/compose-sdk/mailbox"
 	"github.com/compose-network/compose-sdk/peer"
 	"github.com/compose-network/compose-sdk/protocol"
+	simsdk "github.com/compose-network/compose-sdk/simulation"
 	"github.com/compose-network/compose-sidecar/internal/types"
 	"github.com/compose-network/specs/compose/proto"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,7 +25,7 @@ import (
 
 const (
 	defaultPollInterval = 50 * time.Millisecond
-	defaultHoldTimeout  = 500 * time.Millisecond
+	defaultBuildTimeout = 150 * time.Millisecond
 	defaultCIRCTimeout  = 10 * time.Second
 	maxResimulations    = 3
 )
@@ -50,6 +53,11 @@ type DefaultCoordinator struct {
 	currentPeriodID      uint64
 	currentSuperblockNum uint64
 
+	originSeq uint64
+
+	chainOverlays map[uint64]*chainOverlay
+	chainLocks    map[uint64]*sync.Mutex
+
 	running bool
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
@@ -71,7 +79,11 @@ type PutInboxBuilder interface {
 	// PendingNonceAt returns the current pending nonce for the coordinator address.
 	PendingNonceAt(ctx context.Context) (uint64, error)
 	// BuildPutInboxTxWithNonce builds a signed putInbox transaction with the given nonce.
-	BuildPutInboxTxWithNonce(ctx context.Context, dep protocol.CrossRollupDependency, nonce uint64) (*ethtypes.Transaction, error)
+	BuildPutInboxTxWithNonce(
+		ctx context.Context,
+		dep protocol.CrossRollupDependency,
+		nonce uint64,
+	) (*ethtypes.Transaction, error)
 }
 
 func NewCoordinator(cfg CoordinatorConfig) *DefaultCoordinator {
@@ -90,6 +102,8 @@ func NewCoordinator(cfg CoordinatorConfig) *DefaultCoordinator {
 		putInboxBuilder:   cfg.PutInboxBuilder,
 		nonceManager:      NewDeferredNonceManager(),
 		peerVotes:         make(map[string]map[uint64]bool),
+		chainOverlays:     make(map[uint64]*chainOverlay),
+		chainLocks:        make(map[uint64]*sync.Mutex),
 		stopCh:            make(chan struct{}),
 	}
 }
@@ -170,14 +184,16 @@ func (c *DefaultCoordinator) HandleStartInstance(ctx context.Context, msg *proto
 	}
 
 	xt := &types.PendingXT{
-		ID:           instanceID,
-		InstanceID:   msg.InstanceId,
-		PeriodID:     msg.PeriodId,
-		SequenceNum:  msg.SequenceNumber,
-		Transactions: txMap,
-		RawTxs:       rawTxMap,
-		ChainStates:  make(map[uint64]*protocol.ChainState),
-		CreatedAt:    time.Now(),
+		ID:             instanceID,
+		InstanceID:     msg.InstanceId,
+		PeriodID:       msg.PeriodId,
+		SequenceNum:    msg.SequenceNumber,
+		Transactions:   txMap,
+		RawTxs:         rawTxMap,
+		ChainStates:    make(map[uint64]*protocol.ChainState),
+		StateOverrides: make(map[uint64]map[string]any),
+		CreatedAt:      time.Now(),
+		LockedChains:   make(map[uint64]bool),
 	}
 
 	c.pending[instanceID] = xt
@@ -197,7 +213,10 @@ func (c *DefaultCoordinator) HandleStartInstance(ctx context.Context, msg *proto
 	return nil
 }
 
-func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protocol.BuilderPollRequest) (*protocol.BuilderPollResponse, error) {
+func (c *DefaultCoordinator) HandleBuilderPoll(
+	ctx context.Context,
+	req *protocol.BuilderPollRequest,
+) (*protocol.BuilderPollResponse, error) {
 	if req.FlashblockIndex == 0 {
 		return &protocol.BuilderPollResponse{Hold: false}, nil
 	}
@@ -214,6 +233,7 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 		Timestamp:       req.Timestamp,
 		GasLimit:        req.GasLimit,
 		ReceivedAt:      time.Now(),
+		StateOverrides:  req.StateOverrides,
 	}
 	c.chainStates[req.ChainID] = state
 
@@ -224,7 +244,6 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 		Msg("Builder poll received")
 
 	var entries []*pendingXTEntry
-	var pendingXTs []*pendingXTEntry
 
 	for id, xt := range c.pending {
 		_, needsChain := xt.Transactions[req.ChainID]
@@ -235,24 +254,37 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 		entry := &pendingXTEntry{id: id, xt: xt}
 		entries = append(entries, entry)
 		if xt.Decision == nil {
-			pendingXTs = append(pendingXTs, entry)
-			xt.ChainStates[req.ChainID] = state
+			if xt.LockedChains == nil {
+				xt.LockedChains = make(map[uint64]bool)
+			}
+			if !xt.LockedChains[req.ChainID] {
+				xt.ChainStates[req.ChainID] = state
+			}
 		}
 	}
 
 	var xtsToProcess []*pendingXTEntry
-	for _, entry := range pendingXTs {
+	var firstUndecided *pendingXTEntry
+	for _, entry := range entries {
+		if entry.xt.Decision != nil {
+			continue
+		}
+		if firstUndecided == nil || xtLess(entry, firstUndecided) {
+			firstUndecided = entry
+		}
+	}
+	if firstUndecided != nil {
 		ready := false
 		if c.peerCoordinator != nil {
-			_, ready = entry.xt.ChainStates[c.chainID]
+			_, ready = firstUndecided.xt.ChainStates[c.chainID]
 		} else if c.isPublisherConnected() {
-			ready = c.allChainsReady(entry.xt)
+			ready = c.allChainsReady(firstUndecided.xt)
 		} else {
-			_, ready = entry.xt.ChainStates[c.chainID]
+			_, ready = firstUndecided.xt.ChainStates[c.chainID]
 		}
-		if ready && !entry.xt.VoteSent {
-			entry.xt.VoteSent = true
-			xtsToProcess = append(xtsToProcess, entry)
+		if ready && !firstUndecided.xt.VoteSent {
+			firstUndecided.xt.VoteSent = true
+			xtsToProcess = append(xtsToProcess, firstUndecided)
 		}
 	}
 	c.mu.Unlock()
@@ -272,7 +304,9 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 	// First attempt to deliver any committed prefix.
 	deliverable, blocking := c.collectDeliverable(req.ChainID, entries)
 	if len(deliverable) > 0 {
-		txs, err := c.buildCommittedTransactions(ctx, req.ChainID, deliverable)
+		buildCtx, cancel := context.WithTimeout(ctx, defaultBuildTimeout)
+		defer cancel()
+		txs, err := c.buildCommittedTransactions(buildCtx, req.ChainID, deliverable)
 		if err != nil {
 			c.log.Error().Err(err).Msg("Failed to build putInbox transactions")
 			return &protocol.BuilderPollResponse{
@@ -288,36 +322,21 @@ func (c *DefaultCoordinator) HandleBuilderPoll(ctx context.Context, req *protoco
 		return &protocol.BuilderPollResponse{Hold: false}, nil
 	}
 
-	// Use background context with internal timeout to avoid being canceled by the builder's poll timeout.
-	waitCtx, cancel := context.WithTimeout(context.Background(), defaultHoldTimeout)
-	defer cancel()
-	if !c.waitForDecision(waitCtx, req.ChainID, blocking.id) {
-		return &protocol.BuilderPollResponse{
-			Hold:        true,
-			PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
-		}, nil
-	}
-
-	// Decision arrived, recompute deliverable prefix.
-	deliverable, _ = c.collectDeliverable(req.ChainID, entries)
-	if len(deliverable) == 0 {
-		return &protocol.BuilderPollResponse{Hold: false}, nil
-	}
-	txs, err := c.buildCommittedTransactions(ctx, req.ChainID, deliverable)
-	if err != nil {
-		c.log.Error().Err(err).Msg("Failed to build putInbox transactions")
-		return &protocol.BuilderPollResponse{
-			Hold:        true,
-			PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
-		}, nil
-	}
-	c.markDelivered(req.ChainID, deliverable)
-	return &protocol.BuilderPollResponse{Hold: false, Txs: txs}, nil
+	return &protocol.BuilderPollResponse{
+		Hold:        true,
+		PollAfterMs: uint64(defaultPollInterval.Milliseconds()),
+	}, nil
 }
 
 type pendingXTEntry struct {
 	id string
 	xt *types.PendingXT
+}
+
+type chainOverlay struct {
+	BlockNumber     uint64
+	FlashblockIndex uint64
+	Overlay         map[string]any
 }
 
 type deliverableXT struct {
@@ -333,6 +352,12 @@ func xtLess(a, b *pendingXTEntry) bool {
 	}
 	if a.xt.SequenceNum != b.xt.SequenceNum {
 		return a.xt.SequenceNum < b.xt.SequenceNum
+	}
+	if a.xt.OriginChain != b.xt.OriginChain {
+		return a.xt.OriginChain < b.xt.OriginChain
+	}
+	if a.xt.OriginSeq != b.xt.OriginSeq {
+		return a.xt.OriginSeq < b.xt.OriginSeq
 	}
 	if !a.xt.CreatedAt.Equal(b.xt.CreatedAt) {
 		return a.xt.CreatedAt.Before(b.xt.CreatedAt)
@@ -356,7 +381,10 @@ func depsForChain(deps []protocol.CrossRollupDependency, chainID uint64) []proto
 	return filtered
 }
 
-func (c *DefaultCoordinator) collectDeliverable(chainID uint64, entries []*pendingXTEntry) ([]deliverableXT, *pendingXTEntry) {
+func (c *DefaultCoordinator) collectDeliverable(
+	chainID uint64,
+	entries []*pendingXTEntry,
+) ([]deliverableXT, *pendingXTEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -457,33 +485,6 @@ func (c *DefaultCoordinator) markDelivered(chainID uint64, deliverable []deliver
 	}
 }
 
-func (c *DefaultCoordinator) waitForDecision(ctx context.Context, chainID uint64, instanceID string) bool {
-	c.mu.Lock()
-	xt, exists := c.pending[instanceID]
-	if !exists {
-		c.mu.Unlock()
-		return true
-	}
-	if xt.Decision != nil {
-		c.mu.Unlock()
-		return true
-	}
-
-	if c.waiters[instanceID] == nil {
-		c.waiters[instanceID] = make(map[uint64]chan *protocol.BuilderPollResponse)
-	}
-	ch := make(chan *protocol.BuilderPollResponse, 1)
-	c.waiters[instanceID][chainID] = ch
-	c.mu.Unlock()
-
-	select {
-	case <-ch:
-		return true
-	case <-ctx.Done():
-		return false
-	}
-}
-
 func (c *DefaultCoordinator) signalWaiters(waiters map[uint64]chan *protocol.BuilderPollResponse) {
 	for _, ch := range waiters {
 		select {
@@ -520,7 +521,8 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[ui
 	c.mu.Lock()
 
 	if id == "" {
-		id = fmt.Sprintf("xt-%d", time.Now().UnixNano())
+		c.originSeq++
+		id = fmt.Sprintf("xt-%d-%d", c.chainID, c.originSeq)
 	}
 
 	if _, exists := c.pending[id]; exists {
@@ -539,15 +541,17 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[ui
 	}
 
 	xt := &types.PendingXT{
-		ID:           id,
-		InstanceID:   []byte(id),
-		Transactions: txMap,
-		RawTxs:       txs,
-		ChainStates:  make(map[uint64]*protocol.ChainState),
-		PeerVotes:    make(map[uint64]bool),
-		CreatedAt:    time.Now(),
-		IsLeader:     true,
-		LeaderChain:  c.chainID,
+		ID:             id,
+		InstanceID:     []byte(id),
+		Transactions:   txMap,
+		RawTxs:         txs,
+		ChainStates:    make(map[uint64]*protocol.ChainState),
+		StateOverrides: make(map[uint64]map[string]any),
+		PeerVotes:      make(map[uint64]bool),
+		CreatedAt:      time.Now(),
+		OriginChain:    c.chainID,
+		OriginSeq:      c.originSeq,
+		LockedChains:   make(map[uint64]bool),
 	}
 
 	c.pending[id] = xt
@@ -556,7 +560,6 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[ui
 	c.log.Info().
 		Str("xt_id", id).
 		Int("chains", len(txs)).
-		Bool("is_leader", true).
 		Msg("New XT submitted via API")
 
 	c.mu.Unlock()
@@ -565,7 +568,7 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[ui
 		go func() {
 			forwardCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := c.peerCoordinator.ForwardXT(forwardCtx, id, txs, true); err != nil {
+			if err := c.peerCoordinator.ForwardXT(forwardCtx, id, txs, c.originSeq); err != nil {
 				c.log.Error().Err(err).Str("xt_id", id).Msg("Failed to forward XT to peers")
 			} else {
 				c.log.Info().Str("xt_id", id).Msg("Forwarded XT to peer sidecars")
@@ -699,6 +702,8 @@ func (c *DefaultCoordinator) OnDecision(ctx context.Context, instanceID string, 
 	waiters := c.waiters[instanceID]
 	c.mu.Unlock()
 
+	c.applyCommittedOverrides(instanceID)
+
 	c.log.Info().
 		Str("instance_id", instanceID).
 		Bool("decision", decision).
@@ -724,6 +729,10 @@ func (c *DefaultCoordinator) allChainsReady(xt *types.PendingXT) bool {
 func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, xt *types.PendingXT) {
 	c.log.Info().Str("instance_id", instanceID).Uint64("local_chain", c.chainID).Msg("Processing XT")
 
+	chainLock := c.getChainLock(c.chainID)
+	chainLock.Lock()
+	defer chainLock.Unlock()
+
 	vote := true
 	var allSentMsgs []protocol.CrossRollupMessage
 	var allFulfilledDeps []protocol.CrossRollupDependency
@@ -740,8 +749,14 @@ func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, x
 		return
 	}
 
-	// Check chain state is available
+	// Check chain state is available and lock it for this XT
+	c.mu.Lock()
+	if xt.LockedChains == nil {
+		xt.LockedChains = make(map[uint64]bool)
+	}
+	xt.LockedChains[c.chainID] = true
 	state := xt.ChainStates[c.chainID]
+	c.mu.Unlock()
 	if state == nil {
 		c.log.Error().Uint64("chain_id", c.chainID).Msg("Missing chain state for local chain")
 		c.sendVote(ctx, instanceID, xt, false)
@@ -754,8 +769,30 @@ func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, x
 		return
 	}
 
+	// Resolve base state overrides for this chain (builder in-progress state + previous XT overlays)
+	baseOverrides := func() map[string]any {
+		baseParsed, err := parseStateOverrides(state.StateOverrides)
+		if err != nil {
+			c.log.Warn().Err(err).Uint64("chain_id", c.chainID).Msg("Failed to parse state_overrides")
+		}
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		overlay := c.chainOverlays[c.chainID]
+		if overlay == nil || overlay.BlockNumber != state.BlockNumber ||
+			overlay.FlashblockIndex != state.FlashblockIndex {
+			overlay = &chainOverlay{
+				BlockNumber:     state.BlockNumber,
+				FlashblockIndex: state.FlashblockIndex,
+				Overlay:         cloneStateOverrides(baseParsed),
+			}
+			c.chainOverlays[c.chainID] = overlay
+		}
+		return cloneStateOverrides(overlay.Overlay)
+	}()
+
 	// Simulate the local chain's transaction
-	result, err := c.simulator.SimulateWithMailbox(ctx, c.chainID, txBytes, nil, nil, nil)
+	result, err := c.simulator.SimulateWithMailbox(ctx, c.chainID, txBytes, baseOverrides, nil, nil)
 	if err != nil {
 		c.log.Error().Err(err).Uint64("chain_id", c.chainID).Msg("Simulation failed")
 		c.sendVote(ctx, instanceID, xt, false)
@@ -811,7 +848,14 @@ func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, x
 	// Re-simulate with fulfilled dependencies
 	if len(allFulfilledDeps) > 0 {
 		for i := 0; i < maxResimulations; i++ {
-			result, err = c.simulator.SimulateWithMailbox(ctx, c.chainID, txBytes, nil, allSentMsgs, allFulfilledDeps)
+			result, err = c.simulator.SimulateWithMailbox(
+				ctx,
+				c.chainID,
+				txBytes,
+				baseOverrides,
+				allSentMsgs,
+				allFulfilledDeps,
+			)
 			if err != nil {
 				c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Re-simulation failed")
 				c.sendVote(ctx, instanceID, xt, false)
@@ -858,6 +902,15 @@ func (c *DefaultCoordinator) processXT(ctx context.Context, instanceID string, x
 		}
 	}
 
+	if result.StateOverrides != nil {
+		c.mu.Lock()
+		if xt.StateOverrides == nil {
+			xt.StateOverrides = make(map[uint64]map[string]any)
+		}
+		xt.StateOverrides[c.chainID] = result.StateOverrides
+		c.mu.Unlock()
+	}
+
 	c.sendVote(ctx, instanceID, xt, vote)
 }
 
@@ -888,7 +941,7 @@ func (c *DefaultCoordinator) sendVote(ctx context.Context, instanceID string, xt
 		Msg("Local vote recorded (v2 standalone mode)")
 
 	// Send vote to peer sidecars
-	// Use a background context since the original context may be cancelled
+	// Use a background context since the original context may be canceled
 	if c.peerCoordinator != nil {
 		go func() {
 			voteCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -903,7 +956,44 @@ func (c *DefaultCoordinator) sendVote(ctx context.Context, instanceID string, xt
 	c.tryMakeDecision(ctx, instanceID)
 }
 
-func (c *DefaultCoordinator) sendCIRCMessage(ctx context.Context, instanceID string, instanceIDBytes []byte, msg *protocol.CrossRollupMessage) error {
+func (c *DefaultCoordinator) applyCommittedOverrides(instanceID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	xt, exists := c.pending[instanceID]
+	if !exists || xt.Decision == nil || !*xt.Decision {
+		return
+	}
+
+	overrides := xt.StateOverrides[c.chainID]
+	state := xt.ChainStates[c.chainID]
+	if overrides == nil || state == nil {
+		return
+	}
+
+	overlay := c.chainOverlays[c.chainID]
+	if overlay == nil || overlay.BlockNumber != state.BlockNumber || overlay.FlashblockIndex != state.FlashblockIndex {
+		baseParsed, err := parseStateOverrides(state.StateOverrides)
+		if err != nil {
+			c.log.Warn().Err(err).Uint64("chain_id", c.chainID).Msg("Failed to parse state_overrides")
+		}
+		overlay = &chainOverlay{
+			BlockNumber:     state.BlockNumber,
+			FlashblockIndex: state.FlashblockIndex,
+			Overlay:         cloneStateOverrides(baseParsed),
+		}
+	}
+
+	overlay.Overlay = simsdk.MergeStateOverrides(overlay.Overlay, overrides)
+	c.chainOverlays[c.chainID] = overlay
+}
+
+func (c *DefaultCoordinator) sendCIRCMessage(
+	ctx context.Context,
+	instanceID string,
+	instanceIDBytes []byte,
+	msg *protocol.CrossRollupMessage,
+) error {
 	if c.mailboxSender == nil {
 		return fmt.Errorf("mailbox sender not configured")
 	}
@@ -931,7 +1021,11 @@ func (c *DefaultCoordinator) sendCIRCMessage(ctx context.Context, instanceID str
 	return c.mailboxSender.Send(ctx, msg.DestChainID, protoMsg)
 }
 
-func (c *DefaultCoordinator) waitForDependencies(ctx context.Context, instanceID string, xt *types.PendingXT) ([]protocol.CrossRollupDependency, error) {
+func (c *DefaultCoordinator) waitForDependencies(
+	ctx context.Context,
+	instanceID string,
+	xt *types.PendingXT,
+) ([]protocol.CrossRollupDependency, error) {
 	if c.mailboxQueue == nil {
 		return nil, fmt.Errorf("mailbox queue not configured")
 	}
@@ -999,7 +1093,7 @@ func (c *DefaultCoordinator) HandleMailboxMessage(ctx context.Context, msg *prot
 	}
 
 	c.log.Debug().
-		Hex("instance_id", msg.InstanceId).
+		Str("instance_id", string(msg.InstanceId)).
 		Uint64("source_chain", msg.SourceChain).
 		Uint64("dest_chain", msg.DestinationChain).
 		Str("label", msg.Label).
@@ -1012,7 +1106,7 @@ func (c *DefaultCoordinator) HandleMailboxMessage(ctx context.Context, msg *prot
 	}
 
 	c.mu.Lock()
-	instanceKey := hex.EncodeToString(msg.InstanceId)
+	instanceKey := string(msg.InstanceId)
 	if xt, ok := c.pending[instanceKey]; ok {
 		xt.PendingMailbox = append(xt.PendingMailbox, msg)
 		c.log.Debug().
@@ -1049,6 +1143,49 @@ func containsMessage(msgs []protocol.CrossRollupMessage, msg protocol.CrossRollu
 		}
 	}
 	return false
+}
+
+func cloneStateOverrides(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		return nil
+	}
+	var dst map[string]any
+	if err := json.Unmarshal(data, &dst); err != nil {
+		return nil
+	}
+	return dst
+}
+
+func parseStateOverrides(raw json.RawMessage) (map[string]any, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func (c *DefaultCoordinator) getChainLock(chainID uint64) *sync.Mutex {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	lock, ok := c.chainLocks[chainID]
+	if !ok {
+		lock = &sync.Mutex{}
+		c.chainLocks[chainID] = lock
+	}
+	return lock
 }
 
 // isPublisherConnected returns whether the publisher client is connected.
@@ -1124,6 +1261,8 @@ func (c *DefaultCoordinator) tryMakeDecision(ctx context.Context, instanceID str
 	waiters := c.waiters[instanceID]
 	c.mu.Unlock()
 
+	c.applyCommittedOverrides(instanceID)
+
 	c.log.Info().
 		Str("instance_id", instanceID).
 		Bool("decision", decision).
@@ -1165,8 +1304,19 @@ func (c *DefaultCoordinator) HandlePeerVote(ctx context.Context, instanceID stri
 }
 
 // HandleForwardedXT processes an XT forwarded from another sidecar.
-func (c *DefaultCoordinator) HandleForwardedXT(ctx context.Context, instanceID string, txs map[uint64][]byte, leaderChain uint64) error {
+func (c *DefaultCoordinator) HandleForwardedXT(
+	ctx context.Context,
+	instanceID string,
+	txs map[uint64][]byte,
+	originChain uint64,
+	originSeq uint64,
+) error {
 	c.mu.Lock()
+
+	if instanceID == "" {
+		c.mu.Unlock()
+		return fmt.Errorf("missing instance_id for forwarded XT")
+	}
 
 	if _, exists := c.pending[instanceID]; exists {
 		c.mu.Unlock()
@@ -1185,15 +1335,17 @@ func (c *DefaultCoordinator) HandleForwardedXT(ctx context.Context, instanceID s
 	}
 
 	xt := &types.PendingXT{
-		ID:           instanceID,
-		InstanceID:   []byte(instanceID),
-		Transactions: txMap,
-		RawTxs:       txs,
-		ChainStates:  make(map[uint64]*protocol.ChainState),
-		PeerVotes:    make(map[uint64]bool),
-		CreatedAt:    time.Now(),
-		IsLeader:     false,
-		LeaderChain:  leaderChain,
+		ID:             instanceID,
+		InstanceID:     []byte(instanceID),
+		Transactions:   txMap,
+		RawTxs:         txs,
+		ChainStates:    make(map[uint64]*protocol.ChainState),
+		StateOverrides: make(map[uint64]map[string]any),
+		PeerVotes:      make(map[uint64]bool),
+		CreatedAt:      time.Now(),
+		OriginChain:    originChain,
+		OriginSeq:      originSeq,
+		LockedChains:   make(map[uint64]bool),
 	}
 
 	c.pending[instanceID] = xt
@@ -1202,11 +1354,14 @@ func (c *DefaultCoordinator) HandleForwardedXT(ctx context.Context, instanceID s
 	c.log.Info().
 		Str("xt_id", instanceID).
 		Int("chains", len(txs)).
-		Uint64("leader_chain", leaderChain).
-		Bool("is_leader", false).
+		Uint64("origin_chain", xt.OriginChain).
+		Uint64("origin_seq", xt.OriginSeq).
 		Msg("Received forwarded XT from peer")
 
 	c.mu.Unlock()
+
+	requestKey := xtRequestFingerprint(buildXTRequest(txs))
+	c.resolveSubmissionWaiter(requestKey, instanceID)
 
 	return nil
 }

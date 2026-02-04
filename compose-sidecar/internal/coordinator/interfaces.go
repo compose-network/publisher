@@ -42,7 +42,13 @@ type Coordinator interface {
 	HandlePeerVote(ctx context.Context, instanceID string, chainID uint64, vote bool) error
 
 	// HandleForwardedXT processes an XT forwarded from another sidecar (v2 standalone mode).
-	HandleForwardedXT(ctx context.Context, instanceID string, txs map[uint64][]byte, leaderChain uint64) error
+	HandleForwardedXT(
+		ctx context.Context,
+		instanceID string,
+		txs map[uint64][]byte,
+		originChain uint64,
+		originSeq uint64,
+	) error
 
 	// GetXTStatus retrieves the current status of a cross-chain transaction.
 	GetXTStatus(ctx context.Context, instanceID string) (*XTStatusResponse, error)
@@ -58,7 +64,12 @@ type XTStatusResponse struct {
 // Simulator defines the interface for transaction simulation.
 type Simulator interface {
 	// Simulate simulates a transaction on the given chain.
-	Simulate(ctx context.Context, chainID uint64, tx []byte, stateOverrides map[string]interface{}) (*protocol.SimulationResult, error)
+	Simulate(
+		ctx context.Context,
+		chainID uint64,
+		tx []byte,
+		stateOverrides map[string]interface{},
+	) (*protocol.SimulationResult, error)
 
 	// SimulateWithMailbox simulates a transaction with mailbox analysis.
 	// Returns both the simulation result and detected mailbox operations.

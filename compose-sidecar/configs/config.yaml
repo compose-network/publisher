@@ -10,6 +10,8 @@ publisher:
   reconnect_delay: 5s
   max_retries: 10
 
+peers: {}
+
 chains:
   list:
     - id: 901

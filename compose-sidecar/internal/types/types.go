@@ -25,10 +25,13 @@ type PendingXT struct {
 	Decision     *bool
 	VoteSent     bool
 
-	IsLeader    bool
-	LeaderChain uint64
+	OriginChain uint64
+	OriginSeq   uint64
 	LocalVote   *bool
 	PeerVotes   map[uint64]bool
+
+	LockedChains   map[uint64]bool
+	StateOverrides map[uint64]map[string]any
 
 	PendingMailbox   []*proto.MailboxMessage
 	SentMailbox      []*proto.MailboxMessage

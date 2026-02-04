@@ -203,6 +203,7 @@ func (c *Config) applyEnvOverrides() {
 			})
 		}
 	}
+
 }
 
 // GetChainByID returns chain configuration by ID.

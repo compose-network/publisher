@@ -309,7 +309,7 @@ func (s *Server) handleXTForward(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward to coordinator
-	if err := s.coordinator.HandleForwardedXT(r.Context(), req.InstanceID, txs, req.LeaderChain); err != nil {
+	if err := s.coordinator.HandleForwardedXT(r.Context(), req.InstanceID, txs, req.OriginChain, req.OriginSeq); err != nil {
 		s.writeError(w, http.StatusInternalServerError, "failed to handle forwarded XT", err)
 		return
 	}
@@ -317,7 +317,7 @@ func (s *Server) handleXTForward(w http.ResponseWriter, r *http.Request) {
 	s.log.Info().
 		Str("instance_id", req.InstanceID).
 		Int("chains", len(txs)).
-		Uint64("leader_chain", req.LeaderChain).
+		Uint64("origin_chain", req.OriginChain).
 		Msg("Received forwarded XT from peer")
 
 	w.WriteHeader(http.StatusOK)

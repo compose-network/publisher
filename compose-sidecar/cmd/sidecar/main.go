@@ -300,7 +300,12 @@ func setupLogger(cfg config.LogConfig) zerolog.Logger {
 }
 
 // handlePublisherMessage handles messages from the publisher.
-func handlePublisherMessage(ctx context.Context, data []byte, coord *coordinator.DefaultCoordinator, log zerolog.Logger) error {
+func handlePublisherMessage(
+	ctx context.Context,
+	data []byte,
+	coord *coordinator.DefaultCoordinator,
+	log zerolog.Logger,
+) error {
 	var msg proto.Message
 	if err := goproto.Unmarshal(data, &msg); err != nil {
 		return fmt.Errorf("unmarshal publisher message: %w", err)
@@ -322,10 +327,16 @@ func handlePublisherMessage(ctx context.Context, data []byte, coord *coordinator
 }
 
 // handlePeerMessage handles messages from peer sidecars.
-func handlePeerMessage(ctx context.Context, data []byte, coord *coordinator.DefaultCoordinator, peerChainID uint64, log zerolog.Logger) error {
+func handlePeerMessage(
+	ctx context.Context,
+	data []byte,
+	coord *coordinator.DefaultCoordinator,
+	peerChainID uint64,
+	log zerolog.Logger,
+) error {
 	// Try to decode as JSON messages (XTForwardRequest or VoteRequest)
 	var xtForward peer.XTForwardRequest
-	if err := json.Unmarshal(data, &xtForward); err == nil && xtForward.InstanceID != "" {
+	if err := json.Unmarshal(data, &xtForward); err == nil && len(xtForward.Transactions) > 0 {
 		// Parse hex transactions back to bytes
 		txs := make(map[uint64][]byte)
 		for chainIDStr, hexTx := range xtForward.Transactions {
@@ -334,7 +345,13 @@ func handlePeerMessage(ctx context.Context, data []byte, coord *coordinator.Defa
 			txBytes := common.FromHex(hexTx)
 			txs[chainID] = txBytes
 		}
-		return coord.HandleForwardedXT(ctx, xtForward.InstanceID, txs, xtForward.LeaderChain)
+		return coord.HandleForwardedXT(
+			ctx,
+			xtForward.InstanceID,
+			txs,
+			xtForward.OriginChain,
+			xtForward.OriginSeq,
+		)
 	}
 
 	var voteReq peer.VoteRequest
@@ -371,7 +388,12 @@ type simulatorAdapter struct {
 	sim simulation.Simulator
 }
 
-func (a *simulatorAdapter) Simulate(ctx context.Context, chainID uint64, tx []byte, stateOverrides map[string]interface{}) (*protocol.SimulationResult, error) {
+func (a *simulatorAdapter) Simulate(
+	ctx context.Context,
+	chainID uint64,
+	tx []byte,
+	stateOverrides map[string]interface{},
+) (*protocol.SimulationResult, error) {
 	result, err := a.sim.Simulate(ctx, chainID, tx, stateOverrides)
 	if err != nil {
 		return nil, err
@@ -492,7 +514,6 @@ func (s *quicMailboxSender) Send(ctx context.Context, destChainID uint64, msg *p
 	return client.SendRaw(ctx, data)
 }
 
-// Type conversion helpers
 
 func convertSimulationResult(result *simulation.Result) *protocol.SimulationResult {
 	return &protocol.SimulationResult{
@@ -500,6 +521,7 @@ func convertSimulationResult(result *simulation.Result) *protocol.SimulationResu
 		Success:          result.Success,
 		Error:            result.Error,
 		GasUsed:          result.GasUsed,
+		StateOverrides:   result.StateOverrides,
 		Dependencies:     convertFromSDKDeps(result.Dependencies),
 		OutboundMessages: convertFromSDKMessages(result.OutboundMessages),
 	}
@@ -508,17 +530,7 @@ func convertSimulationResult(result *simulation.Result) *protocol.SimulationResu
 func convertToSDKMessages(msgs []protocol.CrossRollupMessage) []mailbox.CrossRollupMessage {
 	result := make([]mailbox.CrossRollupMessage, len(msgs))
 	for i, m := range msgs {
-		result[i] = mailbox.CrossRollupMessage{
-			SourceChainID: m.SourceChainID,
-			DestChainID:   m.DestChainID,
-			Sender:        m.Sender,
-			Receiver:      m.Receiver,
-			SessionID:     m.SessionID,
-			Data:          m.Data,
-			Label:         m.Label,
-			MessageType:   m.MessageType,
-			IsOutboxWrite: m.IsOutboxWrite,
-		}
+		result[i] = m
 	}
 	return result
 }
@@ -526,17 +538,7 @@ func convertToSDKMessages(msgs []protocol.CrossRollupMessage) []mailbox.CrossRol
 func convertFromSDKMessages(msgs []mailbox.CrossRollupMessage) []protocol.CrossRollupMessage {
 	result := make([]protocol.CrossRollupMessage, len(msgs))
 	for i, m := range msgs {
-		result[i] = protocol.CrossRollupMessage{
-			SourceChainID: m.SourceChainID,
-			DestChainID:   m.DestChainID,
-			Sender:        m.Sender,
-			Receiver:      m.Receiver,
-			SessionID:     m.SessionID,
-			Data:          m.Data,
-			Label:         m.Label,
-			MessageType:   m.MessageType,
-			IsOutboxWrite: m.IsOutboxWrite,
-		}
+		result[i] = m
 	}
 	return result
 }
@@ -544,17 +546,7 @@ func convertFromSDKMessages(msgs []mailbox.CrossRollupMessage) []protocol.CrossR
 func convertToSDKDeps(deps []protocol.CrossRollupDependency) []mailbox.CrossRollupDependency {
 	result := make([]mailbox.CrossRollupDependency, len(deps))
 	for i, d := range deps {
-		result[i] = mailbox.CrossRollupDependency{
-			SourceChainID: d.SourceChainID,
-			DestChainID:   d.DestChainID,
-			Sender:        d.Sender,
-			Receiver:      d.Receiver,
-			SessionID:     d.SessionID,
-			Label:         d.Label,
-			RequiredData:  d.RequiredData,
-			IsInboxRead:   d.IsInboxRead,
-			Data:          d.Data,
-		}
+		result[i] = d
 	}
 	return result
 }
@@ -562,17 +554,7 @@ func convertToSDKDeps(deps []protocol.CrossRollupDependency) []mailbox.CrossRoll
 func convertFromSDKDeps(deps []mailbox.CrossRollupDependency) []protocol.CrossRollupDependency {
 	result := make([]protocol.CrossRollupDependency, len(deps))
 	for i, d := range deps {
-		result[i] = protocol.CrossRollupDependency{
-			SourceChainID: d.SourceChainID,
-			DestChainID:   d.DestChainID,
-			Sender:        d.Sender,
-			Receiver:      d.Receiver,
-			SessionID:     d.SessionID,
-			Label:         d.Label,
-			RequiredData:  d.RequiredData,
-			IsInboxRead:   d.IsInboxRead,
-			Data:          d.Data,
-		}
+		result[i] = d
 	}
 	return result
 }

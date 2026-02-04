@@ -17,7 +17,46 @@ import (
 )
 
 // putInbox ABI for the Mailbox contract
-const putInboxABI = `[{"inputs":[{"internalType":"uint256","name":"chainMessageSender","type":"uint256"},{"internalType":"address","name":"sender","type":"address"},{"internalType":"address","name":"receiver","type":"address"},{"internalType":"uint256","name":"sessionId","type":"uint256"},{"internalType":"bytes","name":"label","type":"bytes"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"putInbox","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+const putInboxABI = `[
+  {
+    "inputs":[
+      {
+        "internalType":"uint256",
+        "name":"chainMessageSender",
+        "type":"uint256"
+      },
+      {
+        "internalType":"address",
+        "name":"sender",
+        "type":"address"
+      },
+      {
+        "internalType":"address",
+        "name":"receiver",
+        "type":"address"
+      },
+      {
+        "internalType":"uint256",
+        "name":"sessionId",
+        "type":"uint256"
+      },
+      {
+        "internalType":"bytes",
+        "name":"label",
+        "type":"bytes"
+      },
+      {
+        "internalType":"bytes",
+        "name":"data",
+        "type":"bytes"
+      }
+    ],
+    "name":"putInbox",
+    "outputs":[ ],
+    "stateMutability":"nonpayable",
+    "type":"function"
+  }
+]`
 
 // DefaultPutInboxBuilder implements PutInboxBuilder using a coordinator private key.
 type DefaultPutInboxBuilder struct {
