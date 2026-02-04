@@ -52,6 +52,8 @@ type DefaultCoordinator struct {
 
 	currentPeriodID      uint64
 	currentSuperblockNum uint64
+	periodInitialized    bool
+	lastSequenceNum      uint64
 
 	originSeq uint64
 
@@ -144,6 +146,8 @@ func (c *DefaultCoordinator) HandleStartPeriod(ctx context.Context, periodID, su
 
 	c.currentPeriodID = periodID
 	c.currentSuperblockNum = superblockNum
+	c.periodInitialized = true
+	c.lastSequenceNum = 0
 
 	c.log.Info().
 		Uint64("period_id", periodID).
@@ -161,27 +165,67 @@ func (c *DefaultCoordinator) HandleStartInstance(ctx context.Context, msg *proto
 	instanceID := msg.InstanceIDHex()
 	requestKey := xtRequestFingerprint(msg.GetXtRequest())
 
-	c.mu.Lock()
-	if _, exists := c.pending[instanceID]; exists {
-		c.mu.Unlock()
-		return fmt.Errorf("instance %s already pending", instanceID)
+	includesLocal := false
+	for _, req := range msg.XtRequest.TransactionRequests {
+		if req.ChainId == c.chainID && len(req.Transaction) > 0 {
+			includesLocal = true
+			break
+		}
 	}
 
 	txMap := make(map[uint64][]*ethtypes.Transaction)
 	rawTxMap := make(map[uint64][][]byte)
+	var decodeErr error
 
 	for _, req := range msg.XtRequest.TransactionRequests {
 		chainID := req.ChainId
 		for _, txBytes := range req.Transaction {
 			tx := new(ethtypes.Transaction)
 			if err := tx.UnmarshalBinary(txBytes); err != nil {
-				c.mu.Unlock()
-				return fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
+				decodeErr = fmt.Errorf("failed to decode transaction for chain %d: %w", chainID, err)
+				break
 			}
 			txMap[chainID] = append(txMap[chainID], tx)
 			rawTxMap[chainID] = append(rawTxMap[chainID], txBytes)
 		}
+		if decodeErr != nil {
+			break
+		}
 	}
+
+	c.mu.Lock()
+	if _, exists := c.pending[instanceID]; exists {
+		c.mu.Unlock()
+		return fmt.Errorf("instance %s already pending", instanceID)
+	}
+	if !c.periodInitialized {
+		c.mu.Unlock()
+		c.rejectStartInstance(ctx, msg, "period not initialized")
+		return nil
+	}
+	if msg.PeriodId != c.currentPeriodID {
+		c.mu.Unlock()
+		c.rejectStartInstance(ctx, msg, "period mismatch")
+		return nil
+	}
+	if msg.SequenceNumber <= c.lastSequenceNum {
+		c.mu.Unlock()
+		c.rejectStartInstance(ctx, msg, "stale sequence number")
+		return nil
+	}
+	if includesLocal && c.hasActiveInstanceLocked() {
+		c.lastSequenceNum = msg.SequenceNumber
+		c.mu.Unlock()
+		c.rejectStartInstance(ctx, msg, "active instance in progress")
+		return nil
+	}
+	if decodeErr != nil {
+		c.lastSequenceNum = msg.SequenceNumber
+		c.mu.Unlock()
+		c.rejectStartInstance(ctx, msg, decodeErr.Error())
+		return nil
+	}
+	c.lastSequenceNum = msg.SequenceNumber
 
 	xt := &types.PendingXT{
 		ID:             instanceID,
@@ -1196,6 +1240,67 @@ func depKey(dep protocol.CrossRollupDependency) string {
 		dep.RequiredData,
 		dep.IsInboxRead,
 	)
+}
+
+func (c *DefaultCoordinator) hasActiveInstanceLocked() bool {
+	for _, xt := range c.pending {
+		if xt.Decision != nil {
+			continue
+		}
+		if txs, ok := xt.RawTxs[c.chainID]; ok && len(txs) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *DefaultCoordinator) rejectStartInstance(
+	ctx context.Context,
+	msg *proto.StartInstance,
+	reason string,
+) {
+	instanceID := msg.InstanceIDHex()
+	c.log.Warn().
+		Str("instance_id", instanceID).
+		Uint64("period_id", msg.PeriodId).
+		Uint64("sequence", msg.SequenceNumber).
+		Str("reason", reason).
+		Msg("Rejecting StartInstance")
+
+	var waiters map[uint64]chan *protocol.BuilderPollResponse
+	var xt *types.PendingXT
+
+	c.mu.Lock()
+	xt, _ = c.pending[instanceID]
+	if xt == nil {
+		xt = &types.PendingXT{
+			ID:             instanceID,
+			InstanceID:     msg.InstanceId,
+			PeriodID:       msg.PeriodId,
+			SequenceNum:    msg.SequenceNumber,
+			Transactions:   make(map[uint64][]*ethtypes.Transaction),
+			RawTxs:         make(map[uint64][][]byte),
+			ChainStates:    make(map[uint64]*protocol.ChainState),
+			StateOverrides: make(map[uint64]map[string]any),
+			CreatedAt:      time.Now(),
+			LockedChains:   make(map[uint64]bool),
+		}
+		c.pending[instanceID] = xt
+		c.waiters[instanceID] = make(map[uint64]chan *protocol.BuilderPollResponse)
+	}
+	decision := false
+	xt.Decision = &decision
+	xt.DecidedAt = time.Now()
+	waiters = c.waiters[instanceID]
+	c.mu.Unlock()
+
+	c.sendVote(ctx, instanceID, xt, false)
+	if waiters != nil {
+		c.signalWaiters(waiters)
+		c.mu.Lock()
+		delete(c.waiters, instanceID)
+		c.mu.Unlock()
+	}
 }
 
 func cloneStateOverrides(src map[string]any) map[string]any {
