@@ -56,7 +56,11 @@ func (q *MemoryQueue) Consume(instanceID []byte, sourceChainID uint64) (*proto.M
 	return nil, fmt.Errorf("no mailbox message from chain %d for instance %x", sourceChainID, instanceID)
 }
 
-func (q *MemoryQueue) ConsumeMatching(instanceID []byte, sourceChainID uint64, label string) (*proto.MailboxMessage, error) {
+func (q *MemoryQueue) ConsumeMatching(
+	instanceID []byte,
+	sourceChainID uint64,
+	label string,
+) (*proto.MailboxMessage, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

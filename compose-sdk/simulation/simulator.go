@@ -1,4 +1,3 @@
-// Package simulation provides transaction simulation via RPC.
 package simulation
 
 import (
@@ -37,6 +36,7 @@ type Result struct {
 	Error            string
 	GasUsed          uint64
 	StateChanges     map[common.Address]map[common.Hash]common.Hash
+	StateOverrides   map[string]any
 	Dependencies     []mailbox.CrossRollupDependency
 	OutboundMessages []mailbox.CrossRollupMessage
 }
@@ -126,9 +126,9 @@ func (s *RPCSimulator) Simulate(
 	}
 
 	// Build debug_traceCall request with decoded transaction fields
-	traceReq := buildTraceRequestFromTx(tx, stateOverrides)
+	traceReq := buildTraceRequestFromTx(tx)
 
-	result, err := s.executeTraceCall(ctx, chain.URL, traceReq)
+	result, err := s.executeTraceCall(ctx, chain.URL, traceReq, stateOverrides)
 	if err != nil {
 		return &Result{
 			ChainID: chainID,
@@ -138,10 +138,11 @@ func (s *RPCSimulator) Simulate(
 	}
 
 	return &Result{
-		ChainID:      chainID,
-		Success:      true,
-		GasUsed:      result.GasUsed,
-		StateChanges: result.StateChanges,
+		ChainID:        chainID,
+		Success:        true,
+		GasUsed:        result.GasUsed,
+		StateChanges:   result.StateChanges,
+		StateOverrides: result.StateOverrides,
 	}, nil
 }
 
@@ -205,6 +206,17 @@ func (s *RPCSimulator) SimulateWithMailbox(
 		OutboundMessages: mailboxState.OutboundMessages,
 	}
 
+	// Also compute state overrides via prestateTracer for sequential overlays.
+	if traceResult, err := s.executeTraceCall(ctx, chain.URL, buildTraceRequestFromTx(tx), stateOverrides); err == nil {
+		result.StateOverrides = traceResult.StateOverrides
+		result.StateChanges = traceResult.StateChanges
+		if mailboxOverrides != nil {
+			result.StateOverrides = MergeStateOverrides(mailboxOverrides, result.StateOverrides)
+		}
+	} else if mailboxOverrides != nil {
+		result.StateOverrides = mailboxOverrides
+	}
+
 	if !mailboxState.Success {
 		result.Error = callTrace.Error
 	}
@@ -215,12 +227,11 @@ func (s *RPCSimulator) SimulateWithMailbox(
 // Internal types for trace responses
 
 type traceRequest struct {
-	To             string         `json:"to,omitempty"`
-	From           string         `json:"from,omitempty"`
-	Data           string         `json:"data,omitempty"`
-	Value          string         `json:"value,omitempty"`
-	Gas            string         `json:"gas,omitempty"`
-	StateOverrides map[string]any `json:"stateOverrides,omitempty"`
+	To    string `json:"to,omitempty"`
+	From  string `json:"from,omitempty"`
+	Data  string `json:"data,omitempty"`
+	Value string `json:"value,omitempty"`
+	Gas   string `json:"gas,omitempty"`
 }
 
 type prestateAccount struct {
@@ -237,18 +248,18 @@ type prestateResult struct {
 }
 
 type traceResult struct {
-	GasUsed      uint64
-	Output       []byte
-	Error        string
-	PreState     map[common.Address]*prestateAccount
-	PostState    map[common.Address]*prestateAccount
-	StateChanges map[common.Address]map[common.Hash]common.Hash
+	GasUsed        uint64
+	Output         []byte
+	Error          string
+	PreState       map[common.Address]*prestateAccount
+	PostState      map[common.Address]*prestateAccount
+	StateChanges   map[common.Address]map[common.Hash]common.Hash
+	StateOverrides map[string]any
 }
 
-func buildTraceRequestFromTx(tx *types.Transaction, stateOverrides map[string]any) *traceRequest {
+func buildTraceRequestFromTx(tx *types.Transaction) *traceRequest {
 	req := &traceRequest{
-		Gas:            fmt.Sprintf("0x%x", tx.Gas()),
-		StateOverrides: stateOverrides,
+		Gas: fmt.Sprintf("0x%x", tx.Gas()),
 	}
 
 	if tx.To() != nil {
@@ -269,7 +280,20 @@ func buildTraceRequestFromTx(tx *types.Transaction, stateOverrides map[string]an
 	return req
 }
 
-func (s *RPCSimulator) executeTraceCall(ctx context.Context, rpcURL string, req *traceRequest) (*traceResult, error) {
+func (s *RPCSimulator) executeTraceCall(
+	ctx context.Context,
+	rpcURL string,
+	req *traceRequest,
+	stateOverrides map[string]any,
+) (*traceResult, error) {
+	config := map[string]any{
+		"tracer":       "prestateTracer",
+		"tracerConfig": map[string]bool{"diffMode": true},
+	}
+	if len(stateOverrides) > 0 {
+		config["stateOverrides"] = stateOverrides
+	}
+
 	rpcReq := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -277,10 +301,7 @@ func (s *RPCSimulator) executeTraceCall(ctx context.Context, rpcURL string, req 
 		"params": []any{
 			req,
 			"latest",
-			map[string]any{
-				"tracer":       "prestateTracer",
-				"tracerConfig": map[string]bool{"diffMode": true},
-			},
+			config,
 		},
 	}
 
@@ -349,10 +370,11 @@ func (s *RPCSimulator) executeTraceCall(ctx context.Context, rpcURL string, req 
 	}
 
 	return &traceResult{
-		GasUsed:      gasUsed,
-		PreState:     prestate.Pre,
-		PostState:    prestate.Post,
-		StateChanges: stateChanges,
+		GasUsed:        gasUsed,
+		PreState:       prestate.Pre,
+		PostState:      prestate.Post,
+		StateChanges:   stateChanges,
+		StateOverrides: buildStateOverrides(prestate.Pre, prestate.Post),
 	}, nil
 }
 
@@ -380,6 +402,13 @@ func (s *RPCSimulator) executeCallTracerForTx(
 		txArgs["from"] = sender.Hex()
 	}
 
+	config := map[string]any{
+		"tracer": "callTracer",
+	}
+	if len(stateOverrides) > 0 {
+		config["stateOverrides"] = stateOverrides
+	}
+
 	rpcReq := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -387,16 +416,8 @@ func (s *RPCSimulator) executeCallTracerForTx(
 		"params": []any{
 			txArgs,
 			"latest",
-			map[string]any{
-				"tracer": "callTracer",
-			},
+			config,
 		},
-	}
-
-	if len(stateOverrides) > 0 {
-		params := rpcReq["params"].([]any)
-		tracerConfig := params[2].(map[string]any)
-		tracerConfig["stateOverrides"] = stateOverrides
 	}
 
 	body, err := json.Marshal(rpcReq)
@@ -443,4 +464,60 @@ func (s *RPCSimulator) executeCallTracerForTx(
 	}
 
 	return &callTrace, nil
+}
+
+func buildStateOverrides(
+	pre map[common.Address]*prestateAccount,
+	post map[common.Address]*prestateAccount,
+) map[string]any {
+	if len(pre) == 0 && len(post) == 0 {
+		return nil
+	}
+
+	overrides := make(map[string]any)
+
+	// Process post-state accounts first.
+	for addr, postAccount := range post {
+		account := make(map[string]any)
+
+		if postAccount.Balance != nil {
+			account["balance"] = hexutil.EncodeBig((*big.Int)(postAccount.Balance))
+		}
+		if postAccount.Nonce > 0 {
+			account["nonce"] = fmt.Sprintf("0x%x", postAccount.Nonce)
+		}
+		if len(postAccount.Code) > 0 {
+			account["code"] = hexutil.Encode(postAccount.Code)
+		}
+
+		if len(postAccount.Storage) > 0 {
+			stateDiff := make(map[string]string, len(postAccount.Storage))
+			for slot, value := range postAccount.Storage {
+				stateDiff[slot.Hex()] = value.Hex()
+			}
+			account["stateDiff"] = stateDiff
+		}
+
+		if len(account) > 0 {
+			overrides[addr.Hex()] = account
+		}
+	}
+
+	// Handle accounts that disappeared in post (selfdestruct).
+	for addr := range pre {
+		if _, ok := post[addr]; ok {
+			continue
+		}
+		overrides[addr.Hex()] = map[string]any{
+			"balance": "0x0",
+			"nonce":   "0x0",
+			"code":    "0x",
+			"state":   map[string]string{},
+		}
+	}
+
+	if len(overrides) == 0 {
+		return nil
+	}
+	return overrides
 }

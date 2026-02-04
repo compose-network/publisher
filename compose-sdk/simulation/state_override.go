@@ -8,14 +8,18 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// Mailbox contract storage slots (Solidity storage layout)
+// Mailbox contract storage slots
 const (
 	inboxMappingSlot       = 4 // mapping(bytes32 => bytes) inbox
 	createdKeysMappingSlot = 6 // mapping(bytes32 => bool) createdKeys
 )
 
 // BuildMailboxStateOverrides builds state overrides for mailbox dependencies.
-func BuildMailboxStateOverrides(chainID uint64, mailboxAddr common.Address, deps []mailbox.CrossRollupDependency) map[string]any {
+func BuildMailboxStateOverrides(
+	chainID uint64,
+	mailboxAddr common.Address,
+	deps []mailbox.CrossRollupDependency,
+) map[string]any {
 	if mailboxAddr == (common.Address{}) {
 		return nil
 	}
@@ -72,15 +76,42 @@ func MergeStateOverrides(base, overlay map[string]any) map[string]any {
 			continue
 		}
 
-		existingDiff := normalizeStateDiff(existingMap["stateDiff"])
-		overrideDiff := normalizeStateDiff(overrideMap["stateDiff"])
-		if existingDiff == nil {
-			existingDiff = make(map[string]string)
+		if state, ok := overrideMap["state"]; ok {
+			existingMap["state"] = state
+			delete(existingMap, "stateDiff")
 		}
-		for k, v := range overrideDiff {
-			existingDiff[k] = v
+
+		if diff, ok := overrideMap["stateDiff"]; ok {
+			overrideDiff := normalizeStateDiff(diff)
+			if existingMap["state"] != nil {
+				mergedState := normalizeState(existingMap["state"])
+				if mergedState == nil {
+					mergedState = make(map[string]string)
+				}
+				for k, v := range overrideDiff {
+					mergedState[k] = v
+				}
+				existingMap["state"] = mergedState
+				delete(existingMap, "stateDiff")
+			} else {
+				existingDiff := normalizeStateDiff(existingMap["stateDiff"])
+				if existingDiff == nil {
+					existingDiff = make(map[string]string)
+				}
+				for k, v := range overrideDiff {
+					existingDiff[k] = v
+				}
+				existingMap["stateDiff"] = existingDiff
+			}
 		}
-		existingMap["stateDiff"] = existingDiff
+
+		for k, v := range overrideMap {
+			if k == "state" || k == "stateDiff" {
+				continue
+			}
+			existingMap[k] = v
+		}
+
 		base[addr] = existingMap
 	}
 
@@ -97,6 +128,23 @@ func normalizeStateDiff(v any) map[string]string {
 			out[k.Hex()] = v.Hex()
 		}
 		return out
+	case map[string]any:
+		out := make(map[string]string, len(t))
+		for k, v := range t {
+			if s, ok := v.(string); ok {
+				out[k] = s
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func normalizeState(v any) map[string]string {
+	switch t := v.(type) {
+	case map[string]string:
+		return t
 	case map[string]any:
 		out := make(map[string]string, len(t))
 		for k, v := range t {

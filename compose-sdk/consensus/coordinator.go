@@ -107,7 +107,12 @@ func (c *coordinator) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *coordinator) StartTransaction(ctx context.Context, xtID string, participantChains []uint64, data []byte) error {
+func (c *coordinator) StartTransaction(
+	ctx context.Context,
+	xtID string,
+	participantChains []uint64,
+	data []byte,
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

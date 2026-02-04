@@ -11,7 +11,113 @@ import (
 )
 
 // Mailbox contract ABI matching the deployed mailbox contract.
-const mailboxABI = `[{"type":"function","name":"putInbox","inputs":[{"name":"chainMessageSender","type":"uint256","internalType":"uint256"},{"name":"sender","type":"address","internalType":"address"},{"name":"receiver","type":"address","internalType":"address"},{"name":"sessionId","type":"uint256","internalType":"uint256"},{"name":"label","type":"bytes","internalType":"bytes"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"read","inputs":[{"name":"chainMessageSender","type":"uint256","internalType":"uint256"},{"name":"sender","type":"address","internalType":"address"},{"name":"sessionId","type":"uint256","internalType":"uint256"},{"name":"label","type":"bytes","internalType":"bytes"}],"outputs":[{"name":"message","type":"bytes","internalType":"bytes"}],"stateMutability":"view"},{"type":"function","name":"write","inputs":[{"name":"chainMessageRecipient","type":"uint256","internalType":"uint256"},{"name":"receiver","type":"address","internalType":"address"},{"name":"sessionId","type":"uint256","internalType":"uint256"},{"name":"label","type":"bytes","internalType":"bytes"},{"name":"data","type":"bytes","internalType":"bytes"}],"outputs":[],"stateMutability":"nonpayable"}]`
+const mailboxABI = `[
+  {
+    "type":"function",
+    "name":"putInbox",
+    "inputs":[
+      {
+        "name":"chainMessageSender",
+        "type":"uint256",
+        "internalType":"uint256"
+      },
+      {
+        "name":"sender",
+        "type":"address",
+        "internalType":"address"
+      },
+      {
+        "name":"receiver",
+        "type":"address",
+        "internalType":"address"
+      },
+      {
+        "name":"sessionId",
+        "type":"uint256",
+        "internalType":"uint256"
+      },
+      {
+        "name":"label",
+        "type":"bytes",
+        "internalType":"bytes"
+      },
+      {
+        "name":"data",
+        "type":"bytes",
+        "internalType":"bytes"
+      }
+    ],
+    "outputs":[ ],
+    "stateMutability":"nonpayable"
+  },
+  {
+    "type":"function",
+    "name":"read",
+    "inputs":[
+      {
+        "name":"chainMessageSender",
+        "type":"uint256",
+        "internalType":"uint256"
+      },
+      {
+        "name":"sender",
+        "type":"address",
+        "internalType":"address"
+      },
+      {
+        "name":"sessionId",
+        "type":"uint256",
+        "internalType":"uint256"
+      },
+      {
+        "name":"label",
+        "type":"bytes",
+        "internalType":"bytes"
+      }
+    ],
+    "outputs":[
+      {
+        "name":"message",
+        "type":"bytes",
+        "internalType":"bytes"
+      }
+    ],
+    "stateMutability":"view"
+  },
+  {
+    "type":"function",
+    "name":"write",
+    "inputs":[
+      {
+        "name":"chainMessageRecipient",
+        "type":"uint256",
+        "internalType":"uint256"
+      },
+      {
+        "name":"receiver",
+        "type":"address",
+        "internalType":"address"
+      },
+      {
+        "name":"sessionId",
+        "type":"uint256",
+        "internalType":"uint256"
+      },
+      {
+        "name":"label",
+        "type":"bytes",
+        "internalType":"bytes"
+      },
+      {
+        "name":"data",
+        "type":"bytes",
+        "internalType":"bytes"
+      }
+    ],
+    "outputs":[ ],
+    "stateMutability":"nonpayable"
+  }
+]`
 
 // Parser parses mailbox contract calls from EVM trace operations.
 type Parser struct {

@@ -1,7 +1,7 @@
-// Package protocol defines core types for cross-chain transaction coordination.
 package protocol
 
 import (
+	"encoding/json"
 	"math/big"
 	"time"
 
@@ -10,12 +10,13 @@ import (
 
 // BuilderPollRequest represents a request from op-rbuilder at flashblock start.
 type BuilderPollRequest struct {
-	ChainID         uint64      `json:"chain_id"`
-	BlockNumber     uint64      `json:"block_number"`
-	FlashblockIndex uint64      `json:"flashblock_index"`
-	StateRoot       common.Hash `json:"state_root"`
-	Timestamp       uint64      `json:"timestamp"`
-	GasLimit        uint64      `json:"gas_limit"`
+	ChainID         uint64          `json:"chain_id"`
+	BlockNumber     uint64          `json:"block_number"`
+	FlashblockIndex uint64          `json:"flashblock_index"`
+	StateRoot       common.Hash     `json:"state_root"`
+	Timestamp       uint64          `json:"timestamp"`
+	GasLimit        uint64          `json:"gas_limit"`
+	StateOverrides  json.RawMessage `json:"state_overrides,omitempty"`
 }
 
 // BuilderPollResponse represents the sidecar's response to a builder poll.
@@ -41,6 +42,7 @@ type ChainState struct {
 	Timestamp       uint64
 	GasLimit        uint64
 	ReceivedAt      time.Time
+	StateOverrides  json.RawMessage
 }
 
 // XTStatus represents the status of a cross-chain transaction.
@@ -105,6 +107,7 @@ type SimulationResult struct {
 	Error            string
 	GasUsed          uint64
 	StateChanges     map[common.Address]map[common.Hash]common.Hash
+	StateOverrides   map[string]any
 	Dependencies     []CrossRollupDependency
 	OutboundMessages []CrossRollupMessage
 }
