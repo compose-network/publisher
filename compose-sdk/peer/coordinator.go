@@ -11,7 +11,7 @@ import (
 // Coordinator handles peer-to-peer sidecar communication.
 type Coordinator interface {
 	// ForwardXT forwards an XT to peer sidecars for their chains.
-	ForwardXT(ctx context.Context, instanceID string, txs map[uint64][]byte, isLeader bool, leaderSeq uint64) error
+	ForwardXT(ctx context.Context, instanceID string, txs map[uint64][]byte, originSeq uint64) error
 
 	// SendVoteToPeers sends our vote to all peer sidecars.
 	SendVoteToPeers(ctx context.Context, instanceID string, chainID uint64, vote bool) error
@@ -34,9 +34,8 @@ type Client interface {
 type XTForwardRequest struct {
 	InstanceID   string            `json:"instance_id"`
 	Transactions map[string]string `json:"transactions"` // chainID -> hex tx
-	IsLeader     bool              `json:"is_leader"`
-	LeaderChain  uint64            `json:"leader_chain"`
-	LeaderSeq    uint64            `json:"leader_seq"`
+	OriginChain  uint64            `json:"origin_chain"`
+	OriginSeq    uint64            `json:"origin_seq"`
 }
 
 // VoteRequest is sent to peer sidecars with our vote.
@@ -48,24 +47,21 @@ type VoteRequest struct {
 
 // DefaultCoordinator handles direct coordination with peer sidecars.
 type DefaultCoordinator struct {
-	localChainID  uint64
-	leaderChainID uint64
-	peers         map[uint64]Client // chainID -> transport client
-	log           zerolog.Logger
+	localChainID uint64
+	peers        map[uint64]Client // chainID -> transport client
+	log          zerolog.Logger
 }
 
 // NewCoordinator creates a new peer coordinator.
 func NewCoordinator(
 	localChainID uint64,
-	leaderChainID uint64,
 	peers map[uint64]Client,
 	log zerolog.Logger,
 ) *DefaultCoordinator {
 	return &DefaultCoordinator{
-		localChainID:  localChainID,
-		leaderChainID: leaderChainID,
-		peers:         peers,
-		log:           log.With().Str("component", "peer_coordinator").Logger(),
+		localChainID: localChainID,
+		peers:        peers,
+		log:          log.With().Str("component", "peer_coordinator").Logger(),
 	}
 }
 
@@ -74,8 +70,7 @@ func (c *DefaultCoordinator) ForwardXT(
 	ctx context.Context,
 	instanceID string,
 	txs map[uint64][]byte,
-	isLeader bool,
-	leaderSeq uint64,
+	originSeq uint64,
 ) error {
 	if len(txs) == 0 {
 		return nil
@@ -89,9 +84,8 @@ func (c *DefaultCoordinator) ForwardXT(
 	req := XTForwardRequest{
 		InstanceID:   instanceID,
 		Transactions: hexTxs,
-		IsLeader:     isLeader,
-		LeaderChain:  c.localChainID,
-		LeaderSeq:    leaderSeq,
+		OriginChain:  c.localChainID,
+		OriginSeq:    originSeq,
 	}
 
 	body, err := json.Marshal(req)
@@ -101,9 +95,6 @@ func (c *DefaultCoordinator) ForwardXT(
 
 	for chainID, client := range c.peers {
 		if _, hasTx := txs[chainID]; !hasTx {
-			continue
-		}
-		if !isLeader && c.leaderChainID != 0 && chainID != c.leaderChainID {
 			continue
 		}
 
