@@ -33,9 +33,9 @@ type Client interface {
 
 // XTForwardRequest is sent to peer sidecars to forward an XT.
 type XTForwardRequest struct {
-	InstanceID   string                `json:"instance_id"`
-	Transactions map[string][]string   `json:"transactions"` // chainID -> hex txs
-	OriginChain  compose.ChainID       `json:"origin_chain"`
+	InstanceID   string                 `json:"instance_id"`
+	Transactions map[string][]string    `json:"transactions"` // chainID -> hex txs
+	OriginChain  compose.ChainID        `json:"origin_chain"`
 	OriginSeq    compose.SequenceNumber `json:"origin_seq"`
 }
 

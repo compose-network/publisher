@@ -96,7 +96,7 @@ func (c *DefaultCoordinator) rejectStartInstance(
 	var xt *types.PendingXT
 
 	c.mu.Lock()
-	xt, _ = c.pending[instanceID]
+	xt = c.pending[instanceID]
 	if xt == nil {
 		xt = &types.PendingXT{
 			ID:             instanceID,
