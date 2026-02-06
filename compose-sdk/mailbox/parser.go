@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -121,13 +122,13 @@ const mailboxABI = `[
 
 // Parser parses mailbox contract calls from EVM trace operations.
 type Parser struct {
-	chainID          uint64
+	chainID          compose.ChainID
 	mailboxAddresses map[common.Address]bool
 	parsedABI        abi.ABI
 }
 
 // NewParser creates a parser for the given chain's mailbox addresses.
-func NewParser(chainID uint64, mailboxAddrs []common.Address) (*Parser, error) {
+func NewParser(chainID compose.ChainID, mailboxAddrs []common.Address) (*Parser, error) {
 	parsed, err := abi.JSON(strings.NewReader(mailboxABI))
 	if err != nil {
 		return nil, fmt.Errorf("parse mailbox ABI: %w", err)
@@ -146,7 +147,7 @@ func NewParser(chainID uint64, mailboxAddrs []common.Address) (*Parser, error) {
 }
 
 // ChainID returns the parser's chain ID.
-func (p *Parser) ChainID() uint64 {
+func (p *Parser) ChainID() compose.ChainID {
 	return p.chainID
 }
 
@@ -168,7 +169,7 @@ func (p *Parser) AnalyzeTrace(
 		GasUsed:          uint64(trace.GasUsed),
 	}
 
-	p.walkCallFrame(&trace.CallFrame, state, alreadySentMsgs, fulfilledDeps)
+	p.walkCallFrame(trace, state, alreadySentMsgs, fulfilledDeps)
 
 	return state, nil
 }
@@ -189,8 +190,8 @@ func (p *Parser) walkCallFrame(
 				// Process mailbox.read()
 				if call.IsRead && p.awaitRead(call) {
 					dep := CrossRollupDependency{
-						SourceChainID: call.ChainSrc.Uint64(),
-						DestChainID:   call.ChainDest.Uint64(),
+						SourceChainID: compose.ChainID(call.ChainSrc.Uint64()),
+						DestChainID:   compose.ChainID(call.ChainDest.Uint64()),
 						Sender:        call.Sender,
 						Receiver:      frame.From,
 						SessionID:     call.SessionID,
@@ -207,8 +208,8 @@ func (p *Parser) walkCallFrame(
 				// Process mailbox.write()
 				if call.IsWrite && p.mustWrite(call) {
 					msg := CrossRollupMessage{
-						SourceChainID: call.ChainSrc.Uint64(),
-						DestChainID:   call.ChainDest.Uint64(),
+						SourceChainID: compose.ChainID(call.ChainSrc.Uint64()),
+						DestChainID:   compose.ChainID(call.ChainDest.Uint64()),
 						Sender:        frame.From,
 						Receiver:      call.Receiver,
 						SessionID:     call.SessionID,
@@ -269,7 +270,7 @@ func (p *Parser) parseReadCall(data []byte) (*MailboxCall, error) {
 		IsRead:             true,
 	}
 	call.ChainSrc = call.ChainMessageSender
-	call.ChainDest = new(big.Int).SetUint64(p.chainID)
+	call.ChainDest = new(big.Int).SetUint64(uint64(p.chainID))
 	return call, nil
 }
 
@@ -289,26 +290,26 @@ func (p *Parser) parseWriteCall(data []byte) (*MailboxCall, error) {
 		Data:                  values[4].([]byte),
 		IsWrite:               true,
 	}
-	call.ChainSrc = new(big.Int).SetUint64(p.chainID)
+	call.ChainSrc = new(big.Int).SetUint64(uint64(p.chainID))
 	call.ChainDest = call.ChainMessageRecipient
 	return call, nil
 }
 
 // mustWrite returns true if this chain should perform the write (source chain).
 func (p *Parser) mustWrite(call *MailboxCall) bool {
-	return call.ChainSrc.Uint64() == p.chainID && call.ChainDest.Uint64() != p.chainID
+	return compose.ChainID(call.ChainSrc.Uint64()) == p.chainID && compose.ChainID(call.ChainDest.Uint64()) != p.chainID
 }
 
 // awaitRead returns true if this chain should wait for data (destination chain).
 func (p *Parser) awaitRead(call *MailboxCall) bool {
-	return call.ChainSrc.Uint64() != p.chainID && call.ChainDest.Uint64() == p.chainID
+	return compose.ChainID(call.ChainSrc.Uint64()) != p.chainID && compose.ChainID(call.ChainDest.Uint64()) == p.chainID
 }
 
 // BuildPutInboxCallData builds the call data for a putInbox transaction.
 func (p *Parser) BuildPutInboxCallData(dep CrossRollupDependency) ([]byte, error) {
 	// putInbox(chainMessageSender, sender, receiver, sessionId, label, data)
 	return p.parsedABI.Pack("putInbox",
-		new(big.Int).SetUint64(dep.SourceChainID),
+		new(big.Int).SetUint64(uint64(dep.SourceChainID)),
 		dep.Sender,
 		dep.Receiver,
 		dep.SessionID,

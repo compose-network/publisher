@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/compose-network/specs/compose"
 )
 
 // StateManager manages transaction states with automatic cleanup.
@@ -39,14 +41,14 @@ func (m *StateManager) Stop() {
 }
 
 // AddState creates a new transaction state.
-func (m *StateManager) AddState(id string, participantChains []uint64, data []byte) *TransactionState {
+func (m *StateManager) AddState(id string, participantChains []compose.ChainID, data []byte) *TransactionState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	state := &TransactionState{
 		ID:                id,
 		ParticipantChains: participantChains,
-		Votes:             make(map[uint64]bool),
+		Votes:             make(map[compose.ChainID]bool),
 		Decision:          StatePending,
 		Data:              data,
 		StartTime:         time.Now(),
@@ -97,7 +99,7 @@ func (m *StateManager) GetAll() []string {
 }
 
 // AddVote adds a vote to a transaction. Returns false if already voted.
-func (m *StateManager) AddVote(id string, chainID uint64, vote bool) bool {
+func (m *StateManager) AddVote(id string, chainID compose.ChainID, vote bool) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -116,7 +118,7 @@ func (m *StateManager) AddVote(id string, chainID uint64, vote bool) bool {
 }
 
 // SetDecision sets the decision for a transaction.
-func (m *StateManager) SetDecision(id string, decision DecisionState) bool {
+func (m *StateManager) SetDecision(id string, decision compose.DecisionState) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

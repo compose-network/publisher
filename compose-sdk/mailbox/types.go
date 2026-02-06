@@ -1,4 +1,3 @@
-// Package mailbox provides parsing and building of mailbox contract operations.
 package mailbox
 
 import (
@@ -9,14 +8,15 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-// Type aliases for backward compatibility.
-// These types are defined in protocol package as the single source of truth.
+// Convenience aliases so packages that work with mailbox types can reference
+// them through this package rather than importing protocol directly.
 type (
 	CrossRollupDependency = protocol.CrossRollupDependency
 	CrossRollupMessage    = protocol.CrossRollupMessage
 )
 
-// CallFrame represents a call in the geth callTracer output.
+// CallFrame represents a call in the geth callTracer output. This mirrors
+// go-ethereum's internal callFrame struct which is not exported.
 type CallFrame struct {
 	Type    string         `json:"type"`
 	From    common.Address `json:"from"`
@@ -30,10 +30,8 @@ type CallFrame struct {
 	Calls   []CallFrame    `json:"calls,omitempty"`
 }
 
-// CallTraceResult holds the result of debug_traceCall with callTracer.
-type CallTraceResult struct {
-	CallFrame
-}
+// CallTraceResult is the top-level result of debug_traceCall with callTracer.
+type CallTraceResult = CallFrame
 
 // MailboxCall represents a parsed read() or write() call to the mailbox contract.
 type MailboxCall struct {

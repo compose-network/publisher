@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/compose-network/compose-sdk/mailbox"
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -18,7 +19,7 @@ import (
 
 // ChainRPC holds RPC configuration for a chain.
 type ChainRPC struct {
-	ChainID        uint64
+	ChainID        compose.ChainID
 	URL            string
 	MailboxAddress common.Address
 }
@@ -31,7 +32,7 @@ type Config struct {
 
 // Result represents the result of simulating a transaction.
 type Result struct {
-	ChainID          uint64
+	ChainID          compose.ChainID
 	Success          bool
 	Error            string
 	GasUsed          uint64
@@ -49,12 +50,12 @@ func (r *Result) RequiresCoordination() bool {
 // Simulator defines the interface for transaction simulation.
 type Simulator interface {
 	// Simulate simulates a transaction on the given chain.
-	Simulate(ctx context.Context, chainID uint64, tx []byte, stateOverrides map[string]any) (*Result, error)
+	Simulate(ctx context.Context, chainID compose.ChainID, tx []byte, stateOverrides map[string]any) (*Result, error)
 
 	// SimulateWithMailbox simulates a transaction with mailbox analysis.
 	SimulateWithMailbox(
 		ctx context.Context,
-		chainID uint64,
+		chainID compose.ChainID,
 		tx []byte,
 		stateOverrides map[string]any,
 		alreadySentMsgs []mailbox.CrossRollupMessage,
@@ -62,21 +63,21 @@ type Simulator interface {
 	) (*Result, error)
 
 	// GetParser returns the mailbox parser for a chain.
-	GetParser(chainID uint64) *mailbox.Parser
+	GetParser(chainID compose.ChainID) *mailbox.Parser
 }
 
 // RPCSimulator implements simulation via JSON-RPC calls to execution clients.
 type RPCSimulator struct {
-	chains  map[uint64]ChainRPC
-	parsers map[uint64]*mailbox.Parser
+	chains  map[compose.ChainID]ChainRPC
+	parsers map[compose.ChainID]*mailbox.Parser
 	client  *http.Client
 	timeout time.Duration
 }
 
 // NewSimulator creates a new RPC simulator.
 func NewSimulator(cfg Config) (*RPCSimulator, error) {
-	chains := make(map[uint64]ChainRPC)
-	parsers := make(map[uint64]*mailbox.Parser)
+	chains := make(map[compose.ChainID]ChainRPC)
+	parsers := make(map[compose.ChainID]*mailbox.Parser)
 
 	for _, c := range cfg.Chains {
 		chains[c.ChainID] = c
@@ -99,14 +100,14 @@ func NewSimulator(cfg Config) (*RPCSimulator, error) {
 }
 
 // GetParser returns the mailbox parser for a chain.
-func (s *RPCSimulator) GetParser(chainID uint64) *mailbox.Parser {
+func (s *RPCSimulator) GetParser(chainID compose.ChainID) *mailbox.Parser {
 	return s.parsers[chainID]
 }
 
 // Simulate simulates a transaction on the given chain using debug_traceCall.
 func (s *RPCSimulator) Simulate(
 	ctx context.Context,
-	chainID uint64,
+	chainID compose.ChainID,
 	txBytes []byte,
 	stateOverrides map[string]any,
 ) (*Result, error) {
@@ -149,7 +150,7 @@ func (s *RPCSimulator) Simulate(
 // SimulateWithMailbox simulates a transaction and analyzes mailbox operations.
 func (s *RPCSimulator) SimulateWithMailbox(
 	ctx context.Context,
-	chainID uint64,
+	chainID compose.ChainID,
 	txBytes []byte,
 	stateOverrides map[string]any,
 	alreadySentMsgs []mailbox.CrossRollupMessage,

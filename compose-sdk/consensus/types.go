@@ -1,35 +1,16 @@
-// Package consensus provides 2PC (Two-Phase Commit) consensus for cross-chain transactions.
 package consensus
 
 import (
 	"time"
-)
 
-// DecisionState represents the state of a 2PC decision.
-type DecisionState int
+	"github.com/compose-network/specs/compose"
+)
 
 const (
-	// StatePending indicates the transaction is waiting for votes.
-	StatePending DecisionState = iota
-	// StateCommit indicates the transaction was committed.
-	StateCommit
-	// StateAbort indicates the transaction was aborted.
-	StateAbort
+	StatePending = compose.DecisionStatePending
+	StateCommit  = compose.DecisionStateAccepted
+	StateAbort   = compose.DecisionStateRejected
 )
-
-// String returns a string representation of the decision state.
-func (d DecisionState) String() string {
-	switch d {
-	case StatePending:
-		return "pending"
-	case StateCommit:
-		return "commit"
-	case StateAbort:
-		return "abort"
-	default:
-		return "unknown"
-	}
-}
 
 // Config holds configuration for the consensus coordinator.
 type Config struct {
@@ -60,10 +41,10 @@ func DefaultConfig() Config {
 }
 
 // StartFn is called when a new transaction should be broadcast.
-type StartFn func(xtID string, participantChains []uint64, data []byte) error
+type StartFn func(xtID string, participantChains []compose.ChainID, data []byte) error
 
 // VoteFn is called when this node should send its vote.
-type VoteFn func(xtID string, chainID uint64, vote bool) error
+type VoteFn func(xtID string, chainID compose.ChainID, vote bool) error
 
 // DecisionFn is called when a decision has been made (or received from leader).
 type DecisionFn func(xtID string, decision bool) error
@@ -74,13 +55,13 @@ type TransactionState struct {
 	ID string
 
 	// ParticipantChains are the chain IDs participating in this transaction.
-	ParticipantChains []uint64
+	ParticipantChains []compose.ChainID
 
 	// Votes maps chain ID to vote (true=commit, false=abort).
-	Votes map[uint64]bool
+	Votes map[compose.ChainID]bool
 
 	// Decision is the current decision state.
-	Decision DecisionState
+	Decision compose.DecisionState
 
 	// Data holds any additional transaction data.
 	Data []byte

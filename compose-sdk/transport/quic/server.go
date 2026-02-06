@@ -14,39 +14,25 @@ import (
 // RawMessageHandler processes incoming raw message bytes.
 type RawMessageHandler func(ctx context.Context, clientID string, data []byte) error
 
+// OnConnectHandler is called when a new client connection is established.
+type OnConnectHandler func(ctx context.Context, clientID string, conn *Connection)
+
 // Server manages incoming QUIC connections from sidecars.
 type Server interface {
-	// Start begins accepting connections.
 	Start(ctx context.Context) error
-
-	// Stop gracefully shuts down the server.
 	Stop(ctx context.Context) error
 
-	// Broadcast sends a message to all connected clients except the excluded one.
 	Broadcast(ctx context.Context, msg proto.Message, excludeID string) error
-
-	// BroadcastRaw sends raw bytes to all connected clients except the excluded one.
 	BroadcastRaw(ctx context.Context, data []byte, excludeID string) error
-
-	// Send sends a message to a specific client.
 	Send(ctx context.Context, clientID string, msg proto.Message) error
-
-	// SendRaw sends raw bytes to a specific client.
 	SendRaw(ctx context.Context, clientID string, data []byte) error
 
-	// SetHandler sets the message handler for incoming messages.
 	SetHandler(handler RawMessageHandler)
+	SetOnConnect(handler OnConnectHandler)
 
-	// GetConnections returns information about all active connections.
 	GetConnections() []ConnectionInfo
-
-	// GetConnection returns a specific connection by ID.
 	GetConnection(clientID string) *Connection
-
-	// ConnectionCount returns the number of active connections.
 	ConnectionCount() int
-
-	// WaitForConnections blocks until the specified number of connections is reached or timeout.
 	WaitForConnections(ctx context.Context, count int, timeout time.Duration) error
 }
 
@@ -57,6 +43,7 @@ type server struct {
 	listener    *quic.Listener
 	connections map[string]*Connection
 	handler     RawMessageHandler
+	onConnect   OnConnectHandler
 	running     bool
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
@@ -133,7 +120,6 @@ func (s *server) Stop(ctx context.Context) error {
 		s.listener.Close()
 	}
 
-	// Close all connections
 	for _, conn := range s.connections {
 		conn.Close()
 	}
@@ -144,6 +130,8 @@ func (s *server) Stop(ctx context.Context) error {
 	s.log.Info().Msg("QUIC server stopped")
 	return nil
 }
+
+// --- Messaging ---
 
 func (s *server) Broadcast(ctx context.Context, msg proto.Message, excludeID string) error {
 	data, err := proto.Marshal(msg)
@@ -194,11 +182,21 @@ func (s *server) SendRaw(ctx context.Context, clientID string, data []byte) erro
 	return conn.SendRaw(ctx, data)
 }
 
+// --- Configuration ---
+
 func (s *server) SetHandler(handler RawMessageHandler) {
 	s.mu.Lock()
 	s.handler = handler
 	s.mu.Unlock()
 }
+
+func (s *server) SetOnConnect(handler OnConnectHandler) {
+	s.mu.Lock()
+	s.onConnect = handler
+	s.mu.Unlock()
+}
+
+// --- Connection queries ---
 
 func (s *server) GetConnections() []ConnectionInfo {
 	s.mu.RLock()
@@ -236,132 +234,6 @@ func (s *server) WaitForConnections(ctx context.Context, count int, timeout time
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(100 * time.Millisecond):
-		}
-	}
-}
-
-func (s *server) acceptLoop(ctx context.Context) {
-	defer s.wg.Done()
-
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		conn, err := s.listener.Accept(ctx)
-		if err != nil {
-			select {
-			case <-s.stopCh:
-				return
-			case <-ctx.Done():
-				return
-			default:
-				s.log.Error().Err(err).Msg("Accept failed")
-				continue
-			}
-		}
-
-		s.wg.Add(1)
-		go s.handleConnection(ctx, conn)
-	}
-}
-
-func (s *server) handleConnection(ctx context.Context, qconn quic.Connection) {
-	defer s.wg.Done()
-
-	// Wait for client to identify itself via the first stream
-	stream, err := qconn.AcceptStream(ctx)
-	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to accept identification stream")
-		qconn.CloseWithError(1, "identification failed")
-		return
-	}
-
-	// Read client ID from first message
-	idBuf, err := readFrame(stream, 256)
-	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to read client ID")
-		stream.Close()
-		qconn.CloseWithError(1, "identification failed")
-		return
-	}
-	stream.Close()
-
-	clientID := string(idBuf)
-	conn := NewConnection(qconn, clientID, s.cfg.MaxMessageSize)
-
-	s.mu.Lock()
-	// Check if client already connected
-	if existing, ok := s.connections[clientID]; ok {
-		s.log.Warn().Str("client_id", clientID).Msg("Client reconnected, closing old connection")
-		existing.Close()
-	}
-	s.connections[clientID] = conn
-	s.mu.Unlock()
-
-	s.log.Info().
-		Str("client_id", clientID).
-		Str("remote_addr", conn.RemoteAddr()).
-		Msg("Client connected")
-
-	defer func() {
-		s.mu.Lock()
-		delete(s.connections, clientID)
-		s.mu.Unlock()
-		conn.Close()
-		s.log.Info().Str("client_id", clientID).Msg("Client disconnected")
-	}()
-
-	// Handle incoming streams
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		stream, err := conn.AcceptStream(ctx)
-		if err != nil {
-			select {
-			case <-s.stopCh:
-				return
-			case <-ctx.Done():
-				return
-			default:
-				s.log.Debug().Err(err).Str("client_id", clientID).Msg("Stream accept failed")
-				return
-			}
-		}
-
-		s.wg.Add(1)
-		go s.handleStream(ctx, conn, stream)
-	}
-}
-
-func (s *server) handleStream(ctx context.Context, conn *Connection, stream quic.Stream) {
-	defer s.wg.Done()
-	defer stream.Close()
-
-	data, err := readFrame(stream, s.cfg.MaxMessageSize)
-	if err != nil {
-		s.log.Debug().Err(err).Str("client_id", conn.ID()).Msg("Failed to read message")
-		return
-	}
-	conn.RecordActivity()
-
-	s.mu.RLock()
-	handler := s.handler
-	s.mu.RUnlock()
-
-	if handler != nil {
-		if err := handler(ctx, conn.ID(), data); err != nil {
-			s.log.Error().Err(err).Str("client_id", conn.ID()).Msg("Handler failed")
 		}
 	}
 }

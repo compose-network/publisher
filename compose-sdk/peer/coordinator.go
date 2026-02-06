@@ -5,19 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/rs/zerolog"
 )
 
 // Coordinator handles peer-to-peer sidecar communication.
 type Coordinator interface {
 	// ForwardXT forwards an XT to peer sidecars for their chains.
-	ForwardXT(ctx context.Context, instanceID string, txs map[uint64][][]byte, originSeq uint64) error
+	ForwardXT(ctx context.Context, instanceID string, txs map[compose.ChainID][][]byte, originSeq compose.SequenceNumber) error
 
 	// SendVoteToPeers sends our vote to all peer sidecars.
-	SendVoteToPeers(ctx context.Context, instanceID string, chainID uint64, vote bool) error
+	SendVoteToPeers(ctx context.Context, instanceID string, chainID compose.ChainID, vote bool) error
 
 	// GetPeerChainIDs returns the chain IDs of all peer sidecars.
-	GetPeerChainIDs() []uint64
+	GetPeerChainIDs() []compose.ChainID
 
 	// Close closes all peer connections.
 	Close(ctx context.Context) error
@@ -32,30 +33,30 @@ type Client interface {
 
 // XTForwardRequest is sent to peer sidecars to forward an XT.
 type XTForwardRequest struct {
-	InstanceID   string              `json:"instance_id"`
-	Transactions map[string][]string `json:"transactions"` // chainID -> hex txs
-	OriginChain  uint64              `json:"origin_chain"`
-	OriginSeq    uint64              `json:"origin_seq"`
+	InstanceID   string                `json:"instance_id"`
+	Transactions map[string][]string   `json:"transactions"` // chainID -> hex txs
+	OriginChain  compose.ChainID       `json:"origin_chain"`
+	OriginSeq    compose.SequenceNumber `json:"origin_seq"`
 }
 
 // VoteRequest is sent to peer sidecars with our vote.
 type VoteRequest struct {
-	InstanceID string `json:"instance_id"`
-	ChainID    uint64 `json:"chain_id"`
-	Vote       bool   `json:"vote"`
+	InstanceID string          `json:"instance_id"`
+	ChainID    compose.ChainID `json:"chain_id"`
+	Vote       bool            `json:"vote"`
 }
 
 // DefaultCoordinator handles direct coordination with peer sidecars.
 type DefaultCoordinator struct {
-	localChainID uint64
-	peers        map[uint64]Client // chainID -> transport client
+	localChainID compose.ChainID
+	peers        map[compose.ChainID]Client // chainID -> transport client
 	log          zerolog.Logger
 }
 
 // NewCoordinator creates a new peer coordinator.
 func NewCoordinator(
-	localChainID uint64,
-	peers map[uint64]Client,
+	localChainID compose.ChainID,
+	peers map[compose.ChainID]Client,
 	log zerolog.Logger,
 ) *DefaultCoordinator {
 	return &DefaultCoordinator{
@@ -69,8 +70,8 @@ func NewCoordinator(
 func (c *DefaultCoordinator) ForwardXT(
 	ctx context.Context,
 	instanceID string,
-	txs map[uint64][][]byte,
-	originSeq uint64,
+	txs map[compose.ChainID][][]byte,
+	originSeq compose.SequenceNumber,
 ) error {
 	if len(txs) == 0 {
 		return nil
@@ -106,18 +107,18 @@ func (c *DefaultCoordinator) ForwardXT(
 		}
 
 		if !client.IsConnected() {
-			c.log.Warn().Uint64("peer_chain", chainID).Msg("Peer not connected, skipping XT forward")
+			c.log.Warn().Uint64("peer_chain", uint64(chainID)).Msg("Peer not connected, skipping XT forward")
 			continue
 		}
 
 		if err := client.SendRaw(ctx, body); err != nil {
-			c.log.Error().Err(err).Uint64("peer_chain", chainID).Msg("Failed to forward XT to peer")
+			c.log.Error().Err(err).Uint64("peer_chain", uint64(chainID)).Msg("Failed to forward XT to peer")
 			continue
 		}
 
 		c.log.Debug().
 			Str("instance_id", instanceID).
-			Uint64("peer_chain", chainID).
+			Uint64("peer_chain", uint64(chainID)).
 			Msg("Forwarded XT to peer sidecar")
 	}
 
@@ -125,7 +126,7 @@ func (c *DefaultCoordinator) ForwardXT(
 }
 
 // SendVoteToPeers sends our vote to all peer sidecars.
-func (c *DefaultCoordinator) SendVoteToPeers(ctx context.Context, instanceID string, chainID uint64, vote bool) error {
+func (c *DefaultCoordinator) SendVoteToPeers(ctx context.Context, instanceID string, chainID compose.ChainID, vote bool) error {
 	if len(c.peers) == 0 {
 		return nil
 	}
@@ -143,18 +144,18 @@ func (c *DefaultCoordinator) SendVoteToPeers(ctx context.Context, instanceID str
 
 	for peerChainID, client := range c.peers {
 		if !client.IsConnected() {
-			c.log.Warn().Uint64("peer_chain", peerChainID).Msg("Peer not connected, skipping vote")
+			c.log.Warn().Uint64("peer_chain", uint64(peerChainID)).Msg("Peer not connected, skipping vote")
 			continue
 		}
 
 		if err := client.SendRaw(ctx, body); err != nil {
-			c.log.Error().Err(err).Uint64("peer_chain", peerChainID).Msg("Failed to send vote to peer")
+			c.log.Error().Err(err).Uint64("peer_chain", uint64(peerChainID)).Msg("Failed to send vote to peer")
 			continue
 		}
 
 		c.log.Debug().
 			Str("instance_id", instanceID).
-			Uint64("peer_chain", peerChainID).
+			Uint64("peer_chain", uint64(peerChainID)).
 			Bool("vote", vote).
 			Msg("Sent vote to peer sidecar via QUIC")
 	}
@@ -163,8 +164,8 @@ func (c *DefaultCoordinator) SendVoteToPeers(ctx context.Context, instanceID str
 }
 
 // GetPeerChainIDs returns the chain IDs of all peer sidecars.
-func (c *DefaultCoordinator) GetPeerChainIDs() []uint64 {
-	ids := make([]uint64, 0, len(c.peers))
+func (c *DefaultCoordinator) GetPeerChainIDs() []compose.ChainID {
+	ids := make([]compose.ChainID, 0, len(c.peers))
 	for chainID := range c.peers {
 		ids = append(ids, chainID)
 	}
@@ -175,7 +176,7 @@ func (c *DefaultCoordinator) GetPeerChainIDs() []uint64 {
 func (c *DefaultCoordinator) Close(ctx context.Context) error {
 	for chainID, client := range c.peers {
 		if err := client.Disconnect(ctx); err != nil {
-			c.log.Error().Err(err).Uint64("peer_chain", chainID).Msg("Failed to disconnect from peer")
+			c.log.Error().Err(err).Uint64("peer_chain", uint64(chainID)).Msg("Failed to disconnect from peer")
 		}
 	}
 	return nil

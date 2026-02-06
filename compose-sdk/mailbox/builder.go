@@ -138,7 +138,7 @@ func (b *DefaultBuilder) BuildPutInboxTx(ctx context.Context, dep CrossRollupDep
 
 	data, err := b.abi.Pack(
 		"putInbox",
-		new(big.Int).SetUint64(dep.SourceChainID),
+		new(big.Int).SetUint64(uint64(dep.SourceChainID)),
 		dep.Sender,
 		dep.Receiver,
 		sessionID,

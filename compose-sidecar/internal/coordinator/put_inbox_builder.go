@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/compose-network/compose-sdk/protocol"
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -61,7 +62,7 @@ const putInboxABI = `[
 // DefaultPutInboxBuilder implements PutInboxBuilder using a coordinator private key.
 type DefaultPutInboxBuilder struct {
 	log            zerolog.Logger
-	chainID        uint64
+	chainID        compose.ChainID
 	mailboxAddress common.Address
 	privateKey     *ecdsa.PrivateKey
 	rpcURL         string
@@ -71,7 +72,7 @@ type DefaultPutInboxBuilder struct {
 
 // PutInboxBuilderConfig holds configuration for the PutInboxBuilder.
 type PutInboxBuilderConfig struct {
-	ChainID        uint64
+	ChainID        compose.ChainID
 	MailboxAddress common.Address
 	PrivateKeyHex  string
 	RPCURL         string
@@ -134,7 +135,7 @@ func (b *DefaultPutInboxBuilder) BuildPutInboxTxWithNonce(
 
 	data, err := b.abi.Pack(
 		"putInbox",
-		new(big.Int).SetUint64(dep.SourceChainID),
+		new(big.Int).SetUint64(uint64(dep.SourceChainID)),
 		dep.Sender,
 		dep.Receiver,
 		sessionID,
@@ -147,7 +148,7 @@ func (b *DefaultPutInboxBuilder) BuildPutInboxTxWithNonce(
 
 	// Build EIP-1559 transaction
 	txData := &ethtypes.DynamicFeeTx{
-		ChainID:   new(big.Int).SetUint64(b.chainID),
+		ChainID:   new(big.Int).SetUint64(uint64(b.chainID)),
 		Nonce:     nonce,
 		GasTipCap: big.NewInt(1000000000),  // 1 gwei
 		GasFeeCap: big.NewInt(20000000000), // 20 gwei
@@ -160,14 +161,14 @@ func (b *DefaultPutInboxBuilder) BuildPutInboxTxWithNonce(
 	tx := ethtypes.NewTx(txData)
 
 	// Sign transaction with London signer (EIP-1559)
-	signer := ethtypes.NewLondonSigner(new(big.Int).SetUint64(b.chainID))
+	signer := ethtypes.NewLondonSigner(new(big.Int).SetUint64(uint64(b.chainID)))
 	signedTx, err := ethtypes.SignTx(tx, signer, b.privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("sign transaction: %w", err)
 	}
 
 	b.log.Debug().
-		Uint64("source_chain", dep.SourceChainID).
+		Uint64("source_chain", uint64(dep.SourceChainID)).
 		Str("sender", dep.Sender.Hex()).
 		Str("receiver", dep.Receiver.Hex()).
 		Str("tx_hash", signedTx.Hash().Hex()).

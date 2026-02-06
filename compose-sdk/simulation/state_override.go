@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/compose-network/compose-sdk/mailbox"
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -16,7 +17,7 @@ const (
 
 // BuildMailboxStateOverrides builds state overrides for mailbox dependencies.
 func BuildMailboxStateOverrides(
-	chainID uint64,
+	chainID compose.ChainID,
 	mailboxAddr common.Address,
 	deps []mailbox.CrossRollupDependency,
 ) map[string]any {
@@ -158,13 +159,13 @@ func normalizeState(v any) map[string]string {
 	}
 }
 
-func mailboxKey(destChainID uint64, dep mailbox.CrossRollupDependency) (common.Hash, bool) {
+func mailboxKey(destChainID compose.ChainID, dep mailbox.CrossRollupDependency) (common.Hash, bool) {
 	if dep.SessionID == nil {
 		return common.Hash{}, false
 	}
 
-	srcID := new(big.Int).SetUint64(dep.SourceChainID)
-	destID := new(big.Int).SetUint64(destChainID)
+	srcID := new(big.Int).SetUint64(uint64(dep.SourceChainID))
+	destID := new(big.Int).SetUint64(uint64(destChainID))
 
 	buf := make([]byte, 0, 32+32+20+20+32+len(dep.Label))
 	buf = append(buf, common.LeftPadBytes(srcID.Bytes(), 32)...)

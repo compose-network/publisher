@@ -5,12 +5,13 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 // BuilderPollRequest represents a request from op-rbuilder at flashblock start.
 type BuilderPollRequest struct {
-	ChainID         uint64          `json:"chain_id"`
+	ChainID         compose.ChainID `json:"chain_id"`
 	BlockNumber     uint64          `json:"block_number"`
 	FlashblockIndex uint64          `json:"flashblock_index"`
 	StateRoot       common.Hash     `json:"state_root"`
@@ -23,6 +24,7 @@ type BuilderPollRequest struct {
 type BuilderPollResponse struct {
 	Hold        bool                 `json:"hold"`
 	PollAfterMs uint64               `json:"poll_after_ms,omitempty"`
+	MaxHoldMs   uint64               `json:"max_hold_ms,omitempty"`
 	Txs         []TransactionPayload `json:"transactions,omitempty"`
 }
 
@@ -35,7 +37,7 @@ type TransactionPayload struct {
 
 // ChainState represents the frozen state from a builder poll.
 type ChainState struct {
-	ChainID         uint64
+	ChainID         compose.ChainID
 	BlockNumber     uint64
 	FlashblockIndex uint64
 	StateRoot       common.Hash
@@ -61,7 +63,7 @@ const (
 // Vote represents a vote in the 2PC protocol.
 type Vote struct {
 	InstanceID string
-	ChainID    uint64
+	ChainID    compose.ChainID
 	Vote       bool
 	Reason     string
 }
@@ -76,8 +78,8 @@ type Decision struct {
 
 // CrossRollupDependency represents a mailbox.read() requiring data from another chain.
 type CrossRollupDependency struct {
-	SourceChainID uint64
-	DestChainID   uint64
+	SourceChainID compose.ChainID
+	DestChainID   compose.ChainID
 	Sender        common.Address
 	Receiver      common.Address
 	SessionID     *big.Int
@@ -89,8 +91,8 @@ type CrossRollupDependency struct {
 
 // CrossRollupMessage represents a mailbox.write() sending data to another chain.
 type CrossRollupMessage struct {
-	SourceChainID uint64
-	DestChainID   uint64
+	SourceChainID compose.ChainID
+	DestChainID   compose.ChainID
 	Sender        common.Address
 	Receiver      common.Address
 	SessionID     *big.Int
@@ -102,7 +104,7 @@ type CrossRollupMessage struct {
 
 // SimulationResult represents the result of simulating a transaction.
 type SimulationResult struct {
-	ChainID          uint64
+	ChainID          compose.ChainID
 	Success          bool
 	Error            string
 	GasUsed          uint64

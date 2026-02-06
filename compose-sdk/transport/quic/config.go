@@ -1,4 +1,3 @@
-// Package quic provides QUIC-based transport for publisher-sidecar communication.
 package quic
 
 import (

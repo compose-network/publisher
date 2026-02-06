@@ -6,17 +6,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/compose-network/specs/compose"
 	"github.com/rs/zerolog"
 )
 
 // Coordinator manages 2PC consensus for cross-chain transactions.
 type Coordinator interface {
 	// StartTransaction initiates a new 2PC transaction.
-	StartTransaction(ctx context.Context, xtID string, participantChains []uint64, data []byte) error
+	StartTransaction(ctx context.Context, xtID string, participantChains []compose.ChainID, data []byte) error
 
 	// RecordVote records a vote from a participant chain.
 	// Returns the current decision state and whether a decision was made.
-	RecordVote(xtID string, chainID uint64, vote bool) (DecisionState, bool, error)
+	RecordVote(xtID string, chainID compose.ChainID, vote bool) (compose.DecisionState, bool, error)
 
 	// RecordDecision records a decision received from the leader (for followers).
 	RecordDecision(xtID string, decision bool) error
@@ -110,7 +111,7 @@ func (c *coordinator) Stop(ctx context.Context) error {
 func (c *coordinator) StartTransaction(
 	ctx context.Context,
 	xtID string,
-	participantChains []uint64,
+	participantChains []compose.ChainID,
 	data []byte,
 ) error {
 	c.mu.Lock()
@@ -160,7 +161,7 @@ func (c *coordinator) StartTransaction(
 	return nil
 }
 
-func (c *coordinator) RecordVote(xtID string, chainID uint64, vote bool) (DecisionState, bool, error) {
+func (c *coordinator) RecordVote(xtID string, chainID compose.ChainID, vote bool) (compose.DecisionState, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -181,7 +182,7 @@ func (c *coordinator) RecordVote(xtID string, chainID uint64, vote bool) (Decisi
 
 	c.log.Debug().
 		Str("xt_id", xtID).
-		Uint64("chain_id", chainID).
+		Uint64("chain_id", uint64(chainID)).
 		Bool("vote", vote).
 		Int("votes", state.VoteCount()).
 		Int("required", len(state.ParticipantChains)).
@@ -283,7 +284,7 @@ func (c *coordinator) SetDecisionCallback(fn DecisionFn) {
 	c.mu.Unlock()
 }
 
-func (c *coordinator) makeDecision(xtID string, decision bool) (DecisionState, bool, error) {
+func (c *coordinator) makeDecision(xtID string, decision bool) (compose.DecisionState, bool, error) {
 	decisionState := StateCommit
 	if !decision {
 		decisionState = StateAbort

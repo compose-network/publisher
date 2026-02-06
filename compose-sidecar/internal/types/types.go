@@ -1,10 +1,10 @@
-// Package types defines sidecar-specific types that depend on protobuf.
 package types
 
 import (
 	"time"
 
 	"github.com/compose-network/compose-sdk/protocol"
+	"github.com/compose-network/specs/compose"
 	"github.com/compose-network/specs/compose/proto"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -14,24 +14,24 @@ import (
 type PendingXT struct {
 	ID           string
 	InstanceID   []byte
-	PeriodID     uint64
-	SequenceNum  uint64
-	Transactions map[uint64][]*types.Transaction
-	RawTxs       map[uint64][][]byte
-	ChainStates  map[uint64]*protocol.ChainState
+	PeriodID     compose.PeriodID
+	SequenceNum  compose.SequenceNumber
+	Transactions map[compose.ChainID][]*types.Transaction
+	RawTxs       map[compose.ChainID][][]byte
+	ChainStates  map[compose.ChainID]*protocol.ChainState
 	CreatedAt    time.Time
 	SimulatedAt  time.Time
 	DecidedAt    time.Time
 	Decision     *bool
 	VoteSent     bool
 
-	OriginChain uint64
-	OriginSeq   uint64
+	OriginChain compose.ChainID
+	OriginSeq   compose.SequenceNumber
 	LocalVote   *bool
-	PeerVotes   map[uint64]bool
+	PeerVotes   map[compose.ChainID]bool
 
-	LockedChains   map[uint64]bool
-	StateOverrides map[uint64]map[string]any
+	LockedChains   map[compose.ChainID]bool
+	StateOverrides map[compose.ChainID]map[string]any
 
 	PendingMailbox   []*proto.MailboxMessage
 	SentMailbox      []*proto.MailboxMessage
@@ -39,5 +39,6 @@ type PendingXT struct {
 	FulfilledDeps    []protocol.CrossRollupDependency
 	OutboundMessages []protocol.CrossRollupMessage
 	PutInboxTxs      []*types.Transaction
-	DeliveredChains  map[uint64]bool
+	InFlightChains   map[compose.ChainID]bool
+	DeliveredChains  map[compose.ChainID]bool
 }

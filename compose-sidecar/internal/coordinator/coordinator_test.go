@@ -8,13 +8,15 @@ import (
 	"time"
 
 	"github.com/compose-network/compose-sdk/protocol"
+	simsdk "github.com/compose-network/compose-sdk/simulation"
 	"github.com/compose-network/compose-sidecar/internal/types"
+	"github.com/compose-network/specs/compose"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog"
 )
 
-func newTestCoordinator(chainID uint64) *DefaultCoordinator {
+func newTestCoordinator(chainID compose.ChainID) *DefaultCoordinator {
 	return NewCoordinator(CoordinatorConfig{
 		ChainID: chainID,
 		Log:     zerolog.Nop(),
@@ -33,7 +35,7 @@ type recordingSimulator struct {
 
 func (s *recordingSimulator) Simulate(
 	ctx context.Context,
-	chainID uint64,
+	chainID compose.ChainID,
 	tx []byte,
 	stateOverrides map[string]interface{},
 ) (*protocol.SimulationResult, error) {
@@ -42,7 +44,7 @@ func (s *recordingSimulator) Simulate(
 
 func (s *recordingSimulator) SimulateWithMailbox(
 	ctx context.Context,
-	chainID uint64,
+	chainID compose.ChainID,
 	tx []byte,
 	stateOverrides map[string]interface{},
 	alreadySentMsgs []protocol.CrossRollupMessage,
@@ -50,7 +52,7 @@ func (s *recordingSimulator) SimulateWithMailbox(
 ) (*protocol.SimulationResult, error) {
 	s.calls = append(s.calls, simCall{
 		tx:        append([]byte(nil), tx...),
-		overrides: cloneStateOverrides(stateOverrides),
+		overrides: simsdk.CloneStateOverrides(stateOverrides),
 	})
 	key := hex.EncodeToString(tx)
 	if result, ok := s.results[key]; ok {
@@ -131,7 +133,7 @@ func TestCoordinatorSubmitXT(t *testing.T) {
 
 	// Create a minimal valid RLP-encoded transaction
 	// For testing, we use empty bytes (will fail decode in real use)
-	txs := map[uint64][][]byte{
+	txs := map[compose.ChainID][][]byte{
 		901: {createMinimalTx(t)},
 		902: {createMinimalTx(t)},
 	}
@@ -160,7 +162,7 @@ func TestCoordinatorOnDecision_Commit(t *testing.T) {
 	}
 	defer coord.Stop(ctx)
 
-	txs := map[uint64][][]byte{
+	txs := map[compose.ChainID][][]byte{
 		901: {createMinimalTx(t)},
 		902: {createMinimalTx(t)},
 	}
@@ -193,7 +195,7 @@ func TestCoordinatorOnDecision_Abort(t *testing.T) {
 	}
 	defer coord.Stop(ctx)
 
-	txs := map[uint64][][]byte{
+	txs := map[compose.ChainID][][]byte{
 		901: {createMinimalTx(t)},
 	}
 
@@ -226,7 +228,7 @@ func TestCoordinatorCleanup(t *testing.T) {
 	defer coord.Stop(ctx)
 
 	// Submit an XT
-	if _, err := coord.SubmitXT(ctx, "xt-old", map[uint64][][]byte{901: {createMinimalTx(t)}}); err != nil {
+	if _, err := coord.SubmitXT(ctx, "xt-old", map[compose.ChainID][][]byte{901: {createMinimalTx(t)}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -258,7 +260,7 @@ func TestBuildXTRequestPreservesTxOrder(t *testing.T) {
 	txB := createMinimalTxWithNonce(t, 2)
 	txC := createMinimalTxWithNonce(t, 3)
 
-	req := buildXTRequest(map[uint64][][]byte{
+	req := buildXTRequest(map[compose.ChainID][][]byte{
 		2: {txA, txB},
 		1: {txC},
 	})
@@ -284,7 +286,7 @@ func TestBuildXTRequestPreservesTxOrder(t *testing.T) {
 }
 
 func TestProcessXTSequentialLocalTxs(t *testing.T) {
-	chainID := uint64(901)
+	var chainID compose.ChainID = 901
 	tx1 := createMinimalTxWithNonce(t, 1)
 	tx2 := createMinimalTxWithNonce(t, 2)
 
@@ -339,9 +341,9 @@ func TestProcessXTSequentialLocalTxs(t *testing.T) {
 	xt := &types.PendingXT{
 		ID:           "xt-1",
 		InstanceID:   []byte("xt-1"),
-		Transactions: map[uint64][]*ethtypes.Transaction{chainID: {txObj1, txObj2}},
-		RawTxs:       map[uint64][][]byte{chainID: {tx1, tx2}},
-		ChainStates: map[uint64]*protocol.ChainState{
+		Transactions: map[compose.ChainID][]*ethtypes.Transaction{chainID: {txObj1, txObj2}},
+		RawTxs:       map[compose.ChainID][][]byte{chainID: {tx1, tx2}},
+		ChainStates: map[compose.ChainID]*protocol.ChainState{
 			chainID: {
 				ChainID:         chainID,
 				BlockNumber:     1,
@@ -349,14 +351,14 @@ func TestProcessXTSequentialLocalTxs(t *testing.T) {
 				StateOverrides:  nil,
 			},
 		},
-		LockedChains: make(map[uint64]bool),
-		PeerVotes:    make(map[uint64]bool),
+		LockedChains: make(map[compose.ChainID]bool),
+		PeerVotes:    make(map[compose.ChainID]bool),
 		CreatedAt:    time.Now(),
 	}
 
 	coord.mu.Lock()
 	coord.pending["xt-1"] = xt
-	coord.waiters["xt-1"] = make(map[uint64]chan *protocol.BuilderPollResponse)
+	coord.waiters["xt-1"] = make(map[compose.ChainID]chan *protocol.BuilderPollResponse)
 	coord.mu.Unlock()
 
 	coord.processXT(ctx, "xt-1", xt)

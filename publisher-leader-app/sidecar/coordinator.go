@@ -1,0 +1,492 @@
+package sidecar
+
+import (
+	"context"
+	"encoding/hex"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/compose-network/compose-sdk/consensus"
+	"github.com/compose-network/compose-sdk/transport/quic"
+	"github.com/compose-network/specs/compose"
+	pb "github.com/compose-network/specs/compose/proto"
+	"github.com/compose-network/specs/compose/sbcp"
+	"github.com/rs/zerolog"
+	"google.golang.org/protobuf/proto"
+)
+
+// txStartInfo holds pre-computed data for the consensus start callback.
+type txStartInfo struct {
+	periodID compose.PeriodID
+	seqNum   compose.SequenceNumber
+}
+
+// Coordinator manages sidecar connections and cross-chain transaction coordination
+// using QUIC transport and 2PC consensus from compose-sdk.
+type Coordinator struct {
+	mu         sync.RWMutex
+	quicServer quic.Server
+	consensus  consensus.Coordinator
+	log        zerolog.Logger
+
+	// Track connected sidecars by chain ID
+	chainToClient map[compose.ChainID]string // chainID → clientID
+	clientToChain map[string]compose.ChainID // clientID → chainID
+
+	// Track active transactions and their participants
+	txParticipants map[string][]compose.ChainID // xtID → participating chainIDs
+	txStartInfos   map[string]txStartInfo       // xtID → pre-computed start info
+
+	// Sequence numbering for StartInstance messages
+	currentPeriodID compose.PeriodID
+	nextSequenceNum compose.SequenceNumber
+
+	// Statistics counters
+	messagesProcessed atomic.Uint64
+	broadcastsSent    atomic.Uint64
+	startTime         time.Time
+}
+
+// NewCoordinator creates a new sidecar coordinator.
+func NewCoordinator(server quic.Server, cons consensus.Coordinator, log zerolog.Logger) *Coordinator {
+	return &Coordinator{
+		quicServer:     server,
+		consensus:      cons,
+		log:            log.With().Str("component", "sidecar.coordinator").Logger(),
+		chainToClient:  make(map[compose.ChainID]string),
+		clientToChain:  make(map[string]compose.ChainID),
+		txParticipants: make(map[string][]compose.ChainID),
+		txStartInfos:   make(map[string]txStartInfo),
+		startTime:      time.Now(),
+	}
+}
+
+// Start initializes the coordinator, wires up callbacks, and starts the QUIC server.
+func (c *Coordinator) Start(ctx context.Context) error {
+	c.consensus.SetStartCallback(c.onTransactionStart)
+	c.consensus.SetDecisionCallback(c.onDecision)
+
+	c.quicServer.SetHandler(c.handleMessage)
+	c.quicServer.SetOnConnect(c.onConnect)
+
+	if err := c.consensus.Start(ctx); err != nil {
+		return err
+	}
+
+	if err := c.quicServer.Start(ctx); err != nil {
+		c.consensus.Stop(ctx)
+		return err
+	}
+
+	c.log.Info().Msg("Sidecar coordinator started")
+	return nil
+}
+
+// Stop gracefully shuts down the coordinator.
+func (c *Coordinator) Stop(ctx context.Context) error {
+	c.log.Info().Msg("Stopping sidecar coordinator")
+
+	if err := c.consensus.Stop(ctx); err != nil {
+		c.log.Error().Err(err).Msg("Failed to stop consensus")
+	}
+
+	if err := c.quicServer.Stop(ctx); err != nil {
+		c.log.Error().Err(err).Msg("Failed to stop QUIC server")
+		return err
+	}
+
+	return nil
+}
+
+// GetStats returns statistics about the coordinator state.
+func (c *Coordinator) GetStats() map[string]interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return map[string]interface{}{
+		"active_connections":      c.quicServer.ConnectionCount(),
+		"registered_chains":       len(c.chainToClient),
+		"active_2pc_transactions": len(c.consensus.GetActiveTransactions()),
+		"messages_processed":      c.messagesProcessed.Load(),
+		"broadcasts_sent":         c.broadcastsSent.Load(),
+		"uptime_seconds":          time.Since(c.startTime).Seconds(),
+		"chains_count":            len(c.chainToClient),
+	}
+}
+
+// RegisterChain associates a client ID with a chain ID.
+func (c *Coordinator) RegisterChain(clientID string, chainID compose.ChainID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if oldChain, ok := c.clientToChain[clientID]; ok {
+		delete(c.chainToClient, oldChain)
+	}
+
+	c.chainToClient[chainID] = clientID
+	c.clientToChain[clientID] = chainID
+
+	c.log.Info().
+		Str("client_id", clientID).
+		Uint64("chain_id", uint64(chainID)).
+		Msg("Chain registered")
+}
+
+// StartPeriod broadcasts a StartPeriod message to all connected sidecars.
+func (c *Coordinator) StartPeriod(ctx context.Context, periodID compose.PeriodID, superblockNum compose.SuperblockNumber) error {
+	c.mu.Lock()
+	c.currentPeriodID = periodID
+	c.nextSequenceNum = 1
+	c.mu.Unlock()
+
+	msg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_StartPeriod{
+			StartPeriod: &pb.StartPeriod{
+				PeriodId:         uint64(periodID),
+				SuperblockNumber: uint64(superblockNum),
+			},
+		},
+	}
+
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	c.log.Info().
+		Uint64("period_id", uint64(periodID)).
+		Uint64("superblock_num", uint64(superblockNum)).
+		Msg("Broadcasting StartPeriod")
+
+	c.broadcastsSent.Add(1)
+	return c.quicServer.BroadcastRaw(ctx, data, "")
+}
+
+// HandleMailboxRelay forwards a MailboxMessage to the destination sidecar.
+func (c *Coordinator) HandleMailboxRelay(ctx context.Context, mailbox *pb.MailboxMessage) error {
+	c.mu.RLock()
+	clientID, ok := c.chainToClient[compose.ChainID(mailbox.DestinationChain)]
+	c.mu.RUnlock()
+
+	if !ok {
+		c.log.Warn().
+			Uint64("dest_chain", uint64(mailbox.DestinationChain)).
+			Msg("No sidecar registered for destination chain")
+		return nil
+	}
+
+	msg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_MailboxMessage{
+			MailboxMessage: mailbox,
+		},
+	}
+
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	c.broadcastsSent.Add(1)
+	return c.quicServer.SendRaw(ctx, clientID, data)
+}
+
+// BroadcastRollback sends a Rollback message to all connected sidecars.
+func (c *Coordinator) BroadcastRollback(ctx context.Context, periodID, lastSBNum uint64, lastSBHash []byte) error {
+	msg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_Rollback{
+			Rollback: &pb.Rollback{
+				PeriodId:                      periodID,
+				LastFinalizedSuperblockNumber: lastSBNum,
+				LastFinalizedSuperblockHash:   lastSBHash,
+			},
+		},
+	}
+
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	c.log.Info().
+		Uint64("period_id", periodID).
+		Uint64("last_sb_num", lastSBNum).
+		Msg("Broadcasting Rollback")
+
+	c.broadcastsSent.Add(1)
+	return c.quicServer.BroadcastRaw(ctx, data, "")
+}
+
+// onConnect is called when a new QUIC client connection is established.
+func (c *Coordinator) onConnect(ctx context.Context, clientID string, conn *quic.Connection) {
+	c.log.Info().
+		Str("client_id", clientID).
+		Msg("New sidecar connection established")
+}
+
+// onTransactionStart is called by consensus when a new transaction should be broadcast.
+// The xtID is the hex-encoded instance ID that was pre-computed in handleXTRequest.
+func (c *Coordinator) onTransactionStart(xtID string, chains []compose.ChainID, data []byte) error {
+	c.mu.Lock()
+	c.txParticipants[xtID] = chains
+	info, ok := c.txStartInfos[xtID]
+	delete(c.txStartInfos, xtID)
+	c.mu.Unlock()
+
+	if !ok {
+		c.log.Error().Str("xt_id", xtID).Msg("Missing start info for transaction")
+		return nil
+	}
+
+	var xtReq pb.XTRequest
+	if err := proto.Unmarshal(data, &xtReq); err != nil {
+		c.log.Error().Err(err).Str("xt_id", xtID).Msg("Failed to unmarshal XTRequest")
+		return err
+	}
+
+	instanceIDBytes, err := hex.DecodeString(xtID)
+	if err != nil {
+		return err
+	}
+
+	msg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_StartInstance{
+			StartInstance: &pb.StartInstance{
+				InstanceId:     instanceIDBytes,
+				PeriodId:       uint64(info.periodID),
+				SequenceNumber: uint64(info.seqNum),
+				XtRequest:      &xtReq,
+			},
+		},
+	}
+
+	msgData, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	c.log.Info().
+		Str("xt_id", xtID).
+		Uint64("period_id", uint64(info.periodID)).
+		Uint64("seq_num", uint64(info.seqNum)).
+		Int("chains", len(chains)).
+		Msg("Broadcasting StartInstance to sidecars")
+
+	c.broadcastsSent.Add(1)
+	return c.quicServer.BroadcastRaw(context.Background(), msgData, "")
+}
+
+// onDecision is called by consensus when a decision is made.
+func (c *Coordinator) onDecision(xtID string, decision bool) error {
+	instanceIDBytes, err := hex.DecodeString(xtID)
+	if err != nil {
+		return err
+	}
+
+	msg := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_Decided{
+			Decided: &pb.Decided{
+				InstanceId: instanceIDBytes,
+				Decision:   decision,
+			},
+		},
+	}
+
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	c.log.Info().
+		Str("xt_id", xtID).
+		Bool("decision", decision).
+		Msg("Broadcasting Decided to sidecars")
+
+	c.mu.Lock()
+	delete(c.txParticipants, xtID)
+	c.mu.Unlock()
+
+	c.broadcastsSent.Add(1)
+	return c.quicServer.BroadcastRaw(context.Background(), data, "")
+}
+
+// handleMessage routes incoming messages from sidecars.
+func (c *Coordinator) handleMessage(ctx context.Context, clientID string, data []byte) error {
+	c.messagesProcessed.Add(1)
+
+	var msg pb.Message
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		c.log.Error().Err(err).Str("client", clientID).Msg("Failed to unmarshal message")
+		return err
+	}
+
+	switch payload := msg.Payload.(type) {
+	case *pb.Message_Vote:
+		return c.handleVote(ctx, clientID, payload.Vote)
+	case *pb.Message_XtRequest:
+		return c.handleXTRequest(ctx, clientID, payload.XtRequest)
+	case *pb.Message_Ping:
+		return c.handlePing(ctx, clientID, payload.Ping)
+	case *pb.Message_HandshakeRequest:
+		return c.handleHandshake(ctx, clientID, payload.HandshakeRequest)
+	case *pb.Message_MailboxMessage:
+		return c.HandleMailboxRelay(ctx, payload.MailboxMessage)
+	default:
+		c.log.Warn().Str("client", clientID).Type("type", payload).Msg("Unknown message type")
+		return nil
+	}
+}
+
+// handleVote processes a Vote message from a sidecar.
+func (c *Coordinator) handleVote(ctx context.Context, clientID string, vote *pb.Vote) error {
+	xtID := hex.EncodeToString(vote.InstanceId)
+
+	c.log.Info().
+		Str("xt_id", xtID).
+		Uint64("chain_id", vote.ChainId).
+		Bool("vote", vote.Vote).
+		Str("client_id", clientID).
+		Msg("Received vote from sidecar")
+
+	_, _, err := c.consensus.RecordVote(xtID, compose.ChainID(vote.ChainId), vote.Vote)
+	return err
+}
+
+// handleXTRequest processes an XTRequest message from a sidecar.
+func (c *Coordinator) handleXTRequest(ctx context.Context, clientID string, xtReq *pb.XTRequest) error {
+	var chains []compose.ChainID
+	for _, txReq := range xtReq.TransactionRequests {
+		chains = append(chains, compose.ChainID(txReq.ChainId))
+	}
+
+	c.mu.Lock()
+	seqNum := c.nextSequenceNum
+	c.nextSequenceNum++
+	periodID := c.currentPeriodID
+	c.mu.Unlock()
+
+	composeReq := toComposeXTRequest(xtReq)
+	instanceID := sbcp.GenerateInstanceID(periodID, seqNum, composeReq)
+	xtID := instanceID.String()
+
+	data, err := proto.Marshal(xtReq)
+	if err != nil {
+		return err
+	}
+
+	// Store info for the onTransactionStart callback to use.
+	c.mu.Lock()
+	c.txStartInfos[xtID] = txStartInfo{periodID: periodID, seqNum: seqNum}
+	c.mu.Unlock()
+
+	c.log.Info().
+		Str("xt_id", xtID).
+		Int("chains", len(chains)).
+		Str("client_id", clientID).
+		Msg("Starting cross-chain transaction")
+
+	return c.consensus.StartTransaction(ctx, xtID, chains, data)
+}
+
+// handlePing processes a Ping message from a sidecar.
+func (c *Coordinator) handlePing(ctx context.Context, clientID string, ping *pb.Ping) error {
+	pong := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_Pong{
+			Pong: &pb.Pong{
+				Timestamp: ping.Timestamp,
+			},
+		},
+	}
+
+	data, err := proto.Marshal(pong)
+	if err != nil {
+		return err
+	}
+
+	return c.quicServer.SendRaw(ctx, clientID, data)
+}
+
+// handleHandshake processes a HandshakeRequest and registers the sidecar's chain.
+func (c *Coordinator) handleHandshake(ctx context.Context, clientID string, req *pb.HandshakeRequest) error {
+	c.log.Info().
+		Str("client_id", clientID).
+		Str("requested_id", req.ClientId).
+		Msg("Received handshake request")
+
+	// Register the chain using the client ID. The sidecar's client ID encodes its chain identity;
+	// chain registration happens here so the coordinator can route messages by chain.
+	if req.ClientId != "" {
+		c.RegisterChain(clientID, parseChainID(req.ClientId))
+	}
+
+	resp := &pb.Message{
+		SenderId: "publisher",
+		Payload: &pb.Message_HandshakeResponse{
+			HandshakeResponse: &pb.HandshakeResponse{
+				Accepted:  true,
+				SessionId: clientID,
+			},
+		},
+	}
+
+	data, err := proto.Marshal(resp)
+	if err != nil {
+		return err
+	}
+
+	return c.quicServer.SendRaw(ctx, clientID, data)
+}
+
+// removeClient cleans up chain mappings when a client disconnects.
+func (c *Coordinator) removeClient(clientID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if chainID, ok := c.clientToChain[clientID]; ok {
+		delete(c.chainToClient, chainID)
+		delete(c.clientToChain, clientID)
+		c.log.Info().
+			Str("client_id", clientID).
+			Uint64("chain_id", uint64(chainID)).
+			Msg("Client disconnected, chain unregistered")
+	}
+}
+
+// parseChainID extracts a chain ID from a client identifier string.
+// Falls back to 0 if the string cannot be parsed.
+func parseChainID(clientID string) compose.ChainID {
+	var id uint64
+	for _, ch := range clientID {
+		if ch >= '0' && ch <= '9' {
+			id = id*10 + uint64(ch-'0')
+		} else {
+			break
+		}
+	}
+	return compose.ChainID(id)
+}
+
+// toComposeXTRequest converts a proto XTRequest to the spec compose.XTRequest.
+func toComposeXTRequest(req *pb.XTRequest) compose.XTRequest {
+	if req == nil {
+		return compose.XTRequest{}
+	}
+
+	txs := make([]compose.TransactionRequest, 0, len(req.GetTransactionRequests()))
+	for _, tr := range req.GetTransactionRequests() {
+		if tr == nil {
+			continue
+		}
+		txs = append(txs, compose.TransactionRequest{
+			ChainID:      compose.ChainID(tr.ChainId),
+			Transactions: compose.CloneByteSlices(tr.Transaction),
+		})
+	}
+	return compose.XTRequest{Transactions: txs}
+}
