@@ -61,18 +61,17 @@ engineering path than deep `op-geth` protocol modifications.
 
 ---
 
-## Deep Technical Analysis (February 2026)
+## Deep Technical Analysis
 
 This section provides a comprehensive technical assessment of the sidecar+flashblocks architecture versus the
-old op-geth modification approach, covering every concern raised during team discussions (Dec 2025 – Feb 2026),
-parallel transaction support, simulation mechanics, state handling, and performance characteristics.
+old op-geth modification approach, covering parallel transaction support, simulation mechanics, state handling,
+and performance characteristics.
 
 ### 1. The Fundamental Problem with op-geth (Why It Failed)
 
-The team conversation from Dec 2025 documents the exact failure mode. Op-geth's block building is a
-self-contained pipeline with three states: building (running mempool txs), idle (sealed, waiting), and
-starting (nanoseconds). Shota's observation was correct: there is never a good time to submit an SCP
-instance because:
+Op-geth's block building is a self-contained pipeline with three states: building (running mempool
+txs), idle (sealed, waiting), and starting (nanoseconds). There is never a good time to submit an
+SCP instance because:
 
 - **Building state**: op-geth is already processing mempool txs. Inserting an XT here invalidates the
   state all subsequent mempool txs were simulated against.
@@ -86,8 +85,8 @@ FCU interception — is fighting the architecture rather than working with it.
 
 The `computependingblock` flag made this worse. When enabled, the pending block state includes mempool tx
 effects. XTs simulated against this state would execute in a different position in the final block (before
-mempool txs), meaning simulation state != execution state. This violates the core invariant that Shota
-identified: whatever the state for any tx during simulation must be the state during sealing.
+mempool txs), meaning simulation state != execution state. This violates the core invariant:
+whatever the state for any tx during simulation must be the state during sealing.
 
 ### 2. How the Sidecar+Flashblocks Architecture Resolves Every Issue
 
@@ -128,8 +127,8 @@ pending XTs. Neither matched the actual sealing state.
 
 #### 2.3 The A/B/x Interleaving Problem → Cannot Happen
 
-Shota's Dec 10 2025 concern was: XT-A simulated, mempool tx `x` runs on post-A state, XT-B arrives and
-gets inserted between A and `x`, invalidating `x`'s simulation.
+The concern was: XT-A simulated, mempool tx `x` runs on post-A state, XT-B arrives and gets inserted
+between A and `x`, invalidating `x`'s simulation.
 
 In the sidecar architecture, this interleaving is structurally impossible:
 
@@ -153,11 +152,11 @@ XTs are injected at a controlled point before pool txs.
 The sidecar architecture bypasses `computependingblock` entirely. Op-rbuilder manages its own EVM state
 pipeline using `reth::revm::State<DB>`. State overrides are computed from the builder's actual transition
 state, not from any geth-specific pending block abstraction. This eliminates the entire class of bugs
-around pending state inconsistency that Shota and Ayaz discussed.
+around pending state inconsistency.
 
 #### 2.5 TOB (Top-of-Block) Ordering → Not Required
 
-The Dec 23 2025 discussion debated whether XTs must be at the top of the block. TOB had five complications:
+A key design question was whether XTs must be at the top of the block. TOB had five complications:
 synchronized block starts, SP knowing rollup block times, dedicated XT periods, delayed user responses, and
 per-block XT allocation windows.
 
@@ -166,7 +165,7 @@ They are ordered relative to each other by publisher sequence number, but they d
 zero in the block. The `chainOverlay` mechanism ensures each XT simulates on the post-state of all prior
 XTs, regardless of how many mempool txs preceded them in the block.
 
-This matches what Gal said: "we don't really want [TOB]. if you can skip this stage I won't complain."
+TOB adds complexity without benefit in this architecture.
 
 #### 2.6 Rollup Synchronization → Publisher Periods, Not Block Alignment
 
@@ -300,8 +299,8 @@ resets when either changes. This ensures the overlay stays synchronized with the
 #### 5.3 FCU Lock Semantics
 
 When the builder polls the sidecar and receives `hold: true`, it re-polls in a loop. During this
-time, no mempool txs are executed. This is the "lock" that Shota described as necessary — but
-implemented at the builder level rather than inside op-geth.
+time, no mempool txs are executed. This is the builder-level lock — implemented outside op-geth
+rather than inside it.
 
 The builder's cancellation token hierarchy ensures correctness:
 
@@ -430,9 +429,8 @@ approach that can satisfy the Compose protocol requirements without fundamental 
    pending. Parallel processing of disjoint chain sets. None of this was achievable with op-geth
    modifications.
 
-The team discussion from Dec 2025 shows the engineering team converging on this conclusion through
-direct experience with the op-geth approach's failures. The sidecar architecture is not a
-theoretical improvement — it was built because the alternative did not work.
+The sidecar architecture is not a theoretical improvement — it was built because the op-geth
+approach did not work.
 
 ### 11. Mempool Transactions During Parallel XT Simulation
 
@@ -568,8 +566,7 @@ for conflicting transactions.
 
 ## Summary
 
-The sidecar+flashblocks architecture resolves every problem identified during the Dec 2025 – Feb
-2026 team discussions:
+The sidecar+flashblocks architecture resolves every known problem with the op-geth approach:
 
 | Problem (op-geth)                                                   | Resolution (sidecar+flashblocks)                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 |---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
