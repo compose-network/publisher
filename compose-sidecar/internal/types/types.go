@@ -39,6 +39,5 @@ type PendingXT struct {
 	FulfilledDeps    []protocol.CrossRollupDependency
 	OutboundMessages []protocol.CrossRollupMessage
 	PutInboxTxs      []*types.Transaction
-	InFlightChains   map[compose.ChainID]bool
 	DeliveredChains  map[compose.ChainID]bool
 }

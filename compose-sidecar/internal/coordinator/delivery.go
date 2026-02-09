@@ -34,9 +34,6 @@ func (c *DefaultCoordinator) collectDeliverable(
 		if xt.DeliveredChains != nil && xt.DeliveredChains[chainID] {
 			continue
 		}
-		if xt.InFlightChains != nil && xt.InFlightChains[chainID] {
-			continue
-		}
 		if xt.Decision == nil {
 			return deliverable, entry
 		}
@@ -120,38 +117,18 @@ func (c *DefaultCoordinator) buildCommittedTransactions(
 	return txs, nil
 }
 
-// markInFlight flags the given deliverable XTs as in-flight for the chain.
-func (c *DefaultCoordinator) markInFlight(chainID compose.ChainID, deliverable []deliverableXT) {
+// markDelivered marks the given deliverable XTs as delivered for the chain.
+// Delivered XTs are not returned on subsequent polls.
+func (c *DefaultCoordinator) markDelivered(chainID compose.ChainID, deliverable []deliverableXT) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	for _, entry := range deliverable {
-		if entry.xt.InFlightChains == nil {
-			entry.xt.InFlightChains = make(map[compose.ChainID]bool)
+		if entry.xt.DeliveredChains == nil {
+			entry.xt.DeliveredChains = make(map[compose.ChainID]bool)
 		}
-		entry.xt.InFlightChains[chainID] = true
+		entry.xt.DeliveredChains[chainID] = true
 	}
-}
-
-// AckDelivery acknowledges that the builder successfully executed transactions.
-func (c *DefaultCoordinator) AckDelivery(ctx context.Context, chainID compose.ChainID, instanceIDs []string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for _, id := range instanceIDs {
-		xt, ok := c.pending[id]
-		if !ok {
-			continue
-		}
-		if xt.InFlightChains != nil {
-			delete(xt.InFlightChains, chainID)
-		}
-		if xt.DeliveredChains == nil {
-			xt.DeliveredChains = make(map[compose.ChainID]bool)
-		}
-		xt.DeliveredChains[chainID] = true
-	}
-	return nil
 }
 
 // depsForChain filters dependencies to only those targeting the given chain.

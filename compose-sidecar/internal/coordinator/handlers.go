@@ -310,7 +310,7 @@ func (c *DefaultCoordinator) HandleBuilderPoll(
 				MaxHoldMs:   uint64(c.circTimeout.Milliseconds()),
 			}, nil
 		}
-		c.markInFlight(req.ChainID, deliverable)
+		c.markDelivered(req.ChainID, deliverable)
 		return &protocol.BuilderPollResponse{Hold: false, Txs: txs}, nil
 	}
 

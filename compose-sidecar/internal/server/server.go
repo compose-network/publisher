@@ -62,7 +62,6 @@ func NewServer(cfg Config, coord coordinator.Coordinator, log zerolog.Logger) *S
 
 	// Routes
 	r.Post("/transactions", s.handleTransactions)
-	r.Post("/transactions/ack", s.handleTransactionAck)
 	r.Post("/mailbox", s.handleMailbox)
 	r.Post("/xt", s.handleXTSubmit)
 	r.Get("/xt/{instanceID}", s.handleXTStatus)
@@ -372,37 +371,6 @@ func (s *Server) handleXTVote(w http.ResponseWriter, r *http.Request) {
 		Uint64("chain_id", uint64(req.ChainID)).
 		Bool("vote", req.Vote).
 		Msg("Received peer vote")
-
-	w.WriteHeader(http.StatusOK)
-}
-
-// AckRequest represents an acknowledgment that delivered transactions were executed.
-type AckRequest struct {
-	ChainID     compose.ChainID `json:"chain_id"`
-	InstanceIDs []string        `json:"instance_ids"`
-}
-
-// handleTransactionAck handles POST /transactions/ack from the builder.
-func (s *Server) handleTransactionAck(w http.ResponseWriter, r *http.Request) {
-	var req AckRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid request body", err)
-		return
-	}
-
-	if req.ChainID == 0 {
-		s.writeError(w, http.StatusBadRequest, "chain_id is required", nil)
-		return
-	}
-	if len(req.InstanceIDs) == 0 {
-		s.writeError(w, http.StatusBadRequest, "instance_ids is required", nil)
-		return
-	}
-
-	if err := s.coordinator.AckDelivery(r.Context(), req.ChainID, req.InstanceIDs); err != nil {
-		s.writeError(w, http.StatusInternalServerError, "failed to ack delivery", err)
-		return
-	}
 
 	w.WriteHeader(http.StatusOK)
 }

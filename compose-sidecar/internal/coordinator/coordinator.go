@@ -37,7 +37,6 @@ type Coordinator interface {
 	HandlePeerVote(ctx context.Context, instanceID string, chainID compose.ChainID, vote bool) error
 	HandleForwardedXT(ctx context.Context, instanceID string, txs map[compose.ChainID][][]byte, originChain compose.ChainID, originSeq compose.SequenceNumber) error
 	HandleRollback(ctx context.Context, periodID compose.PeriodID, lastFinalizedSuperblockNum uint64, lastFinalizedSuperblockHash []byte) error
-	AckDelivery(ctx context.Context, chainID compose.ChainID, instanceIDs []string) error
 	GetXTStatus(ctx context.Context, instanceID string) (*XTStatusResponse, error)
 }
 
