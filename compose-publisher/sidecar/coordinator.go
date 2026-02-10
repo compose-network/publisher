@@ -3,6 +3,7 @@ package sidecar
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +38,7 @@ type Coordinator struct {
 	// Track active transactions and their participants
 	txParticipants map[string][]compose.ChainID // xtID → participating chainIDs
 	txStartInfos   map[string]txStartInfo       // xtID → pre-computed start info
+	activeChains   map[compose.ChainID]string   // chainID → active xtID
 
 	// Sequence numbering for StartInstance messages
 	currentPeriodID compose.PeriodID
@@ -58,6 +60,7 @@ func NewCoordinator(server quic.Server, cons consensus.Coordinator, log zerolog.
 		clientToChain:  make(map[string]compose.ChainID),
 		txParticipants: make(map[string][]compose.ChainID),
 		txStartInfos:   make(map[string]txStartInfo),
+		activeChains:   make(map[compose.ChainID]string),
 		startTime:      time.Now(),
 	}
 }
@@ -108,6 +111,7 @@ func (c *Coordinator) GetStats() map[string]interface{} {
 		"active_connections":      c.quicServer.ConnectionCount(),
 		"registered_chains":       len(c.chainToClient),
 		"active_2pc_transactions": len(c.consensus.GetActiveTransactions()),
+		"active_chains":           len(c.activeChains),
 		"messages_processed":      c.messagesProcessed.Load(),
 		"broadcasts_sent":         c.broadcastsSent.Load(),
 		"uptime_seconds":          time.Since(c.startTime).Seconds(),
@@ -308,7 +312,7 @@ func (c *Coordinator) onDecision(xtID string, decision bool) error {
 		Msg("Broadcasting Decided to sidecars")
 
 	c.mu.Lock()
-	delete(c.txParticipants, xtID)
+	c.releaseInstanceChainsLocked(xtID)
 	c.mu.Unlock()
 
 	c.broadcastsSent.Add(1)
@@ -363,26 +367,37 @@ func (c *Coordinator) handleXTRequest(ctx context.Context, clientID string, xtRe
 	for _, txReq := range xtReq.TransactionRequests {
 		chains = append(chains, compose.ChainID(txReq.ChainId))
 	}
+	chains = dedupeChains(chains)
+	composeReq := toComposeXTRequest(xtReq)
 
 	c.mu.Lock()
-	seqNum := c.nextSequenceNum
-	c.nextSequenceNum++
-	periodID := c.currentPeriodID
-	c.mu.Unlock()
+	if overlapChain, overlapXTID, blocked := c.findOverlapLocked(chains); blocked {
+		c.mu.Unlock()
+		c.log.Warn().
+			Str("client_id", clientID).
+			Uint64("chain_id", uint64(overlapChain)).
+			Str("blocking_xt_id", overlapXTID).
+			Msg("Rejecting XTRequest due to overlapping active chain")
+		return fmt.Errorf("cannot start instance: chain %d is active in %s", overlapChain, overlapXTID)
+	}
 
-	composeReq := toComposeXTRequest(xtReq)
+	seqNum := c.nextSequenceNum
+	periodID := c.currentPeriodID
 	instanceID := sbcp.GenerateInstanceID(periodID, seqNum, composeReq)
 	xtID := instanceID.String()
+	c.nextSequenceNum++
+	c.txStartInfos[xtID] = txStartInfo{periodID: periodID, seqNum: seqNum}
+	c.reserveInstanceChainsLocked(xtID, chains)
+	c.mu.Unlock()
 
 	data, err := proto.Marshal(xtReq)
 	if err != nil {
+		c.mu.Lock()
+		delete(c.txStartInfos, xtID)
+		c.releaseInstanceChainsLocked(xtID)
+		c.mu.Unlock()
 		return err
 	}
-
-	// Store info for the onTransactionStart callback to use.
-	c.mu.Lock()
-	c.txStartInfos[xtID] = txStartInfo{periodID: periodID, seqNum: seqNum}
-	c.mu.Unlock()
 
 	c.log.Info().
 		Str("xt_id", xtID).
@@ -390,7 +405,14 @@ func (c *Coordinator) handleXTRequest(ctx context.Context, clientID string, xtRe
 		Str("client_id", clientID).
 		Msg("Starting cross-chain transaction")
 
-	return c.consensus.StartTransaction(ctx, xtID, chains, data)
+	if err := c.consensus.StartTransaction(ctx, xtID, chains, data); err != nil {
+		c.mu.Lock()
+		delete(c.txStartInfos, xtID)
+		c.releaseInstanceChainsLocked(xtID)
+		c.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // handlePing processes a Ping message from a sidecar.
@@ -489,4 +511,49 @@ func toComposeXTRequest(req *pb.XTRequest) compose.XTRequest {
 		})
 	}
 	return compose.XTRequest{Transactions: txs}
+}
+
+func dedupeChains(chains []compose.ChainID) []compose.ChainID {
+	if len(chains) < 2 {
+		return chains
+	}
+	seen := make(map[compose.ChainID]struct{}, len(chains))
+	deduped := make([]compose.ChainID, 0, len(chains))
+	for _, chainID := range chains {
+		if _, ok := seen[chainID]; ok {
+			continue
+		}
+		seen[chainID] = struct{}{}
+		deduped = append(deduped, chainID)
+	}
+	return deduped
+}
+
+func (c *Coordinator) findOverlapLocked(chains []compose.ChainID) (compose.ChainID, string, bool) {
+	for _, chainID := range chains {
+		if xtID, ok := c.activeChains[chainID]; ok {
+			return chainID, xtID, true
+		}
+	}
+	return 0, "", false
+}
+
+func (c *Coordinator) reserveInstanceChainsLocked(xtID string, chains []compose.ChainID) {
+	c.txParticipants[xtID] = append([]compose.ChainID(nil), chains...)
+	for _, chainID := range chains {
+		c.activeChains[chainID] = xtID
+	}
+}
+
+func (c *Coordinator) releaseInstanceChainsLocked(xtID string) {
+	chains, ok := c.txParticipants[xtID]
+	if !ok {
+		return
+	}
+	for _, chainID := range chains {
+		if activeXTID, exists := c.activeChains[chainID]; exists && activeXTID == xtID {
+			delete(c.activeChains, chainID)
+		}
+	}
+	delete(c.txParticipants, xtID)
 }

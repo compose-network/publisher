@@ -153,7 +153,7 @@ func run() error {
 		Log:             log,
 	})
 
-	// Set up publisher callbacks for v2 protocol
+	// Set up publisher callbacks for the publisher protocol.
 	if pubClient != nil {
 		pubClient.SetHandler(func(ctx context.Context, clientID string, data []byte) error {
 			return handlePublisherMessage(ctx, data, coord, log)
@@ -190,6 +190,17 @@ func run() error {
 		return handlePeerMessage(ctx, data, coord, 0, log)
 	})
 
+	if pubClient != nil {
+		log.Info().
+			Str("publisher_addr", cfg.Publisher.Addr).
+			Msg("Connecting to publisher before startup")
+		if err := pubClient.ConnectWithRetry(ctx); err != nil {
+			return fmt.Errorf("connect publisher: %w", err)
+		}
+	} else {
+		log.Info().Msg("Running in standalone mode - no publisher connection")
+	}
+
 	// Start components
 	if err := coord.Start(ctx); err != nil {
 		return fmt.Errorf("start coordinator: %w", err)
@@ -201,18 +212,6 @@ func run() error {
 
 	if err := quicSrv.Start(ctx); err != nil {
 		return fmt.Errorf("start QUIC server: %w", err)
-	}
-
-	// Connect to publisher if enabled. Connection runs in the background so
-	// the sidecar can serve builder polls and peer XTs while waiting.
-	if pubClient != nil {
-		go func() {
-			if err := pubClient.ConnectWithRetry(ctx); err != nil {
-				log.Warn().Err(err).Msg("Failed to connect to publisher")
-			}
-		}()
-	} else {
-		log.Info().Msg("Running in standalone mode (v2) - no publisher connection")
 	}
 
 	// Connect to peer sidecars
