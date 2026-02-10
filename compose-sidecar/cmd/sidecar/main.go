@@ -92,6 +92,10 @@ func run() error {
 		pubCfg.MaxMessageSize = 10 * 1024 * 1024 // 10MB
 		pubClient = quic.NewClient(pubCfg, log)
 	}
+	var publisherClient coordinator.PublisherClient
+	if pubClient != nil {
+		publisherClient = &publisherAdapter{client: pubClient, chainID: primaryChainID}
+	}
 
 	// Create QUIC clients for peer sidecars
 	peerClients := make(map[compose.ChainID]quic.Client)
@@ -141,7 +145,7 @@ func run() error {
 	coord := coordinator.NewCoordinator(coordinator.CoordinatorConfig{
 		ChainID:         primaryChainID,
 		Simulator:       &simulatorAdapter{sim: simulator},
-		Publisher:       &publisherAdapter{client: pubClient, chainID: primaryChainID},
+		Publisher:       publisherClient,
 		MailboxSender:   mailboxSender,
 		MailboxQueue:    mailboxQueue,
 		PeerCoordinator: peerCoordinator,

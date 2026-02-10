@@ -37,9 +37,12 @@ type StartCallback func(ctx context.Context, msg *proto.StartInstance) error
 // PeriodCallback is called when a new period starts (StartPeriod).
 type PeriodCallback func(ctx context.Context, periodID, superblockNum uint64) error
 
-// SubmitXT submits a cross-chain transaction. When publisher is connected,
-// it sends an XTRequest and waits for the publisher to create the instance.
-// Otherwise it falls back to standalone mode (if allowed).
+// SubmitXT submits a cross-chain transaction.
+// If a publisher client is configured and connected, SubmitXT forwards an
+// XTRequest and waits for the publisher-assigned instance ID.
+// If a publisher client is configured but disconnected, SubmitXT returns an
+// error.
+// If no publisher client is configured, SubmitXT uses standalone mode.
 func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[compose.ChainID][][]byte) (string, error) {
 	cleanTxs := make(map[compose.ChainID][][]byte)
 	for chainID, chainTxs := range txs {
@@ -50,6 +53,10 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[co
 	}
 	if len(cleanTxs) == 0 {
 		return "", fmt.Errorf("no transactions provided")
+	}
+
+	if c.publisher != nil && !c.isPublisherConnected() {
+		return "", fmt.Errorf("publisher is configured but not connected")
 	}
 
 	if c.isPublisherConnected() {

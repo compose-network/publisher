@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,21 @@ func newTestCoordinator(chainID compose.ChainID) *DefaultCoordinator {
 		Log:     zerolog.Nop(),
 	})
 }
+
+type fakePublisherClient struct {
+	connected bool
+}
+
+func (f *fakePublisherClient) Connect(ctx context.Context) error          { return nil }
+func (f *fakePublisherClient) ConnectWithRetry(ctx context.Context) error { return nil }
+func (f *fakePublisherClient) Disconnect(ctx context.Context) error       { return nil }
+func (f *fakePublisherClient) SendVote(ctx context.Context, instanceID []byte, vote bool) error {
+	return nil
+}
+func (f *fakePublisherClient) SendRaw(ctx context.Context, data []byte) error { return nil }
+func (f *fakePublisherClient) IsConnected() bool                              { return f.connected }
+func (f *fakePublisherClient) SetOnStart(fn StartCallback)                    {}
+func (f *fakePublisherClient) SetOnDecision(fn VoteCallback)                  {}
 
 type simCall struct {
 	tx        []byte
@@ -96,7 +112,7 @@ func findStateDiff(overrides map[string]any, addr string) map[string]string {
 func TestCoordinatorHandleBuilderPoll_NoActiveXT(t *testing.T) {
 	coord := newTestCoordinator(901)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := coord.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -125,14 +141,12 @@ func TestCoordinatorHandleBuilderPoll_NoActiveXT(t *testing.T) {
 func TestCoordinatorSubmitXT(t *testing.T) {
 	coord := newTestCoordinator(901)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := coord.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	defer coord.Stop(ctx)
 
-	// Create a minimal valid RLP-encoded transaction
-	// For testing, we use empty bytes (will fail decode in real use)
 	txs := map[compose.ChainID][][]byte{
 		901: {createMinimalTx(t)},
 		902: {createMinimalTx(t)},
@@ -146,17 +160,42 @@ func TestCoordinatorSubmitXT(t *testing.T) {
 		t.Fatalf("expected instance_id xt-1, got %s", instanceID)
 	}
 
-	// Submitting the same ID should fail
 	_, err = coord.SubmitXT(ctx, "xt-1", txs)
 	if err == nil {
 		t.Error("expected error when submitting duplicate XT ID")
 	}
 }
 
+func TestCoordinatorSubmitXT_PublisherDisconnected(t *testing.T) {
+	coord := NewCoordinator(CoordinatorConfig{
+		ChainID:   901,
+		Publisher: &fakePublisherClient{connected: false},
+		Log:       zerolog.Nop(),
+	})
+
+	ctx := t.Context()
+	if err := coord.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer coord.Stop(ctx)
+
+	txs := map[compose.ChainID][][]byte{
+		901: {createMinimalTx(t)},
+	}
+
+	_, err := coord.SubmitXT(ctx, "", txs)
+	if err == nil {
+		t.Fatal("expected error when publisher is configured but disconnected")
+	}
+	if !strings.Contains(err.Error(), "publisher is configured but not connected") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestCoordinatorOnDecision_Commit(t *testing.T) {
 	coord := newTestCoordinator(901)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := coord.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -171,12 +210,10 @@ func TestCoordinatorOnDecision_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Record commit decision
 	if err := coord.OnDecision(ctx, "xt-1", true); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify the decision was recorded
 	coord.mu.RLock()
 	xt := coord.pending["xt-1"]
 	coord.mu.RUnlock()
@@ -189,7 +226,7 @@ func TestCoordinatorOnDecision_Commit(t *testing.T) {
 func TestCoordinatorOnDecision_Abort(t *testing.T) {
 	coord := newTestCoordinator(901)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := coord.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -203,12 +240,10 @@ func TestCoordinatorOnDecision_Abort(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Record abort decision
 	if err := coord.OnDecision(ctx, "xt-1", false); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify the decision was recorded
 	coord.mu.RLock()
 	xt := coord.pending["xt-1"]
 	coord.mu.RUnlock()
@@ -221,31 +256,26 @@ func TestCoordinatorOnDecision_Abort(t *testing.T) {
 func TestCoordinatorCleanup(t *testing.T) {
 	coord := newTestCoordinator(901)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := coord.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	defer coord.Stop(ctx)
 
-	// Submit an XT
 	if _, err := coord.SubmitXT(ctx, "xt-old", map[compose.ChainID][][]byte{901: {createMinimalTx(t)}}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Decide on it
 	if err := coord.OnDecision(ctx, "xt-old", true); err != nil {
 		t.Fatal(err)
 	}
 
-	// Set DecidedAt to be old
 	coord.mu.Lock()
 	coord.pending["xt-old"].DecidedAt = time.Now().Add(-2 * time.Hour)
 	coord.mu.Unlock()
 
-	// Cleanup with 1 hour max age
 	coord.Cleanup(time.Hour)
 
-	// Verify it was cleaned up
 	coord.mu.RLock()
 	_, exists := coord.pending["xt-old"]
 	coord.mu.RUnlock()
@@ -332,7 +362,7 @@ func TestProcessXTSequentialLocalTxs(t *testing.T) {
 		Log:       zerolog.Nop(),
 	})
 
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := coord.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -384,16 +414,12 @@ func TestProcessXTSequentialLocalTxs(t *testing.T) {
 	}
 }
 
-// createMinimalTx creates a minimal valid RLP-encoded legacy transaction for testing.
 func createMinimalTx(t *testing.T) []byte {
 	return createMinimalTxWithNonce(t, 0)
 }
 
 func createMinimalTxWithNonce(t *testing.T, nonce uint64) []byte {
 	t.Helper()
-
-	// Create a minimal valid legacy transaction
-	// Using go-ethereum types to create proper RLP encoding
 	to := common.HexToAddress("0x0000000000000000000000000000000000000001")
 	tx := ethtypes.NewTx(&ethtypes.LegacyTx{
 		Nonce:    nonce,
