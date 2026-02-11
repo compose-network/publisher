@@ -76,7 +76,7 @@ func DefaultConfig() *Config {
 			Addr:           "",
 			ReconnectDelay: 5 * time.Second,
 			MaxRetries:     10,
-			Enabled:        false, // Standalone mode by default for v2
+			Enabled:        false, // Standalone mode by default
 		},
 		Chains: ChainsConfig{
 			Chains: []ChainConfig{},

@@ -151,7 +151,7 @@ func (c *DefaultCoordinator) isPublisherConnected() bool {
 	return c.publisher != nil && c.publisher.IsConnected()
 }
 
-// tryMakeDecision attempts to make a decision for an XT in v2 standalone mode
+// tryMakeDecision attempts to make a decision for an XT in standalone mode
 // after receiving a vote (local or from peer).
 func (c *DefaultCoordinator) tryMakeDecision(ctx context.Context, instanceID string) {
 	c.mu.Lock()
@@ -218,7 +218,7 @@ func (c *DefaultCoordinator) tryMakeDecision(ctx context.Context, instanceID str
 		Str("instance_id", instanceID).
 		Bool("decision", decision).
 		Int("votes", collectedVotes).
-		Msg("Made local decision (v2 standalone mode)")
+		Msg("Made local decision (standalone mode)")
 
 	c.signalWaiters(waiters)
 	c.mu.Lock()

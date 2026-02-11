@@ -285,8 +285,12 @@ func (c *DefaultCoordinator) HandleBuilderPoll(
 	}
 	c.mu.Unlock()
 
+	processCtx := ctx
+	if processCtx == nil {
+		processCtx = context.Background()
+	}
 	for _, entry := range xtsToProcess {
-		go c.processXT(context.Background(), entry.id, entry.xt)
+		go c.processXT(context.WithoutCancel(processCtx), entry.id, entry.xt)
 	}
 
 	if len(entries) == 0 {

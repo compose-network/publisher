@@ -259,11 +259,15 @@ func (c *DefaultCoordinator) sendVote(ctx context.Context, instanceID string, xt
 		Str("instance_id", instanceID).
 		Bool("vote", vote).
 		Uint64("chain_id", uint64(c.chainID)).
-		Msg("Local vote recorded (v2 standalone mode)")
+		Msg("Local vote recorded (standalone mode)")
 
 	if c.peerCoordinator != nil {
+		peerCtx := ctx
+		if peerCtx == nil {
+			peerCtx = context.Background()
+		}
 		go func() {
-			voteCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			voteCtx, cancel := context.WithTimeout(context.WithoutCancel(peerCtx), 5*time.Second)
 			defer cancel()
 			if err := c.peerCoordinator.SendVoteToPeers(voteCtx, instanceID, c.chainID, vote); err != nil {
 				c.log.Error().Err(err).Str("instance_id", instanceID).Msg("Failed to send vote to peers")

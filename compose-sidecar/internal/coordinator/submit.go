@@ -87,6 +87,7 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[co
 		c.originSeq++
 		id = fmt.Sprintf("xt-%d-%d", c.chainID, c.originSeq)
 	}
+	originSeq := c.originSeq
 
 	if _, exists := c.pending[id]; exists {
 		c.mu.Unlock()
@@ -115,7 +116,7 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[co
 		PeerVotes:      make(map[compose.ChainID]bool),
 		CreatedAt:      time.Now(),
 		OriginChain:    c.chainID,
-		OriginSeq:      c.originSeq,
+		OriginSeq:      originSeq,
 		LockedChains:   make(map[compose.ChainID]bool),
 	}
 
@@ -130,15 +131,19 @@ func (c *DefaultCoordinator) SubmitXT(ctx context.Context, id string, txs map[co
 	c.mu.Unlock()
 
 	if c.peerCoordinator != nil {
-		go func() {
-			forwardCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		forwardCtxBase := ctx
+		if forwardCtxBase == nil {
+			forwardCtxBase = context.Background()
+		}
+		go func(originSeq compose.SequenceNumber) {
+			forwardCtx, cancel := context.WithTimeout(context.WithoutCancel(forwardCtxBase), 5*time.Second)
 			defer cancel()
-			if err := c.peerCoordinator.ForwardXT(forwardCtx, id, txs, c.originSeq); err != nil {
+			if err := c.peerCoordinator.ForwardXT(forwardCtx, id, txs, originSeq); err != nil {
 				c.log.Error().Err(err).Str("xt_id", id).Msg("Failed to forward XT to peers")
 			} else {
 				c.log.Info().Str("xt_id", id).Msg("Forwarded XT to peer sidecars")
 			}
-		}()
+		}(originSeq)
 	}
 
 	return id, nil
