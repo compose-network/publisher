@@ -81,10 +81,12 @@ func (s *server) handleConnection(ctx context.Context, qconn quic.Connection) {
 
 	defer func() {
 		s.mu.Lock()
-		delete(s.connections, clientID)
+		if s.connections[clientID] == conn {
+			delete(s.connections, clientID)
+			s.log.Info().Str("client_id", clientID).Msg("Client disconnected")
+		}
 		s.mu.Unlock()
 		conn.Close()
-		s.log.Info().Str("client_id", clientID).Msg("Client disconnected")
 	}()
 
 	for {
