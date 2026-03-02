@@ -23,6 +23,17 @@ type txStartInfo struct {
 	seqNum   compose.SequenceNumber
 }
 
+// pendingXTEntry is an XTRequest waiting for its chains to become free.
+type pendingXTEntry struct {
+	clientID string
+	xtReq    *pb.XTRequest
+	chains   []compose.ChainID
+}
+
+// maxPendingQueueSize is the upper bound on queued XTRequests to prevent
+// unbounded memory growth during sustained burst load.
+const maxPendingQueueSize = 100
+
 // Coordinator manages sidecar connections and cross-chain transaction coordination
 // using QUIC transport and 2PC consensus from compose-sdk.
 type Coordinator struct {
@@ -39,6 +50,10 @@ type Coordinator struct {
 	txParticipants map[string][]compose.ChainID // xtID → participating chainIDs
 	txStartInfos   map[string]txStartInfo       // xtID → pre-computed start info
 	activeChains   map[compose.ChainID]string   // chainID → active xtID
+
+	// Queue of XTRequests that arrived while their chains were occupied.
+	// Drained in FIFO order whenever an instance decides and frees its chains.
+	pendingQueue []pendingXTEntry
 
 	// Sequence numbering for StartInstance messages
 	currentPeriodID compose.PeriodID
@@ -61,6 +76,7 @@ func NewCoordinator(server quic.Server, cons consensus.Coordinator, log zerolog.
 		txParticipants: make(map[string][]compose.ChainID),
 		txStartInfos:   make(map[string]txStartInfo),
 		activeChains:   make(map[compose.ChainID]string),
+		pendingQueue:   make([]pendingXTEntry, 0),
 		startTime:      time.Now(),
 	}
 }
@@ -112,6 +128,7 @@ func (c *Coordinator) GetStats() map[string]interface{} {
 		"registered_chains":       len(c.chainToClient),
 		"active_2pc_transactions": len(c.consensus.GetActiveTransactions()),
 		"active_chains":           len(c.activeChains),
+		"queued_xts":              len(c.pendingQueue),
 		"messages_processed":      c.messagesProcessed.Load(),
 		"broadcasts_sent":         c.broadcastsSent.Load(),
 		"uptime_seconds":          time.Since(c.startTime).Seconds(),
@@ -311,12 +328,19 @@ func (c *Coordinator) onDecision(xtID string, decision bool) error {
 		Bool("decision", decision).
 		Msg("Broadcasting Decided to sidecars")
 
+	c.broadcastsSent.Add(1)
+	broadcastErr := c.quicServer.BroadcastRaw(context.Background(), data, "")
+
+	// Release chains after the broadcast so no queued XT can be started
+	// before all participants have received the decision.
 	c.mu.Lock()
 	c.releaseInstanceChainsLocked(xtID)
 	c.mu.Unlock()
 
-	c.broadcastsSent.Add(1)
-	return c.quicServer.BroadcastRaw(context.Background(), data, "")
+	// Start any queued XTs whose chains are now free.
+	c.drainQueue()
+
+	return broadcastErr
 }
 
 // handleMessage routes incoming messages from sidecars.
@@ -362,57 +386,42 @@ func (c *Coordinator) handleVote(ctx context.Context, clientID string, vote *pb.
 }
 
 // handleXTRequest processes an XTRequest message from a sidecar.
+// If the requested chains are currently occupied by an active instance, the
+// request is queued and started once those chains become free.
 func (c *Coordinator) handleXTRequest(ctx context.Context, clientID string, xtReq *pb.XTRequest) error {
 	var chains []compose.ChainID
 	for _, txReq := range xtReq.TransactionRequests {
 		chains = append(chains, compose.ChainID(txReq.ChainId))
 	}
 	chains = dedupeChains(chains)
-	composeReq := toComposeXTRequest(xtReq)
 
 	c.mu.Lock()
-	if overlapChain, overlapXTID, blocked := c.findOverlapLocked(chains); blocked {
+	if _, _, blocked := c.findOverlapLocked(chains); blocked {
+		if len(c.pendingQueue) >= maxPendingQueueSize {
+			c.mu.Unlock()
+			c.log.Warn().
+				Str("client_id", clientID).
+				Int("queue_size", maxPendingQueueSize).
+				Msg("XTRequest queue full, rejecting")
+			return fmt.Errorf("XTRequest queue full: too many pending requests")
+		}
+		c.pendingQueue = append(c.pendingQueue, pendingXTEntry{
+			clientID: clientID,
+			xtReq:    xtReq,
+			chains:   chains,
+		})
+		queueSize := len(c.pendingQueue)
 		c.mu.Unlock()
-		c.log.Warn().
+		c.log.Info().
 			Str("client_id", clientID).
-			Uint64("chain_id", uint64(overlapChain)).
-			Str("blocking_xt_id", overlapXTID).
-			Msg("Rejecting XTRequest due to overlapping active chain")
-		return fmt.Errorf("cannot start instance: chain %d is active in %s", overlapChain, overlapXTID)
+			Int("chains", len(chains)).
+			Int("queue_size", queueSize).
+			Msg("XTRequest queued, chains occupied by active instance")
+		return nil
 	}
 
-	seqNum := c.nextSequenceNum
-	periodID := c.currentPeriodID
-	instanceID := sbcp.GenerateInstanceID(periodID, seqNum, composeReq)
-	xtID := instanceID.String()
-	c.nextSequenceNum++
-	c.txStartInfos[xtID] = txStartInfo{periodID: periodID, seqNum: seqNum}
-	c.reserveInstanceChainsLocked(xtID, chains)
-	c.mu.Unlock()
-
-	data, err := proto.Marshal(xtReq)
-	if err != nil {
-		c.mu.Lock()
-		delete(c.txStartInfos, xtID)
-		c.releaseInstanceChainsLocked(xtID)
-		c.mu.Unlock()
-		return err
-	}
-
-	c.log.Info().
-		Str("xt_id", xtID).
-		Int("chains", len(chains)).
-		Str("client_id", clientID).
-		Msg("Starting cross-chain transaction")
-
-	if err := c.consensus.StartTransaction(ctx, xtID, chains, data); err != nil {
-		c.mu.Lock()
-		delete(c.txStartInfos, xtID)
-		c.releaseInstanceChainsLocked(xtID)
-		c.mu.Unlock()
-		return err
-	}
-	return nil
+	// startXT releases c.mu before calling consensus.StartTransaction.
+	return c.startXT(ctx, clientID, xtReq, chains)
 }
 
 // handlePing processes a Ping message from a sidecar.
@@ -527,6 +536,77 @@ func dedupeChains(chains []compose.ChainID) []compose.ChainID {
 		deduped = append(deduped, chainID)
 	}
 	return deduped
+}
+
+// startXT starts a cross-chain transaction. c.mu must be held on entry; the
+// lock is released before calling consensus.StartTransaction so the callback
+// can re-acquire it without deadlocking.
+func (c *Coordinator) startXT(ctx context.Context, clientID string, xtReq *pb.XTRequest, chains []compose.ChainID) error {
+	composeReq := toComposeXTRequest(xtReq)
+	seqNum := c.nextSequenceNum
+	periodID := c.currentPeriodID
+	instanceID := sbcp.GenerateInstanceID(periodID, seqNum, composeReq)
+	xtID := instanceID.String()
+	c.nextSequenceNum++
+	c.txStartInfos[xtID] = txStartInfo{periodID: periodID, seqNum: seqNum}
+	c.reserveInstanceChainsLocked(xtID, chains)
+	c.mu.Unlock()
+
+	data, err := proto.Marshal(xtReq)
+	if err != nil {
+		c.mu.Lock()
+		delete(c.txStartInfos, xtID)
+		c.releaseInstanceChainsLocked(xtID)
+		c.mu.Unlock()
+		return err
+	}
+
+	c.log.Info().
+		Str("xt_id", xtID).
+		Int("chains", len(chains)).
+		Str("client_id", clientID).
+		Msg("Starting cross-chain transaction")
+
+	if err := c.consensus.StartTransaction(ctx, xtID, chains, data); err != nil {
+		c.mu.Lock()
+		delete(c.txStartInfos, xtID)
+		c.releaseInstanceChainsLocked(xtID)
+		c.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// drainQueue iterates the pending queue and starts every entry whose chains
+// are no longer occupied. Stops when no further progress can be made.
+func (c *Coordinator) drainQueue() {
+	for {
+		c.mu.Lock()
+		entry, idx := c.findUnblockedQueued()
+		if idx < 0 {
+			c.mu.Unlock()
+			return
+		}
+		c.pendingQueue = append(c.pendingQueue[:idx], c.pendingQueue[idx+1:]...)
+		// startXT releases c.mu before calling consensus.StartTransaction.
+		if err := c.startXT(context.Background(), entry.clientID, entry.xtReq, entry.chains); err != nil {
+			c.log.Error().Err(err).
+				Str("client_id", entry.clientID).
+				Msg("Failed to start queued XT")
+		}
+	}
+}
+
+// findUnblockedQueued returns the first pending queue entry whose chains are
+// all free and its index. Returns -1 when no such entry exists.
+// c.mu must be held.
+func (c *Coordinator) findUnblockedQueued() (pendingXTEntry, int) {
+	for i, e := range c.pendingQueue {
+		if _, _, blocked := c.findOverlapLocked(e.chains); !blocked {
+			return e, i
+		}
+	}
+	return pendingXTEntry{}, -1
 }
 
 func (c *Coordinator) findOverlapLocked(chains []compose.ChainID) (compose.ChainID, string, bool) {
