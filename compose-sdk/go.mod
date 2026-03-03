@@ -3,14 +3,12 @@ module github.com/compose-network/compose-sdk
 go 1.24.5
 
 require (
-	github.com/compose-network/specs/compose v0.0.0
+	github.com/compose-network/specs/compose v0.0.0-20251218115256-b89fbb9448ec
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/quic-go/quic-go v0.48.2
 	github.com/rs/zerolog v1.34.0
 	google.golang.org/protobuf v1.36.10
 )
-
-replace github.com/compose-network/specs/compose => ../specs/compose
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect

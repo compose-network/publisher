@@ -9,7 +9,6 @@ WORKDIR /build
 # Copy go mod files and local replace targets for dependency resolution
 COPY go.mod go.sum ./
 COPY compose-sdk/go.mod compose-sdk/go.sum ./compose-sdk/
-COPY specs/compose/go.mod specs/compose/go.sum ./specs/compose/
 RUN go mod download
 
 COPY . .
