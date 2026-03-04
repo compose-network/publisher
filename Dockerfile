@@ -6,8 +6,9 @@ RUN apk add --no-cache git make gcc musl-dev
 
 WORKDIR /build
 
-# Copy go mod files first for better caching
+# Copy go mod files and local replace targets for dependency resolution
 COPY go.mod go.sum ./
+COPY compose-sdk/go.mod compose-sdk/go.sum ./compose-sdk/
 RUN go mod download
 
 COPY . .
@@ -21,7 +22,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -trimpath \
     -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
     -o publisher \
-    publisher-leader-app/main.go publisher-leader-app/app.go publisher-leader-app/version.go
+    ./compose-publisher/
 
 # Runtime stage
 FROM alpine:3.22@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
@@ -37,7 +38,7 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /build/publisher /app/
-COPY --from=builder /build/publisher-leader-app/configs/config.yaml /app/configs/
+COPY --from=builder /build/compose-publisher/configs/config.yaml /app/configs/
 
 # Create directory for logs
 RUN mkdir -p /app/logs && chown -R publisher:publisher /app

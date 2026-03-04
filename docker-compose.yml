@@ -10,7 +10,7 @@ services:
       - "8080:8080"  # TCP
       - "8081:8081"  # Metrics
     volumes:
-      - ./publisher-leader-app/configs/config.yaml:/app/configs/config.yaml:ro
+      - ./compose-publisher/configs/config.yaml:/app/configs/config.yaml:ro
     environment:
       - TZ=UTC
     logging:

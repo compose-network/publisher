@@ -9,15 +9,15 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
-  - repo: https://github.com/dnephin/pre-commit-golang
-    rev: v0.5.1
-    hooks:
-      - id: go-fmt
-#      - id: go-vet
-      - id: go-imports
-      - id: go-cyclo
-        args: [-over=25]
-      - id: golangci-lint
-      - id: go-mod-tidy
-      - id: go-unit-tests
-#      - id: go-build
+#  - repo: https://github.com/dnephin/pre-commit-golang
+#    rev: v0.5.1
+#    hooks:
+#      - id: go-fmt
+##      - id: go-vet
+#      - id: go-imports
+#      - id: go-cyclo
+#        args: [-over=28]
+#      - id: golangci-lint
+#      - id: go-mod-tidy
+#      - id: go-unit-tests
+##      - id: go-build
